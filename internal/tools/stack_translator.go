@@ -1,0 +1,546 @@
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+// StackTranslatorTool traduz estruturas de dados entre linguagens (Go struct -> TS interface, etc.)
+type StackTranslatorTool struct {
+	workspaceRoot string
+	jail          bool
+}
+
+// NewStackTranslatorTool cria uma instância do tradutor de stack
+func NewStackTranslatorTool(workspaceRoot string, jail bool) *StackTranslatorTool {
+	return &StackTranslatorTool{
+		workspaceRoot: workspaceRoot,
+		jail:          jail,
+	}
+}
+
+func (t *StackTranslatorTool) ID() string          { return "stack_translator" }
+func (t *StackTranslatorTool) Description() string  { return "Traduz estruturas de dados de uma linguagem para outra (ex: Go struct -> TypeScript interface, JSON Schema)." }
+func (t *StackTranslatorTool) RequiresApproval() bool { return false }
+
+func (t *StackTranslatorTool) ParametersSchema() json.RawMessage {
+	return json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"path": {
+				"type": "string",
+				"description": "Caminho do arquivo fonte Go contendo as structs"
+			},
+			"target_language": {
+				"type": "string",
+				"description": "Linguagem de destino: typescript, python, json_schema, rust",
+				"enum": ["typescript", "python", "json_schema", "rust"]
+			},
+			"struct_name": {
+				"type": "string",
+				"description": "Nome da struct específica (opcional, se vazio traduz todas)"
+			}
+		},
+		"required": ["path", "target_language"]
+	}`)
+}
+
+// GoField representa um campo de struct Go parseado
+type GoField struct {
+	Name        string
+	Type        string
+	JSONTag     string
+	IsOmitEmpty bool
+	Comment     string
+}
+
+// GoStruct representa uma struct Go parseada
+type GoStruct struct {
+	Name    string
+	Fields  []GoField
+	Comment string
+}
+
+func (t *StackTranslatorTool) Execute(ctx context.Context, args json.RawMessage) (Result, error) {
+	var input struct {
+		Path           string `json:"path"`
+		TargetLanguage string `json:"target_language"`
+		StructName     string `json:"struct_name"`
+	}
+	if err := json.Unmarshal(args, &input); err != nil {
+		return Result{Success: false, Error: "argumentos inválidos"}, nil
+	}
+
+	targetFile, err := ValidatePath(t.workspaceRoot, input.Path, t.jail)
+	if err != nil {
+		return Result{Success: false, Error: err.Error()}, nil
+	}
+
+	structs, err := parseGoStructs(targetFile)
+	if err != nil {
+		return Result{Success: false, Error: fmt.Sprintf("erro ao parsear arquivo Go: %s", err.Error())}, nil
+	}
+
+	if len(structs) == 0 {
+		return Result{Success: false, Error: "nenhuma struct encontrada no arquivo"}, nil
+	}
+
+	// Filtrar por nome se especificado
+	if input.StructName != "" {
+		var filtered []GoStruct
+		for _, s := range structs {
+			if s.Name == input.StructName {
+				filtered = append(filtered, s)
+			}
+		}
+		if len(filtered) == 0 {
+			return Result{Success: false, Error: fmt.Sprintf("struct '%s' não encontrada", input.StructName)}, nil
+		}
+		structs = filtered
+	}
+
+	var output string
+	switch input.TargetLanguage {
+	case "typescript":
+		output = translateToTypeScript(structs)
+	case "python":
+		output = translateToPython(structs)
+	case "json_schema":
+		output = translateToJSONSchema(structs)
+	case "rust":
+		output = translateToRust(structs)
+	default:
+		return Result{Success: false, Error: fmt.Sprintf("linguagem '%s' não suportada", input.TargetLanguage)}, nil
+	}
+
+	return Result{Success: true, Data: output}, nil
+}
+
+// parseGoStructs faz o parsing AST de um arquivo Go e extrai structs com seus campos
+func parseGoStructs(filePath string) ([]GoStruct, error) {
+	fset := token.NewFileSet()
+	node, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
+	if err != nil {
+		return nil, err
+	}
+
+	var structs []GoStruct
+
+	for _, decl := range node.Decls {
+		genDecl, ok := decl.(*ast.GenDecl)
+		if !ok || genDecl.Tok != token.TYPE {
+			continue
+		}
+
+		for _, spec := range genDecl.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok {
+				continue
+			}
+
+			structType, ok := typeSpec.Type.(*ast.StructType)
+			if !ok {
+				continue
+			}
+
+			gs := GoStruct{
+				Name: typeSpec.Name.Name,
+			}
+
+			if genDecl.Doc != nil {
+				gs.Comment = genDecl.Doc.Text()
+			}
+
+			for _, field := range structType.Fields.List {
+				gf := GoField{}
+
+				if len(field.Names) > 0 {
+					gf.Name = field.Names[0].Name
+				}
+
+				gf.Type = exprToString(field.Type)
+
+				if field.Tag != nil {
+					tag := field.Tag.Value
+					gf.JSONTag, gf.IsOmitEmpty = extractJSONTag(tag)
+				}
+
+				if field.Comment != nil {
+					gf.Comment = strings.TrimSpace(field.Comment.Text())
+				}
+
+				gs.Fields = append(gs.Fields, gf)
+			}
+
+			structs = append(structs, gs)
+		}
+	}
+
+	return structs, nil
+}
+
+// exprToString converte uma expressão AST de tipo para string
+func exprToString(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		return t.Name
+	case *ast.StarExpr:
+		return "*" + exprToString(t.X)
+	case *ast.ArrayType:
+		return "[]" + exprToString(t.Elt)
+	case *ast.MapType:
+		return "map[" + exprToString(t.Key) + "]" + exprToString(t.Value)
+	case *ast.SelectorExpr:
+		return exprToString(t.X) + "." + t.Sel.Name
+	case *ast.InterfaceType:
+		return "interface{}"
+	default:
+		return "any"
+	}
+}
+
+// extractJSONTag extrai o valor da tag json de uma tag completa de struct e indica se tem omitempty
+func extractJSONTag(tag string) (string, bool) {
+	tag = strings.Trim(tag, "`")
+	for _, part := range strings.Split(tag, " ") {
+		if strings.HasPrefix(part, `json:"`) {
+			val := strings.TrimPrefix(part, `json:"`)
+			val = strings.TrimSuffix(val, `"`)
+			parts := strings.Split(val, ",")
+			hasOmitEmpty := false
+			for _, p := range parts[1:] {
+				if p == "omitempty" {
+					hasOmitEmpty = true
+					break
+				}
+			}
+			return parts[0], hasOmitEmpty
+		}
+	}
+	return "", false
+}
+
+// goTypeToTS converte tipo Go para TypeScript
+func goTypeToTS(goType string) string {
+	typeMap := map[string]string{
+		"string":      "string",
+		"int":         "number",
+		"int8":        "number",
+		"int16":       "number",
+		"int32":       "number",
+		"int64":       "number",
+		"uint":        "number",
+		"uint8":       "number",
+		"uint16":      "number",
+		"uint32":      "number",
+		"uint64":      "number",
+		"float32":     "number",
+		"float64":     "number",
+		"bool":        "boolean",
+		"interface{}": "any",
+		"any":         "any",
+		"time.Time":   "string /* ISO 8601 */",
+	}
+
+	if ts, ok := typeMap[goType]; ok {
+		return ts
+	}
+
+	if strings.HasPrefix(goType, "[]") {
+		inner := goTypeToTS(goType[2:])
+		return inner + "[]"
+	}
+
+	if strings.HasPrefix(goType, "map[") {
+		return "Record<string, any>"
+	}
+
+	if strings.HasPrefix(goType, "*") {
+		return goTypeToTS(goType[1:]) + " | null"
+	}
+
+	return goType
+}
+
+func translateToTypeScript(structs []GoStruct) string {
+	var sb strings.Builder
+	sb.WriteString("// Auto-generated by crom-agente stack_translator\n\n")
+
+	for _, s := range structs {
+		if s.Comment != "" {
+			sb.WriteString(fmt.Sprintf("/** %s */\n", strings.TrimSpace(s.Comment)))
+		}
+		sb.WriteString(fmt.Sprintf("export interface %s {\n", s.Name))
+
+		for _, f := range s.Fields {
+			fieldName := f.JSONTag
+			if fieldName == "" || fieldName == "-" {
+				fieldName = strings.ToLower(f.Name[:1]) + f.Name[1:]
+			}
+			if fieldName == "-" {
+				continue
+			}
+
+			tsType := goTypeToTS(f.Type)
+			optional := ""
+			if strings.HasPrefix(f.Type, "*") || f.IsOmitEmpty {
+				optional = "?"
+			}
+
+			comment := ""
+			if f.Comment != "" {
+				comment = " // " + f.Comment
+			}
+
+			sb.WriteString(fmt.Sprintf("  %s%s: %s;%s\n", fieldName, optional, tsType, comment))
+		}
+
+		sb.WriteString("}\n\n")
+	}
+
+	return sb.String()
+}
+
+func translateToPython(structs []GoStruct) string {
+	var sb strings.Builder
+	sb.WriteString("# Auto-generated by crom-agente stack_translator\nfrom dataclasses import dataclass\nfrom typing import Optional, List, Dict, Any\nfrom datetime import datetime\n\n")
+
+	for _, s := range structs {
+		if s.Comment != "" {
+			sb.WriteString(fmt.Sprintf("# %s\n", strings.TrimSpace(s.Comment)))
+		}
+		sb.WriteString("@dataclass\n")
+		sb.WriteString(fmt.Sprintf("class %s:\n", s.Name))
+
+		if len(s.Fields) == 0 {
+			sb.WriteString("    pass\n\n")
+			continue
+		}
+
+		for _, f := range s.Fields {
+			pyType := goTypeToPython(f.Type)
+			fieldName := toSnakeCase(f.Name)
+			if f.Comment != "" {
+				sb.WriteString(fmt.Sprintf("    # %s\n", f.Comment))
+			}
+			sb.WriteString(fmt.Sprintf("    %s: %s\n", fieldName, pyType))
+		}
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
+func goTypeToPython(goType string) string {
+	typeMap := map[string]string{
+		"string":      "str",
+		"int":         "int",
+		"int8":        "int",
+		"int16":       "int",
+		"int32":       "int",
+		"int64":       "int",
+		"uint":        "int",
+		"float32":     "float",
+		"float64":     "float",
+		"bool":        "bool",
+		"interface{}": "Any",
+		"any":         "Any",
+		"time.Time":   "datetime",
+	}
+
+	if py, ok := typeMap[goType]; ok {
+		return py
+	}
+
+	if strings.HasPrefix(goType, "[]") {
+		return fmt.Sprintf("List[%s]", goTypeToPython(goType[2:]))
+	}
+	if strings.HasPrefix(goType, "map[") {
+		return "Dict[str, Any]"
+	}
+	if strings.HasPrefix(goType, "*") {
+		return fmt.Sprintf("Optional[%s]", goTypeToPython(goType[1:]))
+	}
+	return goType
+}
+
+func translateToJSONSchema(structs []GoStruct) string {
+	schemas := make(map[string]interface{})
+
+	for _, s := range structs {
+		properties := make(map[string]interface{})
+		required := []string{}
+
+		for _, f := range s.Fields {
+			fieldName := f.JSONTag
+			if fieldName == "" || fieldName == "-" {
+				fieldName = f.Name
+			}
+			if fieldName == "-" {
+				continue
+			}
+
+			prop := goTypeToJSONSchemaProp(f.Type)
+			if f.Comment != "" {
+				prop["description"] = f.Comment
+			}
+			properties[fieldName] = prop
+
+			if !strings.HasPrefix(f.Type, "*") {
+				required = append(required, fieldName)
+			}
+		}
+
+		schema := map[string]interface{}{
+			"type":       "object",
+			"properties": properties,
+		}
+		if len(required) > 0 {
+			schema["required"] = required
+		}
+		if s.Comment != "" {
+			schema["description"] = strings.TrimSpace(s.Comment)
+		}
+
+		schemas[s.Name] = schema
+	}
+
+	data, _ := json.MarshalIndent(schemas, "", "  ")
+	return string(data)
+}
+
+func goTypeToJSONSchemaProp(goType string) map[string]interface{} {
+	switch goType {
+	case "string", "time.Time":
+		return map[string]interface{}{"type": "string"}
+	case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64":
+		return map[string]interface{}{"type": "integer"}
+	case "float32", "float64":
+		return map[string]interface{}{"type": "number"}
+	case "bool":
+		return map[string]interface{}{"type": "boolean"}
+	case "interface{}", "any":
+		return map[string]interface{}{}
+	}
+
+	if strings.HasPrefix(goType, "[]") {
+		return map[string]interface{}{
+			"type":  "array",
+			"items": goTypeToJSONSchemaProp(goType[2:]),
+		}
+	}
+	if strings.HasPrefix(goType, "map[") {
+		return map[string]interface{}{
+			"type":                 "object",
+			"additionalProperties": true,
+		}
+	}
+	if strings.HasPrefix(goType, "*") {
+		prop := goTypeToJSONSchemaProp(goType[1:])
+		prop["nullable"] = true
+		return prop
+	}
+
+	return map[string]interface{}{"type": "object"}
+}
+
+func translateToRust(structs []GoStruct) string {
+	var sb strings.Builder
+	sb.WriteString("// Auto-generated by crom-agente stack_translator\nuse serde::{Serialize, Deserialize};\n\n")
+
+	for _, s := range structs {
+		if s.Comment != "" {
+			sb.WriteString(fmt.Sprintf("/// %s\n", strings.TrimSpace(s.Comment)))
+		}
+		sb.WriteString("#[derive(Debug, Clone, Serialize, Deserialize)]\n")
+		sb.WriteString(fmt.Sprintf("pub struct %s {{\n", s.Name))
+
+		for _, f := range s.Fields {
+			rustType := goTypeToRust(f.Type)
+			fieldName := toSnakeCase(f.Name)
+
+			if f.JSONTag != "" && f.JSONTag != "-" {
+				sb.WriteString(fmt.Sprintf("    #[serde(rename = \"%s\")]\n", f.JSONTag))
+			}
+			if f.Comment != "" {
+				sb.WriteString(fmt.Sprintf("    /// %s\n", f.Comment))
+			}
+			sb.WriteString(fmt.Sprintf("    pub %s: %s,\n", fieldName, rustType))
+		}
+
+		sb.WriteString("}\n\n")
+	}
+
+	return sb.String()
+}
+
+func goTypeToRust(goType string) string {
+	typeMap := map[string]string{
+		"string":      "String",
+		"int":         "i64",
+		"int8":        "i8",
+		"int16":       "i16",
+		"int32":       "i32",
+		"int64":       "i64",
+		"uint":        "u64",
+		"uint8":       "u8",
+		"uint16":      "u16",
+		"uint32":      "u32",
+		"uint64":      "u64",
+		"float32":     "f32",
+		"float64":     "f64",
+		"bool":        "bool",
+		"interface{}": "serde_json::Value",
+		"any":         "serde_json::Value",
+		"time.Time":   "String",
+	}
+
+	if r, ok := typeMap[goType]; ok {
+		return r
+	}
+
+	if strings.HasPrefix(goType, "[]") {
+		return fmt.Sprintf("Vec<%s>", goTypeToRust(goType[2:]))
+	}
+	if strings.HasPrefix(goType, "map[") {
+		return "std::collections::HashMap<String, serde_json::Value>"
+	}
+	if strings.HasPrefix(goType, "*") {
+		return fmt.Sprintf("Option<%s>", goTypeToRust(goType[1:]))
+	}
+	return goType
+}
+
+// toSnakeCase converte CamelCase para snake_case
+func toSnakeCase(s string) string {
+	var result strings.Builder
+	for i, r := range s {
+		if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				result.WriteRune('_')
+			}
+			result.WriteRune(r + 32) // tolower
+		} else {
+			result.WriteRune(r)
+		}
+	}
+	return result.String()
+}
+
+// parseGoStructsFromSource faz parsing de structs a partir de uma string de código fonte Go (para testes)
+func parseGoStructsFromSource(src string) ([]GoStruct, error) {
+	tmpFile := filepath.Join(os.TempDir(), "crom_translate_tmp.go")
+	if err := os.WriteFile(tmpFile, []byte(src), 0644); err != nil {
+		return nil, err
+	}
+	defer os.Remove(tmpFile)
+
+	return parseGoStructs(tmpFile)
+}

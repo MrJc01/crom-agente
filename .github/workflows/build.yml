@@ -1,0 +1,53 @@
+name: Release Build & Validation
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Build & Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache: true
+
+      - name: Install Protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+      - name: Run Build Script
+        run: |
+          chmod +x scripts/build.sh
+          ./scripts/build.sh
+
+      - name: Validate Binary with Docker
+        run: |
+          chmod +x scripts/test_docker.sh
+          ./scripts/test_docker.sh
+
+      - name: Package Artifacts
+        run: |
+          mkdir -p dist
+          tar -czf dist/crom-agente-linux-amd64.tar.gz -C bin crom-agente-linux-amd64
+          tar -czf dist/crom-agente-linux-arm64.tar.gz -C bin crom-agente-linux-arm64
+          zip -j dist/crom-agente-windows-amd64.zip bin/crom-agente-windows-amd64.exe
+          tar -czf dist/crom-agente-darwin-amd64.tar.gz -C bin crom-agente-darwin-amd64
+          tar -czf dist/crom-agente-darwin-arm64.tar.gz -C bin crom-agente-darwin-arm64
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: crom-agente-binaries
+          path: dist/*

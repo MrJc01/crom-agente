@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package daemon;
+
+option go_package = "github.com/crom/crom-agente/internal/daemon/pb";
+
+service AgentService {
+    rpc StartAgent(StartAgentRequest) returns (StartAgentResponse);
+    rpc StopAgent(StopAgentRequest) returns (StopAgentResponse);
+    rpc StreamEvents(StreamEventsRequest) returns (stream AgentEvent);
+    rpc RespondPermission(RespondPermissionRequest) returns (RespondPermissionResponse);
+}
+
+message StartAgentRequest {
+    string workspace = 1;
+    string task = 2;
+    string session = 3;
+}
+
+message StartAgentResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+message StopAgentRequest {
+    string workspace = 1;
+}
+
+message StopAgentResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+message StreamEventsRequest {
+    string workspace = 1;
+}
+
+message AgentEvent {
+    string type = 1;
+    string role = 2;
+    string content = 3;
+    bool success = 4;
+    bool stream = 5;
+    string error = 6;
+}
+
+message RespondPermissionRequest {
+    string workspace = 1;
+    bool approved = 2;
+    bool remember = 3;
+}
+
+message RespondPermissionResponse {
+    bool success = 1;
+    string error = 2;
+}

@@ -1,0 +1,6 @@
+{
+  "workspace_name": ".",
+  "permission_mode": "scoped",
+  "workspace_jail": true,
+  "auto_verify": true
+}
