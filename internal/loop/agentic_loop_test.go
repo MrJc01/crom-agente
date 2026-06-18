@@ -43,6 +43,7 @@ func (m *mockTool) Execute(ctx context.Context, args json.RawMessage) (tools.Res
 type testEventHandler struct {
 	StatusChanges []string
 	Messages      []struct{ Role, Content string }
+	Events        []AgentEvent
 }
 
 func (h *testEventHandler) OnStatusChange(s string) {
@@ -51,7 +52,9 @@ func (h *testEventHandler) OnStatusChange(s string) {
 func (h *testEventHandler) OnMessage(role, content string) {
 	h.Messages = append(h.Messages, struct{ Role, Content string }{role, content})
 }
-func (h *testEventHandler) OnEvent(event AgentEvent) {}
+func (h *testEventHandler) OnEvent(event AgentEvent) {
+	h.Events = append(h.Events, event)
+}
 
 // --- Testes ---
 
