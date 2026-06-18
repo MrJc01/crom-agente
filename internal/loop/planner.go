@@ -3,10 +3,44 @@ package loop
 import (
 	"bufio"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/crom/crom-agente/internal/state"
 )
+
+// WritePlanToFile salva o plano estruturado como um arquivo markdown no workspace
+func WritePlanToFile(sm *state.StateManager, plan []state.TaskItem) error {
+	if sm == nil {
+		return nil
+	}
+
+	filePath := sm.FilePath()
+	dir := filepath.Dir(filePath)
+	if filepath.Base(dir) == "sessions" {
+		dir = filepath.Dir(dir)
+	}
+
+	planPath := filepath.Join(dir, "plan.md")
+
+	var sb strings.Builder
+	sb.WriteString("# Plano de Trabalho Cromia\n\n")
+	sb.WriteString("Este arquivo é atualizado dinamicamente pelo agente Cromia durante a execução das tarefas.\n\n")
+
+	for _, item := range plan {
+		box := "[ ]"
+		switch item.Status {
+		case "in_progress":
+			box = "[/]"
+		case "completed":
+			box = "[x]"
+		}
+		sb.WriteString(fmt.Sprintf("- %s %s\n", box, item.Title))
+	}
+
+	return os.WriteFile(planPath, []byte(sb.String()), 0644)
+}
 
 // ParsePlan extrai tarefas de checklists em markdown (ex: - [ ] Tarefa) contidos na string
 func ParsePlan(content string) []state.TaskItem {
@@ -61,6 +95,7 @@ func UpdatePlannerFromMessage(sm *state.StateManager, message string) {
 	currentPlan := sm.GetPlan()
 	if len(currentPlan) == 0 {
 		_ = sm.SetPlan(newPlan)
+		_ = WritePlanToFile(sm, newPlan)
 		return
 	}
 
@@ -85,6 +120,7 @@ func UpdatePlannerFromMessage(sm *state.StateManager, message string) {
 	}
 
 	_ = sm.SetPlan(currentPlan)
+	_ = WritePlanToFile(sm, currentPlan)
 }
 
 // SyncPlanToContext gera uma representação em texto do plano estruturado para ser injetada no loop
