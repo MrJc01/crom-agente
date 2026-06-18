@@ -22,6 +22,7 @@ import (
 	"github.com/creack/pty"
 	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/cron"
+	"github.com/crom/crom-agente/internal/loop"
 	"github.com/crom/crom-agente/internal/orchestrator"
 	"github.com/gorilla/websocket"
 )
@@ -102,6 +103,15 @@ func (h *daemonAPIEventHandler) AskPermission(action, target string) (bool, bool
 
 	res := <-h.permRespChan
 	return res.approved, res.remember
+}
+
+func (h *daemonAPIEventHandler) OnEvent(event loop.AgentEvent) {
+	payload, _ := json.Marshal(event)
+	h.router.Broadcast(h.workspaceName, IPCResponse{
+		Success: true,
+		Stream:  true,
+		Data:    payload,
+	})
 }
 
 type terminalListener struct {
@@ -572,6 +582,17 @@ func (s *APIServer) handleWS(w http.ResponseWriter, r *http.Request) {
 					_ = conn.WriteJSON(IPCResponse{
 						Success: !strings.HasPrefix(h.lastStatus, "error:"),
 						Stream:  h.lastStatus != "finished" && h.lastStatus != "idle" && !strings.HasPrefix(h.lastStatus, "error:"),
+						Data:    statusPayload,
+					})
+				} else {
+					// Se não houver agente rodando ativo, sincroniza o cliente para 'idle'
+					statusPayload, _ := json.Marshal(map[string]string{
+						"type":   "status",
+						"status": "idle",
+					})
+					_ = conn.WriteJSON(IPCResponse{
+						Success: true,
+						Stream:  false,
 						Data:    statusPayload,
 					})
 				}

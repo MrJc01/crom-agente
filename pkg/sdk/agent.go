@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/crom/crom-agente/internal/loop"
 	"github.com/crom/crom-agente/internal/tools"
 )
 
@@ -41,6 +42,10 @@ func (h *sdkEventHandler) OnMessage(role string, content string) {
 	}
 }
 
+func (h *sdkEventHandler) OnEvent(event loop.AgentEvent) {
+	// SDK armazena eventos para consumo programático futuro
+}
+
 // sdkEventWaitHandler escuta as mudancas de status e sinaliza doneChan ao terminar
 type sdkEventWaitHandler struct {
 	inner    *sdkEventHandler
@@ -62,6 +67,10 @@ func (h *sdkEventWaitHandler) OnStatusChange(status string) {
 
 func (h *sdkEventWaitHandler) OnMessage(role string, content string) {
 	h.inner.OnMessage(role, content)
+}
+
+func (h *sdkEventWaitHandler) OnEvent(event loop.AgentEvent) {
+	h.inner.OnEvent(event)
 }
 
 func (h *sdkEventWaitHandler) GetCustomTools() []tools.Tool {

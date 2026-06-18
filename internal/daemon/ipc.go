@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/crom/crom-agente/internal/config"
+	"github.com/crom/crom-agente/internal/loop"
 	"github.com/crom/crom-agente/internal/orchestrator"
 )
 
@@ -119,6 +120,15 @@ func (h *ipcConnectionHandler) AskPermission(action, target string) (bool, bool)
 
 	res := <-h.permRespChan
 	return res.approved, res.remember
+}
+
+func (h *ipcConnectionHandler) OnEvent(event loop.AgentEvent) {
+	payload, _ := json.Marshal(event)
+	h.router.Broadcast(h.workspaceName, IPCResponse{
+		Success: true,
+		Stream:  true,
+		Data:    payload,
+	})
 }
 
 // AgentEventsRouter gerencia canais de eventos por workspace

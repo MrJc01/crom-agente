@@ -117,6 +117,41 @@ func (h *cliEventHandler) OnMessage(role string, content string) {
 	}
 }
 
+func (h *cliEventHandler) OnEvent(event loop.AgentEvent) {
+	switch event.Event {
+	case "thinking":
+		provider, _ := event.Data["provider"].(string)
+		model, _ := event.Data["model"].(string)
+		fmt.Fprintf(h.out, "  💭 [iter %d] Pensando... (%s/%s)\n", event.Iteration, provider, model)
+	case "message":
+		// Mensagem já tratada pelo OnMessage legado
+	case "tool_call":
+		toolName, _ := event.Data["tool"].(string)
+		fmt.Fprintf(h.out, "  🔧 [iter %d] Chamando: %s\n", event.Iteration, toolName)
+	case "tool_result":
+		toolName, _ := event.Data["tool"].(string)
+		success, _ := event.Data["success"].(bool)
+		if success {
+			fmt.Fprintf(h.out, "  ✅ [iter %d] %s: OK\n", event.Iteration, toolName)
+		} else {
+			errMsg, _ := event.Data["error"].(string)
+			fmt.Fprintf(h.out, "  ❌ [iter %d] %s: %s\n", event.Iteration, toolName, errMsg)
+		}
+	case "error":
+		if errData, ok := event.Data["error"]; ok {
+			if agentErr, ok := errData.(loop.AgentError); ok {
+				fmt.Fprintf(h.out, "  ⚠️  [iter %d] ERRO [%s]: %s\n", event.Iteration, agentErr.Code, agentErr.Message)
+			} else {
+				fmt.Fprintf(h.out, "  ⚠️  [iter %d] ERRO: %v\n", event.Iteration, errData)
+			}
+		}
+	case "finished":
+		reason, _ := event.Data["reason"].(string)
+		totalIter, _ := event.Data["total_iterations"].(int)
+		fmt.Fprintf(h.out, "  🏁 Finalizado (%s) em %d iterações.\n", reason, totalIter)
+	}
+}
+
 // runCmd executa a tarefa instanciando o ReAct loop com as configurações resolvidas
 var runCmd = &cobra.Command{
 	Use:   "run [tarefa]",

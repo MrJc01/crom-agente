@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/crom/crom-agente/internal/loop"
 	"golang.org/x/term"
 )
 
@@ -39,4 +40,28 @@ func (h *tuiEventHandler) OnMessage(role string, content string) {
 
 	// Reinicia o spinner
 	h.spinner.Start("Processando")
+}
+
+func (h *tuiEventHandler) OnEvent(event loop.AgentEvent) {
+	h.spinner.Stop()
+	switch event.Event {
+	case "thinking":
+		h.spinner.Start(fmt.Sprintf("Pensando (iter %d)", event.Iteration))
+	case "tool_call":
+		toolName, _ := event.Data["tool"].(string)
+		h.spinner.Start(fmt.Sprintf("Executando %s", toolName))
+	case "tool_result":
+		toolName, _ := event.Data["tool"].(string)
+		success, _ := event.Data["success"].(bool)
+		if success {
+			fmt.Printf("\033[32m  ✅ %s: OK\033[0m\n", toolName)
+		} else {
+			errMsg, _ := event.Data["error"].(string)
+			fmt.Printf("\033[31m  ❌ %s: %s\033[0m\n", toolName, errMsg)
+		}
+		h.spinner.Start("Processando")
+	case "finished":
+		reason, _ := event.Data["reason"].(string)
+		fmt.Printf("\033[1;32m  🏁 Finalizado (%s)\033[0m\n", reason)
+	}
 }

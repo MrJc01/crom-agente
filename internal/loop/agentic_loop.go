@@ -22,13 +22,15 @@ import (
 type EventHandler interface {
 	OnStatusChange(status string)
 	OnMessage(role string, content string)
+	OnEvent(event AgentEvent) // Eventos estruturados com metadados completos
 }
 
 // noopHandler é um handler vazio usado quando nenhum handler é fornecido
 type noopHandler struct{}
 
-func (n noopHandler) OnStatusChange(string) {}
+func (n noopHandler) OnStatusChange(string)  {}
 func (n noopHandler) OnMessage(string, string) {}
+func (n noopHandler) OnEvent(AgentEvent)       {}
 
 // AgenticLoop é o motor de execução do agente seguindo o padrão ReAct
 type AgenticLoop struct {
@@ -91,6 +93,14 @@ func (al *AgenticLoop) GetTools() []tools.Tool {
 		result = append(result, t)
 	}
 	return result
+}
+
+// truncateStr trunca uma string para um tamanho máximo, adicionando "..." se necessário
+func truncateStr(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
 
 // Execute roda o loop ReAct completo para a tarefa dada
@@ -158,11 +168,28 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		select {
 		case <-ctx.Done():
 			al.handler.OnMessage("system", "Loop cancelado pelo contexto.")
+			al.handler.OnEvent(AgentEvent{
+				Timestamp: time.Now(),
+				Event:     "error",
+				Iteration: i + 1,
+				Data: map[string]interface{}{
+					"error": AgentError{Code: ErrContextCanceled, Message: "Loop cancelado pelo contexto"},
+				},
+			})
 			return ctx.Err()
 		default:
 		}
 
 		al.handler.OnStatusChange("thinking")
+		al.handler.OnEvent(AgentEvent{
+			Timestamp: time.Now(),
+			Event:     "thinking",
+			Iteration: i + 1,
+			Data: map[string]interface{}{
+				"provider": al.provider.Name(),
+				"model":    al.config.Model,
+			},
+		})
 
 		// Detectar loops repetitivos
 		if detectRepetitiveLoop(messages) {
@@ -192,7 +219,29 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		// Chamar o LLM
 		resp, err := al.provider.SendMessages(ctx, compactMessages(runMessages), opts)
 		if err != nil {
-			al.handler.OnMessage("system", fmt.Sprintf("Erro na requisição ao LLM: %s", err.Error()))
+			errMsg := err.Error()
+			al.handler.OnMessage("system", fmt.Sprintf("Erro na requisição ao LLM: %s", errMsg))
+
+			// Determinar código de erro tipado
+			errCode := ErrToolExecution
+			if strings.Contains(errMsg, "429") || strings.Contains(errMsg, "rate") || strings.Contains(errMsg, "Rate") {
+				errCode = ErrLLMRateLimit
+			} else if strings.Contains(errMsg, "401") || strings.Contains(errMsg, "auth") || strings.Contains(errMsg, "Unauthorized") {
+				errCode = ErrLLMAuth
+			}
+
+			al.handler.OnEvent(AgentEvent{
+				Timestamp: time.Now(),
+				Event:     "error",
+				Iteration: i + 1,
+				Data: map[string]interface{}{
+					"error": AgentError{
+						Code:    errCode,
+						Message: errMsg,
+						Details: map[string]interface{}{"provider": al.provider.Name()},
+					},
+				},
+			})
 			return fmt.Errorf("falha na chamada ao LLM: %w", err)
 		}
 
@@ -208,7 +257,24 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		// Atualiza o plano a partir do conteúdo textual da mensagem do assistente
 		UpdatePlannerFromMessage(al.stateManager, msg.Content)
 
-		// Emitir texto do assistente
+		// Emitir evento de mensagem estruturado com token usage
+		al.handler.OnEvent(AgentEvent{
+			Timestamp: time.Now(),
+			Event:     "message",
+			Iteration: i + 1,
+			Data: map[string]interface{}{
+				"role":    msg.Role,
+				"content": msg.Content,
+				"usage": map[string]int{
+					"prompt_tokens":     resp.Usage.PromptTokens,
+					"completion_tokens": resp.Usage.CompletionTokens,
+					"total_tokens":      resp.Usage.TotalTokens,
+				},
+				"has_tool_calls": len(msg.ToolCalls) > 0,
+			},
+		})
+
+		// Emitir texto do assistente (legado)
 		if msg.Content != "" {
 			al.handler.OnMessage("assistant", msg.Content)
 		}
@@ -218,6 +284,14 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			// Resposta vazia: auto-correção
 			if msg.Content == "" {
 				al.handler.OnMessage("system", "Auto-correção: resposta vazia recebida.")
+				al.handler.OnEvent(AgentEvent{
+					Timestamp: time.Now(),
+					Event:     "error",
+					Iteration: i + 1,
+					Data: map[string]interface{}{
+						"error": AgentError{Code: ErrLLMEmptyResponse, Message: "Resposta vazia recebida do LLM"},
+					},
+				})
 				messages = append(messages, llm.Message{
 					Role:    "user",
 					Content: "[SYSTEM AUTO-CORRECTION] Sua resposta estava vazia. Forneça uma resposta textual ou execute uma ferramenta.",
@@ -225,6 +299,12 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				saveMsgs(messages)
 				consecutiveFailures++
 				if consecutiveFailures >= al.config.MaxConsecutiveFail {
+					al.handler.OnEvent(AgentEvent{
+						Timestamp: time.Now(),
+						Event:     "finished",
+						Iteration: i + 1,
+						Data: map[string]interface{}{"reason": "consecutive_failures", "total_iterations": i + 1},
+					})
 					return fmt.Errorf("abortando: %d falhas consecutivas", consecutiveFailures)
 				}
 				continue
@@ -291,6 +371,12 @@ Se encontrar erros, corrija-os antes de finalizar.`,
 				_ = al.stateManager.SetStatus("idle")
 				_ = al.stateManager.AddLog(fmt.Sprintf("Tarefa concluída: %s", intent))
 			}
+			al.handler.OnEvent(AgentEvent{
+				Timestamp: time.Now(),
+				Event:     "finished",
+				Iteration: i + 1,
+				Data: map[string]interface{}{"reason": "completed", "total_iterations": i + 1},
+			})
 			al.handler.OnStatusChange("finished")
 			return nil
 		}
@@ -305,6 +391,14 @@ Se encontrar erros, corrija-os antes de finalizar.`,
 			if !exists {
 				errMsg := fmt.Sprintf("Ferramenta '%s' não encontrada.", toolID)
 				al.handler.OnMessage("system", errMsg)
+				al.handler.OnEvent(AgentEvent{
+					Timestamp: time.Now(),
+					Event:     "error",
+					Iteration: i + 1,
+					Data: map[string]interface{}{
+						"error": AgentError{Code: ErrToolNotFound, Message: errMsg, Details: map[string]interface{}{"tool": toolID}},
+					},
+				})
 				messages = append(messages, llm.Message{
 					Role: "tool", ToolCallID: tc.ID, Name: toolID,
 					Content: formatToolError(toolID, errMsg),
@@ -321,6 +415,18 @@ Se encontrar erros, corrija-os antes de finalizar.`,
 				al.handler.OnStatusChange("executing_tool")
 			}
 			al.handler.OnMessage("system", fmt.Sprintf("Executando ferramenta: %s", toolID))
+
+			// Emitir evento estruturado de tool_call
+			al.handler.OnEvent(AgentEvent{
+				Timestamp: time.Now(),
+				Event:     "tool_call",
+				Iteration: i + 1,
+				Data: map[string]interface{}{
+					"tool_call_id": tc.ID,
+					"tool":         toolID,
+					"arguments":    json.RawMessage(tc.Function.Arguments),
+				},
+			})
 
 			if al.stateManager != nil {
 				_ = al.stateManager.AddLog(fmt.Sprintf("[tool_start] %s", toolID))
@@ -358,6 +464,14 @@ Se encontrar erros, corrija-os antes de finalizar.`,
 				if authErr != nil || !approved {
 					errMsg := fmt.Sprintf("Ação '%s' rejeitada pelo usuário ou pelas políticas de segurança.", toolID)
 					al.handler.OnMessage("system", errMsg)
+					al.handler.OnEvent(AgentEvent{
+						Timestamp: time.Now(),
+						Event:     "error",
+						Iteration: i + 1,
+						Data: map[string]interface{}{
+							"error": AgentError{Code: ErrPermissionDenied, Message: errMsg, Details: map[string]interface{}{"tool": toolID, "target": target}},
+						},
+					})
 					messages = append(messages, llm.Message{
 						Role: "tool", ToolCallID: tc.ID, Name: toolID,
 						Content: formatToolError(toolID, errMsg),
@@ -379,6 +493,24 @@ Se encontrar erros, corrija-os antes de finalizar.`,
 					Role: "tool", ToolCallID: tc.ID, Name: toolID, Content: errContent,
 				})
 				al.handler.OnMessage("system", fmt.Sprintf("Exceção na ferramenta %s: %s", toolID, execErr.Error()))
+
+				// Evento estruturado de tool_result com erro
+				errCode := ErrToolExecution
+				if toolCtx.Err() != nil {
+					errCode = ErrToolTimeout
+				}
+				al.handler.OnEvent(AgentEvent{
+					Timestamp: time.Now(),
+					Event:     "tool_result",
+					Iteration: i + 1,
+					Data: map[string]interface{}{
+						"tool_call_id": tc.ID,
+						"tool":         toolID,
+						"success":      false,
+						"error":        execErr.Error(),
+						"error_code":   errCode,
+					},
+				})
 				iterationHasFailure = true
 				continue
 			}
@@ -401,6 +533,19 @@ Se encontrar erros, corrija-os antes de finalizar.`,
 				}
 				al.handler.OnMessage("system", fmt.Sprintf("Ferramenta %s executada com sucesso.", toolID))
 
+				// Evento estruturado de tool_result com sucesso
+				al.handler.OnEvent(AgentEvent{
+					Timestamp: time.Now(),
+					Event:     "tool_result",
+					Iteration: i + 1,
+					Data: map[string]interface{}{
+						"tool_call_id": tc.ID,
+						"tool":         toolID,
+						"success":      true,
+						"output":       truncateStr(result.Data, 500),
+					},
+				})
+
 			} else {
 				errContent := formatToolError(toolID, result.Error)
 				if toolID == "terminal_command" {
@@ -410,6 +555,20 @@ Se encontrar erros, corrija-os antes de finalizar.`,
 					Role: "tool", ToolCallID: tc.ID, Name: toolID, Content: errContent,
 				})
 				al.handler.OnMessage("system", fmt.Sprintf("Erro na ferramenta %s: %s", toolID, result.Error))
+
+				// Evento estruturado de tool_result com falha lógica
+				al.handler.OnEvent(AgentEvent{
+					Timestamp: time.Now(),
+					Event:     "tool_result",
+					Iteration: i + 1,
+					Data: map[string]interface{}{
+						"tool_call_id": tc.ID,
+						"tool":         toolID,
+						"success":      false,
+						"error":        result.Error,
+						"error_code":   ErrToolExecution,
+					},
+				})
 				iterationHasFailure = true
 			}
 		}
@@ -419,6 +578,12 @@ Se encontrar erros, corrija-os antes de finalizar.`,
 			consecutiveFailures++
 			if consecutiveFailures >= al.config.MaxConsecutiveFail {
 				al.handler.OnMessage("system", fmt.Sprintf("Abortando: %d falhas consecutivas.", al.config.MaxConsecutiveFail))
+				al.handler.OnEvent(AgentEvent{
+					Timestamp: time.Now(),
+					Event:     "finished",
+					Iteration: i + 1,
+					Data: map[string]interface{}{"reason": "consecutive_failures", "total_iterations": i + 1},
+				})
 				return fmt.Errorf("abortando: %d falhas consecutivas", al.config.MaxConsecutiveFail)
 			}
 		} else {
@@ -427,6 +592,12 @@ Se encontrar erros, corrija-os antes de finalizar.`,
 	}
 
 	al.handler.OnMessage("system", "Limite de iterações atingido.")
+	al.handler.OnEvent(AgentEvent{
+		Timestamp: time.Now(),
+		Event:     "finished",
+		Iteration: al.config.MaxIterations,
+		Data: map[string]interface{}{"reason": "max_iterations", "total_iterations": al.config.MaxIterations},
+	})
 	al.handler.OnStatusChange("idle")
 	return fmt.Errorf("limite de %d iterações atingido", al.config.MaxIterations)
 }

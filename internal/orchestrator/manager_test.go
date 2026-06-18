@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/crom/crom-agente/internal/config"
+	"github.com/crom/crom-agente/internal/loop"
 )
 
 type testEventHandler struct {
@@ -25,6 +26,7 @@ func (t *testEventHandler) OnStatusChange(status string) {
 }
 
 func (t *testEventHandler) OnMessage(string, string) {}
+func (t *testEventHandler) OnEvent(event loop.AgentEvent) {}
 
 func TestMultiAgentManager_AddWorkspace(t *testing.T) {
 	tempHome := t.TempDir()

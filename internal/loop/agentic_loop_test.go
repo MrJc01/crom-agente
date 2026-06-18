@@ -51,6 +51,7 @@ func (h *testEventHandler) OnStatusChange(s string) {
 func (h *testEventHandler) OnMessage(role, content string) {
 	h.Messages = append(h.Messages, struct{ Role, Content string }{role, content})
 }
+func (h *testEventHandler) OnEvent(event AgentEvent) {}
 
 // --- Testes ---
 
