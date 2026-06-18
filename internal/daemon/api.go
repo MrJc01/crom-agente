@@ -628,6 +628,7 @@ func (s *APIServer) handleWS(w http.ResponseWriter, r *http.Request) {
 					workspaceName: msg.Workspace,
 					router:         s.router,
 					permRespChan:  make(chan permissionResult, 1),
+					autoApprove:   msg.AutoApprove,
 				}
 				handler.onFinished = func() {
 					s.mu.Lock()

@@ -36,13 +36,14 @@ func PIDPath() (string, error) {
 
 // IPCMessage eh o protocolo de comunicacao enviado pelo cliente
 type IPCMessage struct {
-	Type      string          `json:"type"`                // "run", "status", "stop", "ping", "permission_response"
-	Workspace string          `json:"workspace,omitempty"` // nome do workspace
-	Task      string          `json:"task,omitempty"`
-	Session   string          `json:"session,omitempty"` // ID ou nome da sessão
-	Payload   json.RawMessage `json:"payload,omitempty"`
-	Provider  string          `json:"provider,omitempty"`
-	Model     string          `json:"model,omitempty"`
+	Type        string          `json:"type"`                // "run", "status", "stop", "ping", "permission_response"
+	Workspace   string          `json:"workspace,omitempty"` // nome do workspace
+	Task        string          `json:"task,omitempty"`
+	Session     string          `json:"session,omitempty"` // ID ou nome da sessão
+	Payload     json.RawMessage `json:"payload,omitempty"`
+	Provider    string          `json:"provider,omitempty"`
+	Model       string          `json:"model,omitempty"`
+	AutoApprove bool            `json:"auto_approve,omitempty"`
 }
 
 // IPCResponse eh a resposta enviada do daemon para o cliente

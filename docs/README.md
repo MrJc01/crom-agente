@@ -104,4 +104,5 @@ Para entender a fundo o design planejado para o orquestrador, consulte os seguin
 6. [**Camada de SDK e Cron (sdk_and_cron.md)**](docs/sdk_and_cron.md): Detalha como as estruturas Go serão consumidas como SDK e como o agendamento de tarefas periódicas funcionará.
 7. [**Roadmap de Execução (roadmap.md)**](docs/roadmap.md): O passo a passo em 11 fases para tirar o projeto do papel, desde a CLI até as integrações de interface.
 8. [**Interface de Terminal REPL (repl_cli.md)**](docs/repl_cli.md): Detalha a TUI interativa inline do `crom-agente-cli`, os comandos de barra (`/add`, `/btw`, `/diff`, `/cost`, etc.) e o fluxo de permissão HITL.
+9. [**Backlog de Funcionalidades (backlog.md)**](docs/backlog.md): Registra as melhorias sugeridas pelo usuário como personalização de prompt, seleção de texto para contexto e formatação de resultados com grafos.
 
