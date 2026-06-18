@@ -178,7 +178,7 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []Message, o
 	var resp *http.Response
 	var req *http.Request
 	var bodyBytes []byte
-	maxRetries := 5
+	maxRetries := 3
 	
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		var err error
@@ -192,7 +192,7 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []Message, o
 		resp, err = client.Do(req)
 		if err != nil {
 			if attempt < maxRetries {
-				time.Sleep(time.Duration(attempt*5) * time.Second)
+				time.Sleep(time.Duration(attempt*2) * time.Second)
 				continue
 			}
 			return nil, fmt.Errorf("openai: falha na requisição HTTP após retries: %w", err)
@@ -204,11 +204,17 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []Message, o
 			return nil, fmt.Errorf("openai: erro ao ler response body: %w", err)
 		}
 
-		// Se for Rate Limit (429) ou erro de servidor (5xx), tenta de novo
-		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+		// Se for Rate Limit (429), falha imediatamente para evitar travar a UI/CLI
+		if resp.StatusCode == http.StatusTooManyRequests {
+			resp.Body.Close()
+			break
+		}
+
+		// Se for erro de servidor (5xx), tenta de novo com delay menor
+		if resp.StatusCode >= 500 {
 			resp.Body.Close()
 			if attempt < maxRetries {
-				time.Sleep(time.Duration(attempt*5) * time.Second)
+				time.Sleep(time.Duration(attempt*2) * time.Second)
 				continue
 			}
 			break // sai do loop e processa o erro
