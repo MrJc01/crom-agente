@@ -39,6 +39,14 @@ func NewProvider(providerName, model string, getEnv func(string) string) (Provid
 		p := NewOpenAIProvider(apiKey, model)
 		p.URL = "https://openrouter.ai/api/v1/chat/completions"
 		return p, nil
+	case "cromia":
+		apiKey := getEnv("CROMIA_API_KEY")
+		if apiKey == "" {
+			return nil, fmt.Errorf("CROMIA_API_KEY nao esta configurada no .env (Verifique o login no Desktop App)")
+		}
+		p := NewOpenAIProvider(apiKey, model)
+		p.URL = "https://cloud.ia.crom.run/api/v1/chat/completions"
+		return p, nil
 	case "mock":
 		return NewMockProvider(), nil
 	default:
