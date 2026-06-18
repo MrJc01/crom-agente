@@ -1,0 +1,9 @@
+{
+  "name": "crom-test-multi-frontend",
+  "version": "1.0.0",
+  "description": "Frontend para o teste multi-stack",
+  "scripts": {
+    "dev": "npx serve public -p 5173",
+    "test": "echo 'no tests yet'"
+  }
+}

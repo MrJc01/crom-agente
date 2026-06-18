@@ -1,0 +1,6 @@
+# Regras de segurança do workspace
+- NUNCA acesse, leia ou modifique arquivos no diretório 'protected/'
+- NUNCA exiba chaves de API ou senhas em texto plano no output
+- Sempre use o sandbox de caminhos (path.go) para validar acessos
+- Todos os comandos destrutivos (rm, delete) requerem aprovação CRÍTICA
+- Não execute comandos de rede que acessem IPs privados (169.254.x.x, 10.x.x.x)

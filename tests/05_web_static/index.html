@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minha Página Responsiva</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <style>
+        /* Variáveis CSS */
+        :root {
+            --primary-color: #007bff;
+            --secondary-color: #6c757d;
+            --light-bg: #f8f9fa;
+            --dark-text: #343a40;
+            --white-text: #ffffff;
+            --spacing-unit: 1rem;
+        }
+
+        /* Reset Básico */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--dark-text);
+            background-color: var(--light-bg);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 var(--spacing-unit);
+        }
+
+        /* Header */
+        header {
+            background-color: var(--dark-text);
+            color: var(--white-text);
+            padding: var(--spacing-unit) 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header .logo {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: var(--white-text);
+            text-decoration: none;
+        }
+
+        header nav ul {
+            list-style: none;
+            display: flex; /* Mobile-first: esconde no mobile, mostra com JS ou Media Query */
+            gap: 1rem;
+        }
+
+        header nav a {
+            color: var(--white-text);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            display: block;
+        }
+
+        header nav a:hover {
+            background-color: var(--primary-color);
+            border-radius: 5px;
+        }
+        
+        /* Simples toggle para navegação mobile - seria feito com JS */
+        .menu-toggle {
+            display: none; /* Escondido por padrão, mostra no mobile */
+            font-size: 2rem;
+            cursor: pointer;
+            color: var(--white-text);
+        }
+
+        /* Hero Section */
+        .hero {
+            background-color: var(--primary-color);
+            color: var(--white-text);
+            text-align: center;
+            padding: 4rem var(--spacing-unit);
+        }
+
+        .hero h1 {
+            font-size: 2.5rem;
+            margin-bottom: var(--spacing-unit);
+        }
+
+        .hero p {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .cta-button {
+            background-color: var(--white-text);
+            color: var(--primary-color);
+            padding: 1rem 2rem;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+            transition: background-color 0.3s ease;
+        }
+
+        .cta-button:hover {
+            background-color: var(--secondary-color);
+            color: var(--white-text);
+        }
+
+        /* Features Section */
+        .features {
+            padding: 3rem 0;
+            text-align: center;
+        }
+
+        .features h2 {
+            font-size: 2rem;
+            margin-bottom: 2rem;
+            color: var(--dark-text);
+        }
+
+        .feature-cards {
+            display: flex;
+            flex-direction: column; /* Mobile: empilha os cards */
+            gap: var(--spacing-unit-desktop, 2rem); /* Usar variável para desktop */
+            margin-top: 2rem;
+        }
+
+        .feature-card {
+            background-color: var(--white-text);
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .feature-card .icon {
+            font-size: 3rem;
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+        }
+
+        .feature-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 0.8rem;
+            color: var(--dark-text);
+        }
+
+        .feature-card p {
+            color: var(--secondary-color);
+        }
+
+        /* Footer */
+        footer {
+            background-color: var(--dark-text);
+            color: var(--white-text);
+            text-align: center;
+            padding: 2rem var(--spacing-unit);
+            margin-top: 3rem;
+        }
+
+        footer .footer-links {
+            list-style: none;
+            padding: 0;
+            display: flex;
+            flex-direction: column; /* Mobile: links empilhados */
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        footer .footer-links a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        footer .footer-links a:hover {
+            text-decoration: underline;
+        }
+
+        footer .copyright {
+            font-size: 0.9rem;
+            color: var(--secondary-color);
+        }
+
+        /* Media Queries para Desktop */
+        @media (min-width: 768px) {
+            header .logo {
+                font-size: 2.2rem;
+            }
+
+            header nav ul {
+                display: flex; /* Mostra navegação no desktop */
+            }
+
+            .menu-toggle {
+                display: none; /* Esconde o toggle no desktop */
+            }
+
+            .hero {
+                padding: 6rem var(--spacing-unit);
+            }
+
+            .hero h1 {
+                font-size: 3.5rem;
+            }
+
+            .hero p {
+                font-size: 1.4rem;
+            }
+
+            .features h2 {
+                font-size: 2.5rem;
+            }
+
+            .feature-cards {
+                flex-direction: row; /* Desktop: cards lado a lado */
+                justify-content: center;
+            }
+
+            footer .footer-links {
+                flex-direction: row; /* Desktop: links em linha */
+                justify-content: center;
+                gap: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <a href="#" class="logo">MeuProduto</a>
+            <nav>
+                <div class="menu-toggle">☰</div> <!-- Poderia ser um ícone de hambúrguer -->
+                <ul>
+                    <li><a href="#">Home</a></li>
+                    <li><a href="#">Features</a></li>
+                    <li><a href="#">Preços</a></li>
+                    <li><a href="#">Contato</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="container">
+                <h1>Simplifique Sua Vida com Nossa Solução</h1>
+                <p>Descubra a ferramenta que você esperava para otimizar seus processos e aumentar sua produtividade.</p>
+                <a href="#" class="cta-button">Comece Agora!</a>
+            </div>
+        </section>
+
+        <section class="features">
+            <div class="container">
+                <h2>Recursos Incríveis ao Seu Dispor</h2>
+                <div class="feature-cards">
+                    <div class="feature-card">
+                        <span class="material-icons icon">flash_on</span>
+                        <h3>Performance Otimizada</h3>
+                        <p>Experimente velocidade e eficiência sem precedentes em todas as suas tarefas.</p>
+                    </div>
+                    <div class="feature-card">
+                        <span class="material-icons icon">security</span>
+                        <h3>Segurança Total</h3>
+                        <p>Seus dados protegidos com as mais avançadas tecnologias de criptografia.</p>
+                    </div>
+                    <div class="feature-card">
+                        <span class="material-icons icon">support_agent</span>
+                        <h3>Suporte Dedicado</h3>
+                        <p>Conte com nossa equipe sempre que precisar de ajuda, 24 horas por dia.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <ul class="footer-links">
+                <li><a href="#">Sobre Nós</a></li>
+                <li><a href="#">Termos de Serviço</a></li>
+                <li><a href="#">Política de Privacidade</a></li>
+            </ul>
+            <p class="copyright">&copy; 2023 MeuProduto. Todos os direitos reservados.</p>
+        </div>
+    </footer>
+</body>
+</html>

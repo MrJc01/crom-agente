@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Formulário de Teste — Browser Automation</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .container { background: #1e293b; border-radius: 16px; padding: 40px; width: 100%; max-width: 480px; box-shadow: 0 20px 60px rgba(0,0,0,0.4); }
+        h1 { font-size: 1.5rem; margin-bottom: 24px; color: #38bdf8; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 6px; font-size: 0.875rem; color: #94a3b8; }
+        input, textarea { width: 100%; padding: 12px; border: 1px solid #334155; border-radius: 8px; background: #0f172a; color: #e2e8f0; font-size: 1rem; outline: none; transition: border-color 0.2s; }
+        input:focus, textarea:focus { border-color: #38bdf8; }
+        textarea { resize: vertical; min-height: 100px; }
+        button { width: 100%; padding: 14px; background: linear-gradient(135deg, #38bdf8, #818cf8); color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: transform 0.1s, opacity 0.2s; }
+        button:hover { opacity: 0.9; transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #result { margin-top: 20px; padding: 16px; background: #064e3b; border-radius: 8px; display: none; color: #6ee7b7; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📝 Formulário de Contato</h1>
+        <form id="contactForm">
+            <div class="form-group">
+                <label for="name">Nome</label>
+                <input type="text" id="name" name="name" placeholder="Seu nome completo" required>
+            </div>
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" placeholder="seu@email.com" required>
+            </div>
+            <div class="form-group">
+                <label for="message">Mensagem</label>
+                <textarea id="message" name="message" placeholder="Sua mensagem..." required></textarea>
+            </div>
+            <button type="submit" id="submitBtn">Enviar</button>
+        </form>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        document.getElementById('contactForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const name = document.getElementById('name').value;
+            const email = document.getElementById('email').value;
+            const message = document.getElementById('message').value;
+            
+            const result = document.getElementById('result');
+            result.style.display = 'block';
+            result.innerHTML = `✅ Formulário enviado com sucesso!<br>
+                <strong>Nome:</strong> ${name}<br>
+                <strong>Email:</strong> ${email}<br>
+                <strong>Mensagem:</strong> ${message}`;
+        });
+    </script>
+</body>
+</html>

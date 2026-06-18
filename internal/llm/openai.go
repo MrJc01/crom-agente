@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type OpenAIProvider struct {
@@ -173,24 +174,52 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []Message, o
 		return nil, fmt.Errorf("openai: erro ao serializar request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("openai: erro ao criar request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+p.apiKey)
-
 	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("openai: falha na requisição HTTP: %w", err)
-	}
-	defer resp.Body.Close()
+	var resp *http.Response
+	var req *http.Request
+	var bodyBytes []byte
+	maxRetries := 5
+	
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		var err error
+		req, err = http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+		if err != nil {
+			return nil, fmt.Errorf("openai: erro ao criar request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+p.apiKey)
 
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("openai: erro ao ler response body: %w", err)
+		resp, err = client.Do(req)
+		if err != nil {
+			if attempt < maxRetries {
+				time.Sleep(time.Duration(attempt*5) * time.Second)
+				continue
+			}
+			return nil, fmt.Errorf("openai: falha na requisição HTTP após retries: %w", err)
+		}
+
+		bodyBytes, err = io.ReadAll(resp.Body)
+		if err != nil {
+			resp.Body.Close()
+			return nil, fmt.Errorf("openai: erro ao ler response body: %w", err)
+		}
+
+		// Se for Rate Limit (429) ou erro de servidor (5xx), tenta de novo
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			resp.Body.Close()
+			if attempt < maxRetries {
+				time.Sleep(time.Duration(attempt*5) * time.Second)
+				continue
+			}
+			break // sai do loop e processa o erro
+		}
+		
+		// Se deu certo ou é um erro de cliente (400, 401, 404), quebra o loop
+		break
+	}
+	
+	if resp != nil && resp.Body != nil {
+		defer resp.Body.Close()
 	}
 
 	if resp.StatusCode != http.StatusOK {

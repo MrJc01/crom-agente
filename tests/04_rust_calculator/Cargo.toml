@@ -1,0 +1,9 @@
+[package]
+name = "crom-test-calculator"
+version = "0.1.0"
+edition = "2021"
+description = "Calculadora em Rust para testes do crom-agente"
+
+[[bin]]
+name = "calc"
+path = "src/main.rs"

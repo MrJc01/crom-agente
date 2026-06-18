@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tabela de Dados — Browser Automation Test</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; padding: 40px; }
+        h1 { font-size: 1.5rem; color: #38bdf8; margin-bottom: 24px; }
+        .table-container { background: #1e293b; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #334155; padding: 14px 20px; text-align: left; font-weight: 600; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; }
+        td { padding: 14px 20px; border-bottom: 1px solid #334155; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: rgba(56, 189, 248, 0.05); }
+        .badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+        .badge-active { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+        .badge-inactive { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+        .badge-pending { background: rgba(234, 179, 8, 0.15); color: #fbbf24; }
+        .price { font-weight: 600; color: #38bdf8; }
+        .summary { margin-top: 20px; display: flex; gap: 20px; }
+        .stat { background: #1e293b; border-radius: 12px; padding: 20px; flex: 1; text-align: center; }
+        .stat-value { font-size: 2rem; font-weight: 700; color: #38bdf8; }
+        .stat-label { font-size: 0.875rem; color: #94a3b8; margin-top: 4px; }
+    </style>
+</head>
+<body>
+    <h1>📊 Catálogo de Produtos</h1>
+
+    <div class="table-container">
+        <table id="productsTable">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Produto</th>
+                    <th>Categoria</th>
+                    <th>Preço (R$)</th>
+                    <th>Estoque</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>1</td>
+                    <td>Teclado Mecânico RGB</td>
+                    <td>Periféricos</td>
+                    <td class="price">R$ 299,90</td>
+                    <td>42</td>
+                    <td><span class="badge badge-active">Ativo</span></td>
+                </tr>
+                <tr>
+                    <td>2</td>
+                    <td>Mouse Gamer Sem Fio</td>
+                    <td>Periféricos</td>
+                    <td class="price">R$ 189,90</td>
+                    <td>78</td>
+                    <td><span class="badge badge-active">Ativo</span></td>
+                </tr>
+                <tr>
+                    <td>3</td>
+                    <td>Monitor Ultrawide 34"</td>
+                    <td>Monitores</td>
+                    <td class="price">R$ 2.499,00</td>
+                    <td>5</td>
+                    <td><span class="badge badge-pending">Pouco Estoque</span></td>
+                </tr>
+                <tr>
+                    <td>4</td>
+                    <td>Headset 7.1 Surround</td>
+                    <td>Áudio</td>
+                    <td class="price">R$ 349,00</td>
+                    <td>23</td>
+                    <td><span class="badge badge-active">Ativo</span></td>
+                </tr>
+                <tr>
+                    <td>5</td>
+                    <td>Webcam 4K HDR</td>
+                    <td>Câmeras</td>
+                    <td class="price">R$ 599,00</td>
+                    <td>0</td>
+                    <td><span class="badge badge-inactive">Esgotado</span></td>
+                </tr>
+                <tr>
+                    <td>6</td>
+                    <td>SSD NVMe 1TB</td>
+                    <td>Armazenamento</td>
+                    <td class="price">R$ 449,90</td>
+                    <td>156</td>
+                    <td><span class="badge badge-active">Ativo</span></td>
+                </tr>
+                <tr>
+                    <td>7</td>
+                    <td>Placa de Vídeo RTX 4070</td>
+                    <td>GPUs</td>
+                    <td class="price">R$ 3.299,00</td>
+                    <td>3</td>
+                    <td><span class="badge badge-pending">Pouco Estoque</span></td>
+                </tr>
+                <tr>
+                    <td>8</td>
+                    <td>Cadeira Ergonômica</td>
+                    <td>Mobiliário</td>
+                    <td class="price">R$ 1.199,00</td>
+                    <td>12</td>
+                    <td><span class="badge badge-active">Ativo</span></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="summary">
+        <div class="stat">
+            <div class="stat-value">8</div>
+            <div class="stat-label">Produtos</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">5</div>
+            <div class="stat-label">Ativos</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">2</div>
+            <div class="stat-label">Pouco Estoque</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">1</div>
+            <div class="stat-label">Esgotado</div>
+        </div>
+    </div>
+</body>
+</html>

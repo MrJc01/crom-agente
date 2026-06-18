@@ -1,0 +1,57 @@
+# Binaries and build artifacts
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go specific
+_obj/
+_test/
+*.cgo1.go
+*.cgo2.c
+_cgo_defun.c
+_cgo_gotypes.go
+_cgo_export.*
+
+# IDEs & System files
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+
+# Test suites and dynamic evidence
+tests/workspaces/
+tests/evidence/
+tests/**/*.log
+
+# Local/Global Agent states
+.crom/
+**/.crom/
+.env
+.env.*
+!.env.example
+
+# Substack dependencies in integration tests
+**/node_modules/
+**/target/
+**/dist/
+**/.venv/
+**/venv/
+**/__pycache__/
+**/*.pyc
+**/vosk-model-*/
+tests/06_git_conflicts
+tests/.bin/
+tests/.results/
+tests/**/server
+tests/**/api
+tests/**/.git/

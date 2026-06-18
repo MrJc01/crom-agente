@@ -1,0 +1,9 @@
+# Regras locais do workspace
+# O agente deve respeitar estas regras durante a execução
+
+- Sempre use a biblioteca padrão de Go (sem dependências externas).
+- Nomeie variáveis e funções em inglês.
+- Use camelCase para variáveis locais e PascalCase para exportadas.
+- Cada handler deve ter seu próprio arquivo em internal/handlers/.
+- Todos os erros devem ser logados e retornados como JSON.
+- Não use global state; passe dependências via struct.
