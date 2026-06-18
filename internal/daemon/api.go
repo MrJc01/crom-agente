@@ -616,6 +616,7 @@ func (s *APIServer) handleWS(w http.ResponseWriter, r *http.Request) {
 				}
 
 			case "run":
+				log.Printf("[daemon WS run] msg Workspace: %s, Task: %s, Provider: %s, Model: %s\n", msg.Workspace, msg.Task, msg.Provider, msg.Model)
 				if currentWorkspace != "" {
 					s.router.Unregister(currentWorkspace, eventCh)
 				}
@@ -636,7 +637,15 @@ func (s *APIServer) handleWS(w http.ResponseWriter, r *http.Request) {
 				s.activeHandlers[msg.Workspace] = handler
 				s.mu.Unlock()
 
-				err := s.manager.StartAgent(context.Background(), msg.Workspace, msg.Session, msg.Task, handler)
+				ctx := context.Background()
+				if msg.Provider != "" {
+					ctx = context.WithValue(ctx, "provider_override", msg.Provider)
+				}
+				if msg.Model != "" {
+					ctx = context.WithValue(ctx, "model_override", msg.Model)
+				}
+
+				err := s.manager.StartAgent(ctx, msg.Workspace, msg.Session, msg.Task, handler)
 				if err != nil {
 					s.mu.Lock()
 					delete(s.activeHandlers, msg.Workspace)

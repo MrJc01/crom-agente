@@ -215,6 +215,13 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 	// Resolve config (CLI flags vazias)
 	resolved := config.Resolve(global, workspaceCfg, config.CLIFlags{})
 
+	if providerOverride, ok := ctx.Value("provider_override").(string); ok && providerOverride != "" {
+		resolved.Provider = providerOverride
+	}
+	if modelOverride, ok := ctx.Value("model_override").(string); ok && modelOverride != "" {
+		resolved.Model = modelOverride
+	}
+
 	// 4. Instancia LLM Provider
 	provider, err := llm.NewProvider(resolved.Provider, resolved.Model, func(key string) string {
 		return env.Get(key)

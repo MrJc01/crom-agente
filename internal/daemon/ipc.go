@@ -41,6 +41,8 @@ type IPCMessage struct {
 	Task      string          `json:"task,omitempty"`
 	Session   string          `json:"session,omitempty"` // ID ou nome da sessão
 	Payload   json.RawMessage `json:"payload,omitempty"`
+	Provider  string          `json:"provider,omitempty"`
+	Model     string          `json:"model,omitempty"`
 }
 
 // IPCResponse eh a resposta enviada do daemon para o cliente
@@ -307,7 +309,15 @@ func (s *IPCServer) handleConnection(conn net.Conn) {
 				eventCh := make(chan IPCResponse, 100)
 				s.router.Register(msg.Workspace, eventCh)
 
-				err := s.manager.StartAgent(context.Background(), msg.Workspace, msg.Session, msg.Task, handler)
+				ctx := context.Background()
+				if msg.Provider != "" {
+					ctx = context.WithValue(ctx, "provider_override", msg.Provider)
+				}
+				if msg.Model != "" {
+					ctx = context.WithValue(ctx, "model_override", msg.Model)
+				}
+
+				err := s.manager.StartAgent(ctx, msg.Workspace, msg.Session, msg.Task, handler)
 				if err != nil {
 					s.router.Unregister(msg.Workspace, eventCh)
 					handler.writeResponse(IPCResponse{Success: false, Error: err.Error()})
