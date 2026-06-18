@@ -9,37 +9,16 @@ The system is designed to be:
 
 ---
 
-## 📂 Monorepo Structure
+## 📂 Ecosystem Architecture (Multi-Repository)
 
-```
-crom-agente5/
-├── crom-agente/              # Go CLI Orchestrator + SDK
-│   ├── cmd/
-│   │   ├── crom-agente/      # Entrypoint for the main orchestrator/daemon binary
-│   │   └── crom-agente-cli/  # Entrypoint for the interactive TUI (REPL)
-│   ├── internal/             # Internal packages
-│   │   ├── cli/              # Cobra commands (root, config, session, workspace, daemon)
-│   │   ├── cli-tui/          # Inline TUI interface (ui, commands, markdown, styles)
-│   │   ├── config/           # Layered configuration system
-│   │   ├── cron/             # Periodic task scheduler
-│   │   ├── daemon/           # Persistent daemon, IPC, tray icon, HTTP API
-│   │   ├── llm/              # LLM adapters (OpenAI, Gemini, Anthropic, Ollama, OpenRouter)
-│   │   ├── loop/             # ReAct loop (AgenticLoop) and subagents
-│   │   ├── mcp/              # MCP (Model Context Protocol) client
-│   │   ├── orchestrator/     # MultiAgentManager (multi-workspace)
-│   │   ├── permission/       # HITL permission manager
-│   │   ├── state/            # State and session manager
-│   │   ├── tools/            # Native tools (read_file, write_file, terminal, spawn_subagent)
-│   │   └── blackbox/         # E2E black-box tests
-│   ├── pkg/                  # Public SDK API
-│   │   ├── config/           # Exported configuration types
-│   │   └── sdk/              # Public Go SDK (Agent, Manager)
-│   ├── scripts/              # Build scripts
-│   └── bin/                  # Compiled binaries
-├── crom-agente-cli/          # Standalone interactive TUI (compiled binary)
-├── docs/                     # Project documentation
-└── test0/                    # Test workspace
-```
+The project evolved from a monorepo to a **decoupled ecosystem**, where each component lives in its own independent repository:
+
+- **`crom-agente`**: The central engine. Persistent Go daemon, ReAct orchestrator, gRPC/HTTP server, and tools manager.
+- **`crom-agente-sdk`**: Public SDK that provides bindings and interfaces to communicate with the local daemon programmatically.
+- **`crom-agente-cli`**: Interactive terminal interface (REPL/TUI). Connects to the daemon for chat and control.
+- **`crom-agente-app`**: The Graphical Desktop App (GUI) built with Tauri + React + Vite, offering a premium end-user experience.
+- **`cromia-api`**: The Cloud Gateway/API (Go) for LLM routing (OpenRouter, local) and token/license verification.
+- **`cromia-site`**: The Dashboard and institutional site in Yii2 (PHP) for account management, token sales, and onboarding.
 
 ---
 

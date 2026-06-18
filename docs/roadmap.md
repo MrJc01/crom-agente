@@ -131,7 +131,7 @@ Para garantir que novas modificações não quebrem recursos anteriores (regress
 1. **A Cobertura Vem Primeiro (Test-First/TDD)**:
    - Todo novo arquivo de lógica (`foo.go`) deve ser obrigatoriamente criado em conjunto com seu par de testes (`foo_test.go`).
 2. **Cobertura de 100% das 40 Capacidades**:
-   - Cada uma das 40 capacidades descritas em [**capabilities.md**](file:///home/j/Área de trabalho/GitHub/crom-agente5/docs/capabilities.md) deve ter pelo menos um teste automatizado dedicado (seja em `internal/tools/write_file_test.go`, `internal/security/path_jail_test.go`, etc.).
+   - Cada uma das 40 capacidades descritas em [**capabilities.md**](capabilities.md) deve ter pelo menos um teste automatizado dedicado (seja em `internal/tools/write_file_test.go`, `internal/security/path_jail_test.go`, etc.).
    - O orquestrador manterá um validador/mapeamento de testes que relaciona e valida a execução unitária de cada item (1 a 40).
 3. **Testes de Integração Pós-Build (Cenários Múltiplos)**:
    - Os testes de produção não rodarão via `go test` sobre o código-fonte, mas sim sobre o binário compilado (`./bin/crom-agente`). O teste irá invocar o binário no terminal disparando tarefas complexas em ambientes descartáveis (ex: diretórios temporários na pasta `/tmp/crom_test_*`) para checar se o comportamento real se comporta perfeitamente no sistema operacional em produção.
