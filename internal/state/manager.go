@@ -29,6 +29,9 @@ type TaskItem struct {
 
 // AgentState representa o estado completo e persistente de um agente
 type AgentState struct {
+	ID                string        `json:"id,omitempty"`
+	Name              string        `json:"name,omitempty"`
+	Status            string        `json:"status,omitempty"` // Mapeia para o status da UI do frontend
 	DiretorioAtual    string        `json:"diretorio_atual"`
 	ArquivosFocados   []string      `json:"arquivos_focados"`
 	TarefaEmAndamento string        `json:"tarefa_em_andamento"`
@@ -56,11 +59,19 @@ func NewStateManager(storagePath string) *StateManager {
 	}
 }
 
-// NewSessionStateManager cria um novo gerenciador de estado apontando para um arquivo de sessão específico
+// NewSessionStateManager cria um novo gerenciador de estado apontando para um arquivo de sessão específico dentro de uma subpasta dedicada
 func NewSessionStateManager(storagePath, sessionName string) *StateManager {
 	return &StateManager{
-		filePath: filepath.Join(storagePath, "sessions", sessionName+".json"),
-		state:    newDefaultState(),
+		filePath: filepath.Join(storagePath, "sessions", sessionName, "session.json"),
+		state: &AgentState{
+			ID:           sessionName,
+			Name:         "Sessão", // Default
+			UltimoStatus: "idle",
+			Status:       "idle",
+			ArquivosFocados: []string{},
+			LogsRelevantes:  []string{},
+			Timestamp:       time.Now(),
+		},
 	}
 }
 
@@ -188,6 +199,24 @@ func (sm *StateManager) RecordTokens(tokens int) error {
 // FilePath retorna o caminho do arquivo de estado
 func (sm *StateManager) FilePath() string {
 	return sm.filePath
+}
+
+// GetWorkspaceDir retorna o diretório raiz do workspace (o diretório que contém a pasta .crom)
+func (sm *StateManager) GetWorkspaceDir() string {
+	path := sm.filePath
+	dir := filepath.Dir(path)
+	for {
+		if filepath.Base(dir) == ".crom" {
+			return filepath.Dir(dir)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	// Fallback caso não encontre .crom
+	return filepath.Dir(filepath.Dir(path))
 }
 
 // GetMessages retorna uma cópia segura do histórico de mensagens da conversação

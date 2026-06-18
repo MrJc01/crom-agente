@@ -196,7 +196,7 @@ func TestSessionStateManagerAndMessages(t *testing.T) {
 		t.Fatalf("LoadState falhou: %v", err)
 	}
 
-	expectedFile := filepath.Join(dir, "sessions", sessionName+".json")
+	expectedFile := filepath.Join(dir, "sessions", sessionName, "session.json")
 	if _, err := os.Stat(expectedFile); os.IsNotExist(err) {
 		t.Fatalf("arquivo de sessão não foi criado em %s", expectedFile)
 	}

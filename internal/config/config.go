@@ -64,6 +64,7 @@ type WorkspaceConfig struct {
 	AllowedTools       []string `json:"allowed_tools,omitempty"`
 	BlockedCommands    []string `json:"blocked_commands,omitempty"`
 	AutoVerify         bool     `json:"auto_verify"`
+	AutoSelfCheck      bool     `json:"auto_self_check"`
 	BrowserHeadless    *bool    `json:"browser_headless,omitempty"`
 }
 
@@ -79,6 +80,7 @@ type ResolvedConfig struct {
 	PermissionMode     string
 	WorkspaceJail      bool
 	AutoVerify         bool
+	AutoSelfCheck      bool
 	AllowedTools       []string
 	BlockedCommands    []string
 	LogLevel           string
@@ -121,6 +123,7 @@ func DefaultWorkspaceConfig(name string) *WorkspaceConfig {
 		PermissionMode: "scoped",
 		WorkspaceJail:  true,
 		AutoVerify:     true,
+		AutoSelfCheck:  true,
 	}
 }
 
@@ -315,6 +318,7 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 		PermissionMode:     "scoped",
 		WorkspaceJail:      true,
 		AutoVerify:         true,
+		AutoSelfCheck:      true,
 		BrowserHeadless:    true, // por padrão roda de fundo
 	}
 
@@ -346,6 +350,7 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 		}
 		resolved.WorkspaceJail = workspace.WorkspaceJail
 		resolved.AutoVerify = workspace.AutoVerify
+		resolved.AutoSelfCheck = workspace.AutoSelfCheck
 		resolved.AllowedTools = workspace.AllowedTools
 		resolved.BlockedCommands = workspace.BlockedCommands
 		if workspace.BrowserHeadless != nil {

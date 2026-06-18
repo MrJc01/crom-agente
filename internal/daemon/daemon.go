@@ -39,10 +39,16 @@ type Daemon struct {
 func NewDaemon(headless bool) *Daemon {
 	mgr := orchestrator.NewMultiAgentManager()
 	ipcServer := NewIPCServer(mgr)
+	apiServer := NewAPIServer(mgr, ipcServer.router)
+
+	mgr.OnSchedule = func(workspaceName, sessionName, task string, delaySecs int, provider, model string) {
+		apiServer.ScheduleTimerTask(workspaceName, sessionName, task, delaySecs, provider, model)
+	}
+
 	return &Daemon{
 		manager:    mgr,
 		ipc:        ipcServer,
-		apiServer:  NewAPIServer(mgr, ipcServer.router),
+		apiServer:  apiServer,
 		grpcServer: NewGRPCServer(mgr, ipcServer.router),
 		notifier:   NewDesktopNotifier("crom-agente"),
 		headless:   headless,

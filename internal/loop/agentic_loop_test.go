@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/llm"
 	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/tools"
@@ -417,5 +418,54 @@ func TestDetectRepetitiveLoop(t *testing.T) {
 	msgs[5].Content = "different thing"
 	if detectRepetitiveLoop(msgs) {
 		t.Fatal("não deveria detectar loop com mensagens diferentes")
+	}
+}
+
+func TestAgenticLoop_ToolUsageAutoCorrection(t *testing.T) {
+	provider := llm.NewMockProvider(
+		// 1ª resposta do LLM: finge que concluiu escrevendo em markdown e marcando concluído
+		llm.MockTextResponse("- [x] Criar arquivo index.php\n\n```php\n<?php echo 'hello'; ?>\n```\nConcluí!", 100),
+		// 2ª resposta: após correção do sistema, o LLM chama a ferramenta write_file
+		llm.MockToolCallResponse("write_file", `{"path":"index.php","content":"<?php echo 'hello'; ?>"}`, 200),
+		// 3ª resposta: resposta para a fase de verificação
+		llm.MockTextResponse("Tudo funcionando.", 100),
+		// 4ª resposta: confirmação final
+		llm.MockTextResponse("Tudo pronto.", 80),
+	)
+	sm := state.NewStateManager(t.TempDir())
+	handler := &testEventHandler{}
+
+	resolvedCfg := &config.ResolvedConfig{
+		MaxIterations:      15,
+		MaxConsecutiveFail: 3,
+		ToolTimeoutSeconds: 30,
+		MaxMessageHistory:  40,
+		AutoVerify:         false,
+		AutoSelfCheck:      false,
+	}
+
+	al := New(provider, sm, handler, resolvedCfg)
+	al.RegisterTool(&mockTool{id: "write_file", description: "Escreve arquivo"})
+
+	err := al.Execute(context.Background(), "Criar arquivo php")
+	if err != nil {
+		t.Fatalf("esperado sucesso, obteve erro: %v", err)
+	}
+
+	// Esperamos 4 chamadas ao LLM (tentativa de markdown -> correção -> tool call -> verificação -> final)
+	if provider.TotalCalls() != 4 {
+		t.Fatalf("esperado 4 chamadas, obteve %d", provider.TotalCalls())
+	}
+
+	// Verificar se a mensagem de correção do sistema foi enviada para o histórico do assistente
+	foundCorrection := false
+	for _, msg := range sm.GetMessages() {
+		if strings.Contains(msg.Content, "[SYSTEM TOOL USAGE REQUIRED]") {
+			foundCorrection = true
+			break
+		}
+	}
+	if !foundCorrection {
+		t.Fatal("esperada mensagem de correção [SYSTEM TOOL USAGE REQUIRED] no histórico de mensagens")
 	}
 }

@@ -415,3 +415,53 @@ func TestRunTestsTool(t *testing.T) {
 	}
 }
 
+func TestTerminalCommandTool_BackgroundActions(t *testing.T) {
+	ws := t.TempDir()
+	tool := NewTerminalCommandTool(ws, nil)
+
+	// 1. Inicia um comando sleep curto em background
+	argsRun := json.RawMessage(`{"command": "sleep 2", "background": true}`)
+	resRun, err := tool.Execute(context.Background(), argsRun)
+	if err != nil || !resRun.Success {
+		t.Fatalf("erro ao rodar comando em background: %v, res: %+v", err, resRun)
+	}
+
+	// Extrai ID do processo a partir do retorno
+	var bgID string
+	_, _ = fmt.Sscanf(resRun.Data, "Processo iniciado em background com sucesso. ID: %s", &bgID)
+	bgID = strings.TrimSuffix(bgID, ".")
+	if !strings.HasPrefix(bgID, "bg-") {
+		t.Fatalf("ID do processo inválido: %s", bgID)
+	}
+
+	// 2. Lista os processos em background
+	argsList := json.RawMessage(`{"action": "list"}`)
+	resList, err := tool.Execute(context.Background(), argsList)
+	if err != nil || !resList.Success {
+		t.Fatalf("erro ao listar processos: %v", err)
+	}
+	if !strings.Contains(resList.Data, bgID) {
+		t.Fatalf("esperava encontrar processo %s na listagem: %s", bgID, resList.Data)
+	}
+
+	// 3. Lê logs (deve funcionar, mesmo que esteja vazio)
+	argsLogs := json.RawMessage(fmt.Sprintf(`{"action": "logs", "process_id": "%s"}`, bgID))
+	resLogs, err := tool.Execute(context.Background(), argsLogs)
+	if err != nil || !resLogs.Success {
+		t.Fatalf("erro ao ler logs: %v", err)
+	}
+
+	// 4. Encerra (kill) o processo
+	argsKill := json.RawMessage(fmt.Sprintf(`{"action": "kill", "process_id": "%s"}`, bgID))
+	resKill, err := tool.Execute(context.Background(), argsKill)
+	if err != nil || !resKill.Success {
+		t.Fatalf("erro ao encerrar processo: %v", err)
+	}
+
+	// 5. Verifica se foi removido da listagem
+	resList2, _ := tool.Execute(context.Background(), argsList)
+	if strings.Contains(resList2.Data, bgID) {
+		t.Fatalf("esperava que o processo %s tivesse sido removido: %s", bgID, resList2.Data)
+	}
+}
+

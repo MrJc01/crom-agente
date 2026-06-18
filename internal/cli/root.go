@@ -195,6 +195,8 @@ var runCmd = &cobra.Command{
 					Workspace: targetWsName,
 					Session:   cliSession,
 					Task:      task,
+					Provider:  cliProvider,
+					Model:     cliModel,
 				}
 
 				if err := enc.Encode(req); err != nil {
@@ -350,6 +352,7 @@ var runCmd = &cobra.Command{
 		al := loop.New(provider, sm, handler, resolved)
 
 		// Registrar ferramentas nativas
+		al.RegisterTool(tools.NewScheduleTimerTool(workspacePath, nil))
 		al.RegisterTool(tools.NewReadFileTool(workspacePath, resolved.WorkspaceJail))
 		al.RegisterTool(tools.NewWriteFileTool(workspacePath, resolved.WorkspaceJail))
 		al.RegisterTool(tools.NewTerminalCommandTool(workspacePath, resolved.BlockedCommands, cmd.OutOrStdout()))

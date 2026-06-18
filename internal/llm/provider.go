@@ -2,13 +2,24 @@ package llm
 
 import "context"
 
+// Attachment representa um arquivo anexado à mensagem
+type Attachment struct {
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	Size    int64  `json:"size"`
+	Content string `json:"content,omitempty"`
+}
+
 // Message representa uma mensagem no histórico de conversação do agente
 type Message struct {
-	Role       string     `json:"role"`                  // "system", "user", "assistant", "tool"
-	Content    string     `json:"content,omitempty"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string     `json:"tool_call_id,omitempty"`
-	Name       string     `json:"name,omitempty"`         // Nome da ferramenta (quando role=tool)
+	ID          string       `json:"id,omitempty"`
+	Role        string       `json:"role"`                  // "system", "user", "assistant", "tool"
+	Content     string       `json:"content,omitempty"`
+	Timestamp   string       `json:"timestamp,omitempty"`
+	ToolCalls   []ToolCall   `json:"tool_calls,omitempty"`
+	ToolCallID  string       `json:"tool_call_id,omitempty"`
+	Name        string       `json:"name,omitempty"`         // Nome da ferramenta (quando role=tool)
+	Attachments []Attachment `json:"attachments,omitempty"`
 }
 
 // ToolCall representa uma chamada de ferramenta solicitada pelo LLM

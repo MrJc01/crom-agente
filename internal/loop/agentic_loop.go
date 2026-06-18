@@ -5,15 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/llm"
-	"github.com/crom/crom-agente/internal/security"
 	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/tools"
 )
@@ -131,8 +128,10 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 	saveMsgs(messages)
 
 	workspaceDir := ""
+	sessionDir := ""
 	if al.stateManager != nil {
-		workspaceDir = filepath.Dir(filepath.Dir(al.stateManager.FilePath()))
+		workspaceDir = al.stateManager.GetWorkspaceDir()
+		sessionDir = filepath.Dir(al.stateManager.FilePath())
 	}
 
 	// Primeira iteração da sessão: injetar regras locais, stack e instruções de planejamento
@@ -157,12 +156,33 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			Role:    "system",
 			Content: "[SYSTEM PLANNING REQUIREMENT] Na sua primeira resposta, antes de executar qualquer ferramenta ou comando de terminal, você deve obrigatoriamente descrever e listar um plano de execução detalhado em formato de checklist markdown. Use o formato:\n- [ ] Nome da tarefa\n\nÀ medida que progredir, você deve atualizar o status das tarefas na sua resposta usando o mesmo formato:\n- [/] Tarefa em andamento\n- [x] Tarefa concluída\n\nVocê deve sempre incluir o plano de trabalho atualizado no início de seu conteúdo de texto (content) em todas as respostas (mesmo quando estiver chamando ferramentas) para que o usuário possa acompanhar o progresso de forma estruturada.",
 		})
+
+		// 3.5. Exigência de Uso de Ferramentas para Escrita de Arquivos (Evitar responder apenas com markdown)
+		messages = append(messages, llm.Message{
+			Role:    "system",
+			Content: "[SYSTEM TOOL USAGE REQUIREMENT] IMPORTANTE: Responder apenas com blocos de código markdown no chat NÃO cria, altera ou escreve arquivos no workspace do usuário. Se o seu plano envolve criar, editar ou excluir arquivos, você deve OBRIGATORIAMENTE chamar as ferramentas apropriadas (como 'write_file', 'diff_replace', etc.) para realizar essas ações no disco. Nunca marque uma tarefa de criação/modificação de código como concluída (- [x]) a menos que você tenha efetivamente executado a chamada de ferramenta correspondente com sucesso.",
+		})
+
+		// 4. Diretório de Sessão para Artefatos, Tasks e Scripts
+		if sessionDir != "" && strings.Contains(al.stateManager.FilePath(), "sessions") {
+			relSessionDir, errRel := filepath.Rel(workspaceDir, sessionDir)
+			displayDir := sessionDir
+			if errRel == nil {
+				displayDir = relSessionDir
+			}
+			messages = append(messages, llm.Message{
+				Role:    "system",
+				Content: fmt.Sprintf("[SYSTEM SESSION ISOLATION] Qualquer arquivo de planejamento adicional (exceto o plan.md automático), scripts temporários, rascunhos de testes, checklists de tarefas (como task.md) ou artefatos gerados especificamente para esta sessão devem ser salvos OBRIGATORIAMENTE dentro do diretório desta sessão: %s/. Use este caminho para ler/escrever recursos relacionados ao contexto deste chat.", displayDir),
+			})
+		}
 		saveMsgs(messages)
 	}
 
 	hasExecutedTool := false
 	hasVerified := false
+	hasSelfChecked := false
 	consecutiveFailures := 0
+	timerScheduled := false
 
 	for i := 0; i < al.config.MaxIterations; i++ {
 		select {
@@ -281,6 +301,22 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 
 		// Sem tool calls: verificar se devemos encerrar ou entrar em fase de verificação
 		if len(msg.ToolCalls) == 0 {
+			if timerScheduled {
+				al.handler.OnMessage("system", "Timer agendado. Suspendendo execução do agente até o timer expirar.")
+				if al.stateManager != nil {
+					_ = al.stateManager.SetStatus("idle")
+					_ = al.stateManager.AddLog("Suspenso aguardando timer")
+				}
+				al.handler.OnEvent(AgentEvent{
+					Timestamp: time.Now(),
+					Event:     "finished",
+					Iteration: i + 1,
+					Data: map[string]interface{}{"reason": "suspended_timer", "total_iterations": i + 1},
+				})
+				al.handler.OnStatusChange("idle")
+				return nil
+			}
+
 			// Resposta vazia: auto-correção
 			if msg.Content == "" {
 				al.handler.OnMessage("system", "Auto-correção: resposta vazia recebida.")
@@ -321,6 +357,30 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				continue
 			}
 
+			// CORREÇÃO: Se nenhuma ferramenta foi executada e a resposta contém tarefas pendentes (plano),
+			// forçar o agente a começar a executar em vez de encerrar prematuramente.
+			if !hasExecutedTool && containsPendingPlan(msg.Content) {
+				al.handler.OnMessage("system", "Plano detectado sem execução. Forçando início da execução.")
+				messages = append(messages, llm.Message{
+					Role:    "system",
+					Content: "[SYSTEM EXECUTION REQUIRED] Você descreveu um plano com tarefas pendentes (- [ ]) mas NÃO executou nenhuma ferramenta. Pare de apenas descrever e COMECE A EXECUTAR AGORA usando as ferramentas disponíveis (write_file, terminal_command, etc.). Crie os arquivos, escreva o código e execute os comandos necessários. Não peça confirmação — execute o plano imediatamente.",
+				})
+				saveMsgs(messages)
+				continue
+			}
+
+			// CORREÇÃO: Se nenhuma ferramenta foi executada, mas o assistente marcou itens de escrita/criação como concluídos
+			// e apresentou blocos de código, alertar que as ferramentas físicas de escrita de arquivos devem ser chamadas.
+			if !hasExecutedTool && hasCodeBlocksAndCompletedPlan(msg.Content) {
+				al.handler.OnMessage("system", "Código detectado em markdown sem execução de ferramenta.")
+				messages = append(messages, llm.Message{
+					Role:    "system",
+					Content: "[SYSTEM TOOL USAGE REQUIRED] Você marcou tarefas de criação/modificação como concluídas e forneceu o código no chat, mas NÃO executou nenhuma ferramenta de escrita de arquivos (como write_file ou diff_replace). Lembre-se: blocos de código markdown no chat NÃO criam arquivos no disco do usuário. Você deve obrigatoriamente chamar a ferramenta apropriada para salvar o código nos arquivos correspondentes no disco antes de considerar a tarefa concluída.",
+				})
+				saveMsgs(messages)
+				continue
+			}
+
 			// Fase de verificação
 			if hasExecutedTool && !hasVerified {
 				hasVerified = true
@@ -338,31 +398,33 @@ Se encontrar erros, corrija-os antes de finalizar.`,
 
 			// Fase de auto-validação lógica antes de encerrar
 			if al.config.AutoVerify && !hasVerified && workspaceDir != "" {
-				stack := al.detectStack(workspaceDir)
-				if strings.Contains(stack, "Go (golang)") {
-					al.handler.OnStatusChange("thinking")
-					al.handler.OnMessage("system", "Executando auto-validação de sintaxe ('go vet')...")
+				if ok, errMsg := al.autoValidate(ctx, workspaceDir); !ok {
+					hasVerified = true // Para impedir loop infinito
+					al.handler.OnMessage("system", "Falha na auto-validação estática.")
+					messages = append(messages, llm.Message{
+						Role:    "user",
+						Content: errMsg,
+					})
+					saveMsgs(messages)
+					continue
+				}
+			}
 
-					cmdVet := exec.CommandContext(ctx, "go", "vet", "./...")
-					cmdVet.Dir = workspaceDir
-					out, errVet := cmdVet.CombinedOutput()
-
-					if errVet != nil {
-						hasVerified = true // Para impedir loop infinito
-						errMsg := fmt.Sprintf("[AUTO-VALIDATION FAILURE] O linter ('go vet') detectou erros de sintaxe:\n%s\nCorrija estes problemas de código antes de finalizar.", string(out))
-						al.handler.OnMessage("system", "Falha na auto-validação estática.")
-						messages = append(messages, llm.Message{
-							Role:    "user",
-							Content: errMsg,
-						})
-						saveMsgs(messages)
-						continue
-					}
-
-					// go fmt check
-					cmdFmt := exec.CommandContext(ctx, "go", "fmt", "./...")
-					cmdFmt.Dir = workspaceDir
-					_ = cmdFmt.Run() // Executa o fmt para auto-corrigir estilo
+			// Auto-verificação final: comparar com o pedido original do usuário antes de encerrar
+			if al.config.AutoSelfCheck && !hasSelfChecked {
+				hasSelfChecked = true
+				userIntent := extractLastUserIntent(messages)
+				if userIntent != "" {
+					al.handler.OnMessage("system", "Auto-verificação: confirmando se a tarefa foi concluída.")
+					messages = append(messages, llm.Message{
+						Role: "system",
+						Content: fmt.Sprintf(`[SYSTEM SELF-CHECK] Antes de encerrar, verifique se você realmente completou o que o usuário pediu.
+O pedido original/último do usuário foi: %q
+Se você NÃO criou todos os arquivos necessários ou NÃO executou todos os passos, continue trabalhando agora usando as ferramentas.
+Se tudo foi realmente concluído, responda com um resumo final do que foi feito.`, userIntent),
+					})
+					saveMsgs(messages)
+					continue
 				}
 			}
 
@@ -516,6 +578,9 @@ Se encontrar erros, corrija-os antes de finalizar.`,
 			}
 
 			if result.Success {
+				if toolID == "schedule_timer" {
+					timerScheduled = true
+				}
 				if strings.HasPrefix(result.Data, "image:base64:") {
 					// 1. Adiciona a resposta da ferramenta como texto simples para validação do esquema da API
 					messages = append(messages, llm.Message{
@@ -686,140 +751,58 @@ func compactMessages(messages []llm.Message) []llm.Message {
 	return compacted
 }
 
-// formatToolError formata erros de ferramenta em estilo CLI
-func formatToolError(toolID string, errMsg string) string {
-	border := strings.Repeat("═", 50)
-	return fmt.Sprintf("\n╔%s╗\n║ ERROR: Tool \"%s\" failed\n╟%s╢\n║ %s\n╚%s╝\n",
-		border, toolID, border, errMsg, border)
+// containsPendingPlan verifica se o conteúdo da mensagem contém itens de checklist pendentes
+func containsPendingPlan(content string) bool {
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "- [ ]") || strings.HasPrefix(trimmed, "- [/]") {
+			return true
+		}
+	}
+	return false
 }
 
-// RegisterSpawnSubagentTool registra a ferramenta spawn_subagent no loop ativo
-func (al *AgenticLoop) RegisterSpawnSubagentTool() {
-	spawner := func(ctx context.Context, task string) (tools.Result, error) {
-		subagentID := fmt.Sprintf("subagent-%d", time.Now().UnixNano())
-		storageDir := filepath.Join(filepath.Dir(al.stateManager.FilePath()), "agents", subagentID)
-
-		subSM := state.NewStateManager(storageDir)
-		_ = subSM.LoadState()
-
-		// Herdando configurações
-		subAL := New(al.provider, subSM, al.handler, al.config)
-		subAL.permissionManager = al.permissionManager
-		for _, t := range al.tools {
-			subAL.RegisterTool(t)
+// extractLastUserIntent retorna o conteúdo da última mensagem do usuário (não-system) para auto-verificação
+func extractLastUserIntent(messages []llm.Message) string {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "user" && !strings.HasPrefix(messages[i].Content, "[SYSTEM") {
+			return messages[i].Content
 		}
-
-		// Executa
-		err := subAL.Execute(ctx, task)
-		if err != nil {
-			// Subagente falhou: efetua rollback baseado em Git
-			workspaceDir := filepath.Dir(filepath.Dir(al.stateManager.FilePath()))
-			_ = rollbackGit(workspaceDir)
-
-			return tools.Result{
-				Success: false,
-				Error:   fmt.Sprintf("subagente falhou: %s. Rollback automático executado.", err.Error()),
-			}, nil
-		}
-
-		return tools.Result{
-			Success: true,
-			Data:    "Subagente concluiu a tarefa com sucesso.",
-		}, nil
 	}
-
-	al.RegisterTool(tools.NewSpawnSubagentTool(spawner))
+	return ""
 }
 
-func rollbackGit(workspaceDir string) error {
-	cmd := exec.Command("git", "reset", "--hard", "HEAD")
-	cmd.Dir = workspaceDir
-	return cmd.Run()
+// hasCodeBlocksAndCompletedPlan verifica se a mensagem contém blocos de código e tarefas completas que deveriam ter usado ferramentas
+func hasCodeBlocksAndCompletedPlan(content string) bool {
+	if !strings.Contains(content, "```") {
+		return false
+	}
+	lines := strings.Split(content, "\n")
+	actionVerbs := []string{
+		"criar", "create", "implementar", "implement", "escrever", "write",
+		"salvar", "save", "adicionar", "add", "editar", "edit", "atualizar",
+		"update", "excluir", "delete", "remover", "remove", "gerar", "generate",
+		"crud", "setup", "configurar", "definir", "define",
+	}
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		isCompleted := false
+		var title string
+		if strings.HasPrefix(trimmed, "- [x]") || strings.HasPrefix(trimmed, "* [x]") ||
+			strings.HasPrefix(trimmed, "- [X]") || strings.HasPrefix(trimmed, "* [X]") {
+			isCompleted = true
+			title = strings.TrimSpace(trimmed[5:])
+		}
+		if isCompleted && title != "" {
+			titleLower := strings.ToLower(title)
+			for _, verb := range actionVerbs {
+				if strings.Contains(titleLower, verb) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
-
-func (al *AgenticLoop) detectStack(workspaceDir string) string {
-	if workspaceDir == "" {
-		return "Desconhecida"
-	}
-	var stacks []string
-	if _, err := os.Stat(filepath.Join(workspaceDir, "go.mod")); err == nil {
-		stacks = append(stacks, "Go (golang)")
-	}
-	if _, err := os.Stat(filepath.Join(workspaceDir, "package.json")); err == nil {
-		stacks = append(stacks, "Node.js (JavaScript/TypeScript)")
-	}
-	if _, err := os.Stat(filepath.Join(workspaceDir, "Cargo.toml")); err == nil {
-		stacks = append(stacks, "Rust (Cargo)")
-	}
-	if _, err := os.Stat(filepath.Join(workspaceDir, "requirements.txt")); err == nil {
-		stacks = append(stacks, "Python (pip)")
-	}
-	if _, err := os.Stat(filepath.Join(workspaceDir, "pyproject.toml")); err == nil {
-		stacks = append(stacks, "Python (Poetry/Pipenv)")
-	}
-	if len(stacks) == 0 {
-		return "Desconhecida"
-	}
-	return strings.Join(stacks, ", ")
-}
-
-func (al *AgenticLoop) loadLocalRules(workspaceDir string) string {
-	if workspaceDir == "" {
-		return ""
-	}
-	var rules []string
-	for _, ruleFile := range []string{".cromrules", ".voidrules"} {
-		path := filepath.Join(workspaceDir, ruleFile)
-		if data, err := os.ReadFile(path); err == nil {
-			rules = append(rules, fmt.Sprintf("=== Regras de %s ===\n%s", ruleFile, string(data)))
-		}
-	}
-	return strings.Join(rules, "\n\n")
-}
-
-// renderDiffZone renderiza a visualização colorida de diffs no terminal antes de solicitar autorização HITL.
-// Para write_file, compara o conteúdo atual do arquivo com o novo conteúdo proposto.
-// Para diff_replace, compara o target_content com o replacement_content no contexto do arquivo.
-func (al *AgenticLoop) renderDiffZone(rawArgs string, toolID string, workspaceDir string) {
-	switch toolID {
-	case "write_file":
-		var args struct {
-			Path    string `json:"path"`
-			Content string `json:"content"`
-		}
-		if err := json.Unmarshal([]byte(rawArgs), &args); err != nil {
-			return
-		}
-
-		// Resolver caminho do arquivo
-		filePath := args.Path
-		if !filepath.IsAbs(filePath) && workspaceDir != "" {
-			filePath = filepath.Join(workspaceDir, filePath)
-		}
-
-		// Ler conteúdo atual do arquivo (pode não existir se for arquivo novo)
-		oldContent := ""
-		if data, err := os.ReadFile(filePath); err == nil {
-			oldContent = string(data)
-		}
-
-		diffOutput := security.RenderDiff(args.Path, oldContent, args.Content)
-		al.handler.OnMessage("system", diffOutput)
-
-	case "diff_replace":
-		var args struct {
-			Path               string `json:"path"`
-			TargetContent      string `json:"target_content"`
-			ReplacementContent string `json:"replacement_content"`
-		}
-		if err := json.Unmarshal([]byte(rawArgs), &args); err != nil {
-			return
-		}
-
-		// Para diff_replace, mostramos o diff do trecho alterado
-		diffOutput := security.RenderDiff(args.Path, args.TargetContent, args.ReplacementContent)
-		al.handler.OnMessage("system", diffOutput)
-	}
-}
-
 

@@ -36,6 +36,7 @@ type RunningAgent struct {
 type MultiAgentManager struct {
 	mu            sync.RWMutex
 	runningAgents map[string]*RunningAgent // chave: workspace name
+	OnSchedule    func(workspaceName, sessionName, task string, delaySecs int, provider, model string)
 }
 
 // NewMultiAgentManager cria um novo gerenciador multi-agente
@@ -271,6 +272,11 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 	al := loop.New(provider, sm, handler, resolved)
 
 	// Registrar ferramentas nativas e gerenciador de permissões
+	al.RegisterTool(tools.NewScheduleTimerTool(target.Path, func(task string, durationSeconds int) {
+		if m.OnSchedule != nil {
+			m.OnSchedule(workspaceName, sessionName, task, durationSeconds, resolved.Provider, resolved.Model)
+		}
+	}))
 	al.RegisterTool(tools.NewReadFileTool(target.Path, resolved.WorkspaceJail))
 	al.RegisterTool(tools.NewWriteFileTool(target.Path, resolved.WorkspaceJail))
 	al.RegisterTool(tools.NewTerminalCommandTool(target.Path, resolved.BlockedCommands, nil))

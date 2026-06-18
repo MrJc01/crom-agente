@@ -187,6 +187,7 @@ func Start(opts Options) error {
 	al := loop.New(provider, sm, handler, resolved)
 
 	// Registrar as ferramentas padrão
+	al.RegisterTool(tools.NewScheduleTimerTool(opts.WorkspacePath, nil))
 	al.RegisterTool(tools.NewReadFileTool(opts.WorkspacePath, resolved.WorkspaceJail))
 	al.RegisterTool(tools.NewWriteFileTool(opts.WorkspacePath, resolved.WorkspaceJail))
 	al.RegisterTool(tools.NewTerminalCommandTool(opts.WorkspacePath, resolved.BlockedCommands))
