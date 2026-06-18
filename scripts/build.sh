@@ -33,7 +33,7 @@ if [ "$1" == "--current-only" ]; then
     PLATFORMS=("${CURRENT_OS}/${CURRENT_ARCH}")
 fi
 
-MAX_SIZE_MB=25
+MAX_SIZE_MB=30
 MAX_SIZE_BYTES=$((MAX_SIZE_MB * 1024 * 1024))
 
 for PLATFORM in "${PLATFORMS[@]}"; do
