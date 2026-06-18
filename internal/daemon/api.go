@@ -645,17 +645,20 @@ func (s *APIServer) handleWS(w http.ResponseWriter, r *http.Request) {
 					ctx = context.WithValue(ctx, "model_override", msg.Model)
 				}
 
-				err := s.manager.StartAgent(ctx, msg.Workspace, msg.Session, msg.Task, handler)
-				if err != nil {
-					s.mu.Lock()
-					delete(s.activeHandlers, msg.Workspace)
-					s.mu.Unlock()
-					_ = conn.WriteJSON(IPCResponse{Success: false, Error: err.Error()})
-					continue
-				}
-
+				// Notifica inicio
 				startedPayload, _ := json.Marshal(map[string]string{"type": "started"})
-				_ = conn.WriteJSON(IPCResponse{Success: true, Stream: true, Data: startedPayload})
+				eventCh <- IPCResponse{Success: true, Stream: true, Data: startedPayload}
+
+				go func() {
+					err := s.manager.StartAgent(ctx, msg.Workspace, msg.Session, msg.Task, handler)
+					if err != nil {
+						s.mu.Lock()
+						delete(s.activeHandlers, msg.Workspace)
+						s.mu.Unlock()
+						eventCh <- IPCResponse{Success: false, Error: err.Error()}
+						return
+					}
+				}()
 			}
 		}
 	}()

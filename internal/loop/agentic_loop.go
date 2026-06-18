@@ -155,7 +155,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		// 3. Forçar Planejamento
 		messages = append(messages, llm.Message{
 			Role:    "system",
-			Content: "[SYSTEM PLANNING REQUIREMENT] Na sua primeira resposta, antes de executar qualquer ferramenta de gravação ou terminal, você deve obrigatoriamente descrever e listar um plano de execução subdividido em sub-tarefas claras.",
+			Content: "[SYSTEM PLANNING REQUIREMENT] Na sua primeira resposta, antes de executar qualquer ferramenta ou comando de terminal, você deve obrigatoriamente descrever e listar um plano de execução detalhado em formato de checklist markdown. Use o formato:\n- [ ] Nome da tarefa\n\nÀ medida que progredir, você deve atualizar o status das tarefas na sua resposta usando o mesmo formato:\n- [/] Tarefa em andamento\n- [x] Tarefa concluída\n\nVocê deve sempre incluir o plano de trabalho atualizado no início de seu conteúdo de texto (content) em todas as respostas (mesmo quando estiver chamando ferramentas) para que o usuário possa acompanhar o progresso de forma estruturada.",
 		})
 		saveMsgs(messages)
 	}

@@ -317,17 +317,6 @@ func (s *IPCServer) handleConnection(conn net.Conn) {
 					ctx = context.WithValue(ctx, "model_override", msg.Model)
 				}
 
-				err := s.manager.StartAgent(ctx, msg.Workspace, msg.Session, msg.Task, handler)
-				if err != nil {
-					s.router.Unregister(msg.Workspace, eventCh)
-					handler.writeResponse(IPCResponse{Success: false, Error: err.Error()})
-					continue
-				}
-
-				// Notifica inicio
-				startedPayload, _ := json.Marshal(map[string]string{"type": "started"})
-				handler.writeResponse(IPCResponse{Success: true, Stream: true, Data: startedPayload})
-
 				// Loop de streaming
 				go func(wName string, ec chan IPCResponse) {
 					defer s.router.Unregister(wName, ec)
@@ -346,6 +335,19 @@ func (s *IPCServer) handleConnection(conn net.Conn) {
 						}
 					}
 				}(msg.Workspace, eventCh)
+
+				// Notifica inicio
+				startedPayload, _ := json.Marshal(map[string]string{"type": "started"})
+				handler.writeResponse(IPCResponse{Success: true, Stream: true, Data: startedPayload})
+
+				go func() {
+					err := s.manager.StartAgent(ctx, msg.Workspace, msg.Session, msg.Task, handler)
+					if err != nil {
+						s.router.Unregister(msg.Workspace, eventCh)
+						handler.writeResponse(IPCResponse{Success: false, Error: err.Error()})
+						return
+					}
+				}()
 			}
 		}
 	}()
