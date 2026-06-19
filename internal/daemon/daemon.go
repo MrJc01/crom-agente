@@ -276,8 +276,9 @@ func (d *Daemon) cleanup() {
 }
 
 func (d *Daemon) setupSessionToken() error {
-	if os.Getenv("CROM_DISABLE_AUTH") == "true" {
-		log.Println("[Daemon] AVISO: Autenticacao de sessao desabilitada via CROM_DISABLE_AUTH=true")
+	// Desabilita autenticação por padrão, a menos que CROM_ENABLE_AUTH seja explicitamente configurado como true
+	if os.Getenv("CROM_ENABLE_AUTH") != "true" {
+		log.Println("[Daemon] Autenticacao de sessao desabilitada por padrao (CROM_ENABLE_AUTH!=true)")
 		d.sessionToken = ""
 		return nil
 	}

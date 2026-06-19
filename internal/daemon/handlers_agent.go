@@ -118,20 +118,16 @@ func (s *APIServer) handleGetToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	isAllowed := false
-	allowedOrigins := []string{
-		"http://localhost:1420",
-		"http://localhost:5173",
-		"tauri://localhost",
-		"http://tauri.localhost",
-	}
-	for _, o := range allowedOrigins {
-		if strings.HasPrefix(origin, o) {
-			isAllowed = true
-			break
-		}
+	if strings.HasPrefix(origin, "http://localhost:") ||
+		strings.HasPrefix(origin, "http://127.0.0.1:") ||
+		strings.HasPrefix(origin, "tauri://") ||
+		strings.HasPrefix(origin, "http://tauri.localhost") ||
+		origin == "" {
+		isAllowed = true
 	}
 
 	if !isAllowed {
+		log.Printf("[APIServer handleGetToken] Rejeitado: Origem nao autorizada %q", origin)
 		http.Error(w, "Proibido: Origem nao autorizada", http.StatusForbidden)
 		return
 	}
