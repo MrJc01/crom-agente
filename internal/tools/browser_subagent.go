@@ -216,28 +216,32 @@ func (b *BrowserSubagentTool) Execute(ctx context.Context, args json.RawMessage)
 			} else {
 				searchCtx, searchCancel := context.WithTimeout(stepCtx, 5*time.Second)
 				el, err := p.Context(searchCtx).Element(step.Selector)
-				searchCancel()
 				if err != nil {
+					searchCancel()
 					sr.Success = false
 					sr.Message = fmt.Sprintf("elemento %q não encontrado (timeout 5s): %v", step.Selector, err)
-				} else if err := el.Click(proto.InputMouseButtonLeft, 1); err != nil {
-					sr.Success = false
-					sr.Message = fmt.Sprintf("falha ao clicar em %q: %v", step.Selector, err)
 				} else {
-					// Auto-verificação visual: tira screenshot após clique para confirmar resultado
-					imgBytes, screenshotErr := p.Screenshot(false, &proto.PageCaptureScreenshot{Format: proto.PageCaptureScreenshotFormatPng})
-					if screenshotErr == nil {
-						sr.ScreenshotB64 = base64.StdEncoding.EncodeToString(imgBytes)
+					errClick := el.Click(proto.InputMouseButtonLeft, 1)
+					searchCancel()
+					if errClick != nil {
+						sr.Success = false
+						sr.Message = fmt.Sprintf("falha ao clicar em %q: %v", step.Selector, errClick)
+					} else {
+						// Auto-verificação visual: tira screenshot após clique para confirmar resultado
+						imgBytes, screenshotErr := p.Screenshot(false, &proto.PageCaptureScreenshot{Format: proto.PageCaptureScreenshotFormatPng})
+						if screenshotErr == nil {
+							sr.ScreenshotB64 = base64.StdEncoding.EncodeToString(imgBytes)
+						}
+						time.Sleep(500 * time.Millisecond)
+						newURL := ""
+						title := ""
+						if info, err := p.Info(); err == nil && info != nil {
+							newURL = info.URL
+							title = info.Title
+						}
+						sr.Success = true
+						sr.Message = fmt.Sprintf("Elemento %q clicado com sucesso. URL atual: %s | Título: %s", step.Selector, newURL, title)
 					}
-					time.Sleep(500 * time.Millisecond)
-					newURL := ""
-					title := ""
-					if info, err := p.Info(); err == nil && info != nil {
-						newURL = info.URL
-						title = info.Title
-					}
-					sr.Success = true
-					sr.Message = fmt.Sprintf("Elemento %q clicado com sucesso. URL atual: %s | Título: %s", step.Selector, newURL, title)
 				}
 			}
 
@@ -248,23 +252,27 @@ func (b *BrowserSubagentTool) Execute(ctx context.Context, args json.RawMessage)
 			} else {
 				searchCtx, searchCancel := context.WithTimeout(stepCtx, 5*time.Second)
 				el, err := p.Context(searchCtx).Element(step.Selector)
-				searchCancel()
 				if err != nil {
+					searchCancel()
 					sr.Success = false
 					sr.Message = fmt.Sprintf("elemento %q não encontrado (timeout 5s): %v", step.Selector, err)
-				} else if err := el.Input(step.Text); err != nil {
-					sr.Success = false
-					sr.Message = fmt.Sprintf("falha ao digitar em %q: %v", step.Selector, err)
 				} else {
-					time.Sleep(500 * time.Millisecond)
-					newURL := ""
-					title := ""
-					if info, err := p.Info(); err == nil && info != nil {
-						newURL = info.URL
-						title = info.Title
+					errInput := el.Input(step.Text)
+					searchCancel()
+					if errInput != nil {
+						sr.Success = false
+						sr.Message = fmt.Sprintf("falha ao digitar em %q: %v", step.Selector, errInput)
+					} else {
+						time.Sleep(500 * time.Millisecond)
+						newURL := ""
+						title := ""
+						if info, err := p.Info(); err == nil && info != nil {
+							newURL = info.URL
+							title = info.Title
+						}
+						sr.Success = true
+						sr.Message = fmt.Sprintf("Texto digitado com sucesso em %q. URL atual: %s | Título: %s", step.Selector, newURL, title)
 					}
-					sr.Success = true
-					sr.Message = fmt.Sprintf("Texto digitado com sucesso em %q. URL atual: %s | Título: %s", step.Selector, newURL, title)
 				}
 			}
 

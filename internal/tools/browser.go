@@ -206,12 +206,13 @@ func (b *BrowserTool) Execute(ctx context.Context, args json.RawMessage) (Result
 		}
 		searchCtx, searchCancel := context.WithTimeout(timeoutCtx, 5*time.Second)
 		el, err := page.Context(searchCtx).Element(params.Selector)
-		searchCancel()
 		if err != nil {
+			searchCancel()
 			sug := b.getSuggestions(page)
 			return Result{Success: false, Error: fmt.Sprintf("elemento %q não encontrado (timeout 5s): %v.\nElementos clicáveis disponíveis na página:\n%s", params.Selector, err, sug)}, nil
 		}
 		err = el.Click(proto.InputMouseButtonLeft, 1)
+		searchCancel()
 		if err != nil {
 			return Result{Success: false, Error: fmt.Sprintf("falha ao clicar no elemento %q: %v", params.Selector, err)}, nil
 		}
@@ -232,12 +233,13 @@ func (b *BrowserTool) Execute(ctx context.Context, args json.RawMessage) (Result
 		}
 		searchCtx, searchCancel := context.WithTimeout(timeoutCtx, 5*time.Second)
 		el, err := page.Context(searchCtx).Element(params.Selector)
-		searchCancel()
 		if err != nil {
+			searchCancel()
 			sug := b.getSuggestions(page)
 			return Result{Success: false, Error: fmt.Sprintf("elemento %q não encontrado (timeout 5s): %v.\nElementos clicáveis disponíveis na página:\n%s", params.Selector, err, sug)}, nil
 		}
 		err = el.Input(params.Text)
+		searchCancel()
 		if err != nil {
 			return Result{Success: false, Error: fmt.Sprintf("falha ao digitar no elemento %q: %v", params.Selector, err)}, nil
 		}
