@@ -504,3 +504,50 @@ func TestTerminalCommandTool_BackgroundExitCallback(t *testing.T) {
 	}
 }
 
+func TestTerminalCommandTool_AutoBackgroundOnTimeout(t *testing.T) {
+	ws := t.TempDir()
+	tool := NewTerminalCommandTool(ws, nil)
+
+	// Inicia um comando de sleep longo que bloquearia em foreground
+	argsRun := json.RawMessage(`{"command": "sleep 10"}`)
+	
+	start := time.Now()
+	res, err := tool.Execute(context.Background(), argsRun)
+	duration := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("erro inesperado: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("esperava sucesso ao transicionar para background: %+v", res)
+	}
+	if duration < 3500*time.Millisecond || duration > 6*time.Second {
+		t.Errorf("duração inesperada da execução: %v (deveria ser cerca de 4 segundos)", duration)
+	}
+	if !strings.Contains(res.Data, "continua rodando em segundo plano") {
+		t.Errorf("mensagem de retorno inesperada: %s", res.Data)
+	}
+
+	// Extrai ID do processo a partir do retorno
+	// O formato é "... (ID: bg-XXXXX). Saída inicial..."
+	var bgID string
+	idx := strings.Index(res.Data, "(ID: ")
+	if idx != -1 {
+		parts := strings.Split(res.Data[idx+5:], ")")
+		if len(parts) > 0 {
+			bgID = parts[0]
+		}
+	}
+
+	if !strings.HasPrefix(bgID, "bg-") {
+		t.Fatalf("ID do processo em background inválido extraído: %q", bgID)
+	}
+
+	// Encerra o processo para não deixar rodando em background no teste
+	argsKill := json.RawMessage(fmt.Sprintf(`{"action": "kill", "process_id": "%s"}`, bgID))
+	resKill, err := tool.Execute(context.Background(), argsKill)
+	if err != nil || !resKill.Success {
+		t.Fatalf("falha ao matar processo background no teste: %v, %+v", err, resKill)
+	}
+}
+

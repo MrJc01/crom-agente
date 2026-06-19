@@ -349,6 +349,11 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 		return Result{Success: false, Error: fmt.Sprintf("erro ao iniciar pseudo-terminal: %s", err.Error())}, nil
 	}
 
+	bgID := generateBgID()
+	logsBuf := NewSafeBuffer(32768) // 32KB buffer
+	var isBg bool
+	var muBg sync.Mutex
+
 	doneChan := make(chan struct{})
 	procCtx, procCancel := context.WithCancel(ctx)
 
@@ -363,20 +368,22 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 	activeProc = p
 	activeProcMu.Unlock()
 
+	shouldCleanup := true
 	defer func() {
 		activeProcMu.Lock()
 		activeProc = nil
 		activeProcMu.Unlock()
-		f.Close()
-		procCancel()
+
+		if shouldCleanup {
+			f.Close()
+			procCancel()
+		}
 	}()
 
 	outChan := make(chan string, 1)
-	errChan := make(chan error, 1)
 
 	// Goroutine de leitura não-bloqueante/streaming
 	go func() {
-		var outputBuilder strings.Builder
 		buffer := make([]byte, 2048)
 		for {
 			select {
@@ -387,7 +394,7 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 				n, readErr := f.Read(buffer)
 				if n > 0 {
 					chunk := buffer[:n]
-					outputBuilder.Write(chunk)
+					_, _ = logsBuf.Write(chunk)
 					if t.stream != nil {
 						_, _ = t.stream.Write(chunk)
 					}
@@ -396,18 +403,39 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 					if readErr == io.EOF || strings.Contains(readErr.Error(), "input/output error") || strings.Contains(readErr.Error(), "i/o timeout") {
 						if readErr != io.EOF && strings.Contains(readErr.Error(), "i/o timeout") {
 							if c.ProcessState != nil && c.ProcessState.Exited() {
-								outChan <- outputBuilder.String()
-								return
+								break
 							}
 							continue
 						}
-						outChan <- outputBuilder.String()
-						return
+						break
 					}
-					errChan <- readErr
-					return
+					break
 				}
 			}
+		}
+
+		muBg.Lock()
+		wasBg := isBg
+		muBg.Unlock()
+
+		if wasBg {
+			// Comportamento de finalização em background
+			backgroundProcsMu.Lock()
+			delete(backgroundProcs, bgID)
+			backgroundProcsMu.Unlock()
+			_ = f.Close()
+			_ = c.Wait()
+
+			success := false
+			if c.ProcessState != nil {
+				success = c.ProcessState.Success()
+			}
+			if t.onBackgroundExit != nil {
+				t.onBackgroundExit(bgID, command, logsBuf.String(), success)
+			}
+		} else {
+			// Comportamento normal (foreground)
+			outChan <- logsBuf.String()
 		}
 	}()
 
@@ -419,14 +447,40 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 	case <-procCtx.Done():
 		t.killProcessGroup(c)
 		return Result{Success: false, Error: "comando interrompido via sinal SIGINT"}, nil
-	case err = <-errChan:
-		return Result{Success: false, Error: fmt.Sprintf("erro na leitura do terminal: %v", err)}, nil
 	case out := <-outChan:
 		_ = c.Wait()
 		close(doneChan)
 		return Result{
 			Success: c.ProcessState.Success(),
 			Data:    out,
+		}, nil
+	case <-time.After(4 * time.Second):
+		// Transiciona o processo para background
+		muBg.Lock()
+		isBg = true
+		muBg.Unlock()
+
+		pBg := &BackgroundProcess{
+			ID:        bgID,
+			Command:   command,
+			Cmd:       c,
+			PTY:       f,
+			StartedAt: time.Now(),
+			Logs:      logsBuf,
+		}
+
+		backgroundProcsMu.Lock()
+		backgroundProcs[bgID] = pBg
+		backgroundProcsMu.Unlock()
+
+		// Desativa a limpeza do defer
+		shouldCleanup = false
+		close(doneChan)
+
+		msg := fmt.Sprintf("[INFORMAÇÃO] O processo não terminou após 4 segundos e continua rodando em segundo plano (ID: %s). Saída inicial:\n\n%s\n\nVocê pode continuar ou aguardar usando um timer se o comando for iniciar um servidor web.", bgID, logsBuf.String())
+		return Result{
+			Success: true,
+			Data:    msg,
 		}, nil
 	}
 }
