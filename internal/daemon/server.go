@@ -264,22 +264,6 @@ func (s *APIServer) ScheduleTimerTask(workspaceName, sessionName, task string, d
 	time.AfterFunc(time.Duration(delaySecs)*time.Second, func() {
 		log.Printf("[Timer] Timer expirou. Executando tarefa %q no workspace: %s", task, workspaceName)
 
-		s.mu.Lock()
-		// Cria um handler do daemon WebSocket para transmitir eventos
-		handler := &daemonAPIEventHandler{
-			workspaceName: workspaceName,
-			router:        s.router,
-			permRespChan:  make(chan permissionResult, 1),
-			autoApprove:   true, // auto-aprova ações executadas pelo despertador automático do agente
-		}
-		handler.onFinished = func() {
-			s.mu.Lock()
-			delete(s.activeHandlers, workspaceName)
-			s.mu.Unlock()
-		}
-		s.activeHandlers[workspaceName] = handler
-		s.mu.Unlock()
-
 		ctx := context.Background()
 		if provider != "" {
 			ctx = context.WithValue(ctx, "provider_override", provider)
@@ -287,12 +271,56 @@ func (s *APIServer) ScheduleTimerTask(workspaceName, sessionName, task string, d
 		if model != "" {
 			ctx = context.WithValue(ctx, "model_override", model)
 		}
-		err := s.manager.StartAgent(ctx, workspaceName, sessionName, task, handler)
-		if err != nil {
-			log.Printf("[Timer] Erro ao iniciar agente após timer: %v", err)
+
+		var err error
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+		timeout := time.After(30 * time.Second)
+
+		for {
+			s.mu.Lock()
+			// Cria um handler do daemon WebSocket para transmitir eventos
+			handler := &daemonAPIEventHandler{
+				workspaceName: workspaceName,
+				router:        s.router,
+				permRespChan:  make(chan permissionResult, 1),
+				autoApprove:   true, // auto-aprova ações executadas pelo despertador automático do agente
+			}
+			handler.onFinished = func() {
+				s.mu.Lock()
+				delete(s.activeHandlers, workspaceName)
+				s.mu.Unlock()
+			}
+			s.activeHandlers[workspaceName] = handler
+			s.mu.Unlock()
+
+			err = s.manager.StartAgent(ctx, workspaceName, sessionName, task, handler)
+			if err == nil {
+				log.Printf("[Timer] Agente iniciado com sucesso após timer no workspace: %s", workspaceName)
+				return
+			}
+
+			// Se falhou por outro motivo que não seja "já existe um agente em execução", não adianta tentar novamente
+			if !strings.Contains(err.Error(), "já existe um agente em execução") {
+				log.Printf("[Timer] Erro fatal ao iniciar agente após timer: %v", err)
+				s.mu.Lock()
+				delete(s.activeHandlers, workspaceName)
+				s.mu.Unlock()
+				return
+			}
+
+			// Limpa o handler temporário que falhou ao iniciar e tenta novamente
 			s.mu.Lock()
 			delete(s.activeHandlers, workspaceName)
 			s.mu.Unlock()
+
+			select {
+			case <-ticker.C:
+				log.Printf("[Timer] Workspace %s ainda ocupado com iteração anterior, tentando novamente...", workspaceName)
+			case <-timeout:
+				log.Printf("[Timer] Timeout de 30s esgotado tentando iniciar agente no workspace %s ocupado: %v", workspaceName, err)
+				return
+			}
 		}
 	})
 }

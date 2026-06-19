@@ -238,8 +238,35 @@ func (b *BrowserTool) Execute(ctx context.Context, args json.RawMessage) (Result
 			sug := b.getSuggestions(page)
 			return Result{Success: false, Error: fmt.Sprintf("elemento %q não encontrado (timeout 5s): %v.\nElementos clicáveis disponíveis na página:\n%s", params.Selector, err, sug)}, nil
 		}
-		err = el.Input(params.Text)
+
+		isContentEditable := false
+		if val, errAttr := el.Attribute("contenteditable"); errAttr == nil && val != nil && *val == "true" {
+			isContentEditable = true
+		}
+		if !isContentEditable {
+			if classVal, errAttr := el.Attribute("class"); errAttr == nil && classVal != nil && strings.Contains(*classVal, "ProseMirror") {
+				isContentEditable = true
+			}
+		}
+
+		if isContentEditable {
+			if errFocus := el.Focus(); errFocus != nil {
+				searchCancel()
+				return Result{Success: false, Error: fmt.Sprintf("falha ao focar elemento editável %q: %v", params.Selector, errFocus)}, nil
+			}
+			_, err = el.Eval(`(el, txt) => {
+				el.focus();
+				document.execCommand('selectAll', false, null);
+				document.execCommand('delete', false, null);
+				document.execCommand('insertText', false, txt);
+				el.dispatchEvent(new Event('input', { bubbles: true }));
+				return true;
+			}`, params.Text)
+		} else {
+			err = el.Input(params.Text)
+		}
 		searchCancel()
+
 		if err != nil {
 			return Result{Success: false, Error: fmt.Sprintf("falha ao digitar no elemento %q: %v", params.Selector, err)}, nil
 		}

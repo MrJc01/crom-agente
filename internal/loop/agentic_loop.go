@@ -526,7 +526,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			}
 
 			// Verificar autorização do PermissionManager
-			if al.permissionManager != nil {
+			if al.permissionManager != nil && tool.RequiresApproval() {
 				target := tc.Function.Arguments // Default to raw JSON arguments so it is never empty
 				if toolID == "terminal_command" {
 					var argsCmd struct {

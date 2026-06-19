@@ -257,7 +257,33 @@ func (b *BrowserSubagentTool) Execute(ctx context.Context, args json.RawMessage)
 					sr.Success = false
 					sr.Message = fmt.Sprintf("elemento %q não encontrado (timeout 5s): %v", step.Selector, err)
 				} else {
-					errInput := el.Input(step.Text)
+					isContentEditable := false
+					if val, errAttr := el.Attribute("contenteditable"); errAttr == nil && val != nil && *val == "true" {
+						isContentEditable = true
+					}
+					if !isContentEditable {
+						if classVal, errAttr := el.Attribute("class"); errAttr == nil && classVal != nil && strings.Contains(*classVal, "ProseMirror") {
+							isContentEditable = true
+						}
+					}
+
+					var errInput error
+					if isContentEditable {
+						if errFocus := el.Focus(); errFocus != nil {
+							errInput = errFocus
+						} else {
+							_, errInput = el.Eval(`(el, txt) => {
+								el.focus();
+								document.execCommand('selectAll', false, null);
+								document.execCommand('delete', false, null);
+								document.execCommand('insertText', false, txt);
+								el.dispatchEvent(new Event('input', { bubbles: true }));
+								return true;
+							}`, step.Text)
+						}
+					} else {
+						errInput = el.Input(step.Text)
+					}
 					searchCancel()
 					if errInput != nil {
 						sr.Success = false
