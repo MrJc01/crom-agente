@@ -143,6 +143,8 @@ func (s *APIServer) Start(port int) error {
 	mux.HandleFunc("/run", s.handleRun)
 	mux.HandleFunc("/stop", s.handleStop)
 	mux.HandleFunc("/ws", s.handleWS)
+	mux.HandleFunc("/api/tags", s.handleOllamaTags)
+	mux.HandleFunc("/api/token", s.handleGetToken)
 	mux.HandleFunc("/api/files", s.handleFiles)
 	mux.HandleFunc("/api/file", s.handleFile)
 	mux.HandleFunc("/api/schedule", s.handleScheduleRoute)
@@ -228,6 +230,7 @@ func (s *APIServer) authorize(w http.ResponseWriter, r *http.Request) bool {
 		token = r.Header.Get("X-Session-Token")
 	}
 	if token != s.SessionToken {
+		log.Printf("[APIServer authorize] Autorizacao FALHOU para %s %s. Token recebido: %q, Token esperado: %q", r.Method, r.URL.Path, token, s.SessionToken)
 		http.Error(w, "Nao autorizado: token de sessao invalido", http.StatusUnauthorized)
 		return false
 	}

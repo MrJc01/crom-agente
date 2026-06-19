@@ -11,13 +11,19 @@ import (
 
 func (s *APIServer) handleWS(w http.ResponseWriter, r *http.Request) {
 	if !s.authorize(w, r) {
+		log.Printf("[APIServer WS] Rejeitando conexao WebSocket de %s por falha na autorizacao", r.RemoteAddr)
 		return
 	}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		log.Printf("[APIServer WS] Erro ao realizar upgrade da conexao de %s para WebSocket: %v", r.RemoteAddr, err)
 		return
 	}
-	defer conn.Close()
+	log.Printf("[APIServer WS] Cliente WebSocket conectado com sucesso: %s", r.RemoteAddr)
+	defer func() {
+		log.Printf("[APIServer WS] Cliente WebSocket desconectado: %s", r.RemoteAddr)
+		conn.Close()
+	}()
 
 	closeChan := make(chan struct{})
 	eventCh := make(chan IPCResponse, 100)
