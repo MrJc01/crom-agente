@@ -38,6 +38,8 @@ type RunningAgent struct {
 type MultiAgentManager struct {
 	mu               sync.RWMutex
 	runningAgents    map[string]*RunningAgent // chave: workspace name
+	activeBrowsers   map[string]*tools.BrowserTool
+	activeSubagents  map[string]*tools.BrowserSubagentTool
 	MCPManager       *MCPManager              // gerenciador de servidores MCP globais
 	OnSchedule       func(workspaceName, sessionName, task string, delaySecs int, provider, model string)
 	OnBackgroundExit func(workspaceName, sessionName, task string, provider, model string)
@@ -46,8 +48,10 @@ type MultiAgentManager struct {
 // NewMultiAgentManager cria um novo gerenciador multi-agente
 func NewMultiAgentManager() *MultiAgentManager {
 	return &MultiAgentManager{
-		runningAgents: make(map[string]*RunningAgent),
-		MCPManager:    NewMCPManager(),
+		runningAgents:   make(map[string]*RunningAgent),
+		activeBrowsers:  make(map[string]*tools.BrowserTool),
+		activeSubagents: make(map[string]*tools.BrowserSubagentTool),
+		MCPManager:      NewMCPManager(),
 	}
 }
 
@@ -157,12 +161,7 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// 1. Verifica se já está rodando
-	if _, running := m.runningAgents[workspaceName]; running {
-		return fmt.Errorf("já existe um agente em execução no workspace '%s'", workspaceName)
-	}
-
-	// 2. Carrega workspaces registrados
+	// 1. Carrega workspaces registrados
 	workspaces, err := LoadWorkspaces()
 	if err != nil {
 		return err
@@ -198,6 +197,13 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 	}
 	if target == nil {
 		return fmt.Errorf("workspace '%s' não encontrado no registro", workspaceName)
+	}
+
+	wsName := target.Name
+
+	// 2. Verifica se já está rodando
+	if _, running := m.runningAgents[wsName]; running {
+		return fmt.Errorf("já existe um agente em execução no workspace '%s'", wsName)
 	}
 
 	// 3. Carrega configurações e envs
@@ -311,8 +317,56 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 	al.RegisterTool(tools.NewGitConflictTool(target.Path, resolved.WorkspaceJail))
 	al.RegisterTool(tools.NewHTTPClientTool(target.Path))
 	al.RegisterTool(tools.NewScraperTool(target.Path))
-	al.RegisterTool(tools.NewBrowserTool(target.Path, resolved.BrowserHeadless))
-	al.RegisterTool(tools.NewBrowserSubagentTool(target.Path, resolved.BrowserHeadless))
+	if m.activeBrowsers == nil {
+		m.activeBrowsers = make(map[string]*tools.BrowserTool)
+	}
+	if m.activeSubagents == nil {
+		m.activeSubagents = make(map[string]*tools.BrowserSubagentTool)
+	}
+
+	browserTool, ok := m.activeBrowsers[wsName]
+	if !ok {
+		browserTool = tools.NewBrowserTool(target.Path, resolved.BrowserHeadless)
+		m.activeBrowsers[wsName] = browserTool
+	}
+	browserTool.SetOnNavigate(func(url string) {
+		_ = sm.SetBrowserURL(url)
+		if handler != nil {
+			handler.OnEvent(loop.AgentEvent{
+				Timestamp: time.Now(),
+				Event:     "browser_navigate",
+				Data: map[string]interface{}{
+					"url": url,
+				},
+			})
+		}
+	})
+	browserTool.SetRestoreURL(func() string {
+		return sm.GetBrowserURL()
+	})
+	al.RegisterTool(browserTool)
+
+	browserSubagentTool, okSub := m.activeSubagents[wsName]
+	if !okSub {
+		browserSubagentTool = tools.NewBrowserSubagentTool(target.Path, resolved.BrowserHeadless)
+		m.activeSubagents[wsName] = browserSubagentTool
+	}
+	browserSubagentTool.SetOnNavigate(func(url string) {
+		_ = sm.SetBrowserURL(url)
+		if handler != nil {
+			handler.OnEvent(loop.AgentEvent{
+				Timestamp: time.Now(),
+				Event:     "browser_navigate",
+				Data: map[string]interface{}{
+					"url": url,
+				},
+			})
+		}
+	})
+	browserSubagentTool.SetRestoreURL(func() string {
+		return sm.GetBrowserURL()
+	})
+	al.RegisterTool(browserSubagentTool)
 	al.RegisterTool(tools.NewComputerControlTool(target.Path))
 	al.RegisterTool(tools.NewDatabaseTesterTool(target.Path))
 	al.RegisterTool(tools.NewProxyTool(target.Path, resolved.WorkspaceJail))
@@ -353,19 +407,19 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 
 
 	agent := &RunningAgent{
-		WorkspaceName: workspaceName,
+		WorkspaceName: wsName,
 		Task:          task,
 		Cancel:        cancel,
 		Loop:          al,
 		Ctx:           agentCtx,
 	}
-	m.runningAgents[workspaceName] = agent
+	m.runningAgents[wsName] = agent
 
 	// 8. Executa em background
 	go func() {
 		defer func() {
 			m.mu.Lock()
-			delete(m.runningAgents, workspaceName)
+			delete(m.runningAgents, wsName)
 			m.mu.Unlock()
 		}()
 
@@ -378,18 +432,34 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 	return nil
 }
 
-// StopAgent cancela a execução de um agente em execução de fundo
+// StopAgent cancela a execução de um agente em execução de fundo e fecha o navegador
 func (m *MultiAgentManager) StopAgent(workspaceName string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	agent, running := m.runningAgents[workspaceName]
-	if !running {
-		return fmt.Errorf("nenhum agente ativo em execução no workspace '%s'", workspaceName)
+	wsName := m.ResolveWorkspaceName(workspaceName)
+
+	agent, running := m.runningAgents[wsName]
+	if running {
+		agent.Cancel()
+		delete(m.runningAgents, wsName)
 	}
 
-	agent.Cancel()
-	delete(m.runningAgents, workspaceName)
+	closedBrowser := false
+	if b, ok := m.activeBrowsers[wsName]; ok {
+		b.Close()
+		delete(m.activeBrowsers, wsName)
+		closedBrowser = true
+	}
+	if b, ok := m.activeSubagents[wsName]; ok {
+		b.Close()
+		delete(m.activeSubagents, wsName)
+		closedBrowser = true
+	}
+
+	if !running && !closedBrowser {
+		return fmt.Errorf("nenhum agente ou navegador ativo no workspace '%s'", workspaceName)
+	}
 	return nil
 }
 
@@ -437,10 +507,57 @@ func (m *MultiAgentManager) Shutdown() {
 		agent.Cancel()
 		delete(m.runningAgents, name)
 	}
+	for name, b := range m.activeBrowsers {
+		b.Close()
+		delete(m.activeBrowsers, name)
+	}
+	for name, b := range m.activeSubagents {
+		b.Close()
+		delete(m.activeSubagents, name)
+	}
 	m.mu.Unlock()
 
 	if m.MCPManager != nil {
 		m.MCPManager.StopAll()
 	}
 }
+
+// ResolveWorkspaceName mapeia uma chave/caminho de workspace de volta ao nome registrado
+func (m *MultiAgentManager) ResolveWorkspaceName(key string) string {
+	workspaces, err := LoadWorkspaces()
+	if err == nil {
+		for _, ws := range workspaces {
+			if ws.Name == key || ws.Path == key {
+				return ws.Name
+			}
+		}
+	}
+	return key
+}
+
+// GetBrowserPageContent retorna o HTML e a URL ativa do browser do workspace
+func (m *MultiAgentManager) GetBrowserPageContent(workspaceKey string) (string, string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	wsName := m.ResolveWorkspaceName(workspaceKey)
+
+	// Tenta subagent primeiro, depois browser normal
+	if sub, ok := m.activeSubagents[wsName]; ok {
+		html, url, err := sub.GetCurrentPageContent()
+		if err == nil && html != "" {
+			return html, url, nil
+		}
+	}
+
+	if b, ok := m.activeBrowsers[wsName]; ok {
+		html, url, err := b.GetCurrentPageContent()
+		if err == nil && html != "" {
+			return html, url, nil
+		}
+	}
+
+	return "", "", fmt.Errorf("nenhum navegador ativo encontrado para o workspace %s", workspaceKey)
+}
+
 

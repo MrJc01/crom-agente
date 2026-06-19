@@ -180,6 +180,7 @@ func (s *APIServer) Start(port int) error {
 	mux.HandleFunc("/api/devices/audio", s.handleDevicesAudio)
 	mux.HandleFunc("/api/devices/screens", s.handleDevicesScreens)
 	mux.HandleFunc("/api/mcp/status", s.handleMCPStatus)
+	mux.HandleFunc("/api/browser/proxy", s.handleBrowserProxy)
 
 	// Load and register existing jobs on start
 	tasks, err := s.loadTasks()

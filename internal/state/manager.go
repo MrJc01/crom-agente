@@ -42,6 +42,7 @@ type AgentState struct {
 	Timestamp         time.Time     `json:"timestamp"`
 	Messages          []llm.Message `json:"messages,omitempty"`
 	Plan              []TaskItem    `json:"plan,omitempty"`
+	BrowserURL        string        `json:"browser_url,omitempty"`
 }
 
 // StateManager gerencia a leitura, escrita e acesso concorrente ao estado do agente
@@ -256,5 +257,23 @@ func (sm *StateManager) SetPlan(plan []TaskItem) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	sm.state.Plan = plan
+	return sm.saveStateLocked()
+}
+
+// GetBrowserURL retorna a URL do navegador do agente
+func (sm *StateManager) GetBrowserURL() string {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	if sm.state == nil {
+		return ""
+	}
+	return sm.state.BrowserURL
+}
+
+// SetBrowserURL atualiza a URL do navegador e persiste no disco
+func (sm *StateManager) SetBrowserURL(url string) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.state.BrowserURL = url
 	return sm.saveStateLocked()
 }

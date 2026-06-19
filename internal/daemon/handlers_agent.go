@@ -1320,3 +1320,173 @@ func (s *APIServer) handleMCPStatus(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
+// handleBrowserProxy atua como um proxy HTTP para carregar páginas web dentro de um iframe,
+// limpando os cabeçalhos de segurança (X-Frame-Options, Content-Security-Policy) e injetando
+// a tag <base href="..."> para que todas as requisições relativas da página apontem de volta
+// ao domínio original.
+func (s *APIServer) handleBrowserProxy(w http.ResponseWriter, r *http.Request) {
+	// Permitir CORS
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if !s.authorize(w, r) {
+		return
+	}
+
+	mode := r.URL.Query().Get("mode")
+	workspace := r.URL.Query().Get("workspace")
+
+	if mode == "agent" && workspace != "" {
+		html, url, err := s.manager.GetBrowserPageContent(workspace)
+		if err != nil {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+body {
+  background-color: #0b0b0d;
+  color: #a1a1aa;
+  font-family: sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 90vh;
+  margin: 0;
+  overflow: hidden;
+}
+.spinner {
+  border: 3px solid rgba(255,255,255,0.05);
+  border-radius: 50%;
+  border-top: 3px solid #10b981;
+  width: 28px;
+  height: 28px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.msg {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.025em;
+}
+</style>
+</head>
+<body>
+<div class="spinner"></div>
+<div class="msg">Aguardando o agente iniciar o navegador ou abrir uma página...</div>
+</body>
+</html>`))
+			return
+		}
+
+		baseTag := fmt.Sprintf("<base href=\"%s\">", url)
+		var newHTML string
+		htmlStr := html
+		headIdx := strings.Index(strings.ToLower(htmlStr), "<head>")
+		if headIdx != -1 {
+			insertPos := headIdx + len("<head>")
+			newHTML = htmlStr[:insertPos] + "\n" + baseTag + htmlStr[insertPos:]
+		} else {
+			htmlIdx := strings.Index(strings.ToLower(htmlStr), "<html>")
+			if htmlIdx != -1 {
+				insertPos := htmlIdx + len("<html>")
+				newHTML = htmlStr[:insertPos] + "\n" + baseTag + htmlStr[insertPos:]
+			} else {
+				newHTML = baseTag + "\n" + htmlStr
+			}
+		}
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(newHTML))
+		return
+	}
+
+	targetURL := r.URL.Query().Get("url")
+	if targetURL == "" {
+		http.Error(w, "Parâmetro 'url' ou 'workspace' ausente", http.StatusBadRequest)
+		return
+	}
+
+	// Tratar requisições sem protocolo (ex: www.google.com)
+	if !strings.HasPrefix(strings.ToLower(targetURL), "http://") && !strings.HasPrefix(strings.ToLower(targetURL), "https://") {
+		targetURL = "http://" + targetURL
+	}
+
+	// Criar a requisição de proxy
+	req, err := http.NewRequestWithContext(r.Context(), "GET", targetURL, nil)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Falha ao criar request: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Definir User-Agent padrão para evitar bloqueio por bot-detection
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Erro ao buscar a URL via proxy: %v", err), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Copiar os cabeçalhos de resposta, EXCLUINDO os cabeçalhos de segurança que impedem iframes
+	for key, values := range resp.Header {
+		lowerKey := strings.ToLower(key)
+		if lowerKey == "x-frame-options" || lowerKey == "content-security-policy" || lowerKey == "content-security-policy-report-only" {
+			continue // Ignora cabeçalhos que bloqueiam iframe
+		}
+		for _, v := range values {
+			w.Header().Add(key, v)
+		}
+	}
+
+	w.WriteHeader(resp.StatusCode)
+
+	contentType := resp.Header.Get("Content-Type")
+	if strings.Contains(strings.ToLower(contentType), "text/html") {
+		// Ler corpo HTML
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return
+		}
+		htmlStr := string(bodyBytes)
+
+		// Injetar tag <base href="..."> para que recursos e rotas relativas funcionem no domínio correto
+		baseTag := fmt.Sprintf("<base href=\"%s\">", targetURL)
+
+		var newHTML string
+		headIdx := strings.Index(strings.ToLower(htmlStr), "<head>")
+		if headIdx != -1 {
+			insertPos := headIdx + len("<head>")
+			newHTML = htmlStr[:insertPos] + "\n" + baseTag + htmlStr[insertPos:]
+		} else {
+			htmlIdx := strings.Index(strings.ToLower(htmlStr), "<html>")
+			if htmlIdx != -1 {
+				insertPos := htmlIdx + len("<html>")
+				newHTML = htmlStr[:insertPos] + "\n" + baseTag + htmlStr[insertPos:]
+			} else {
+				newHTML = baseTag + "\n" + htmlStr
+			}
+		}
+		w.Write([]byte(newHTML))
+	} else {
+		// Copiar dados binários ou outro tipo de resposta diretamente
+		_, _ = io.Copy(w, resp.Body)
+	}
+}
+
+

@@ -25,6 +25,8 @@ type BrowserSubagentTool struct {
 	headless      bool
 	browser       *rod.Browser
 	page          *rod.Page
+	onNavigate    func(url string)
+	restoreURL    func() string
 }
 
 // NewBrowserSubagentTool cria uma nova instância da ferramenta de subagente de navegador
@@ -33,6 +35,20 @@ func NewBrowserSubagentTool(workspacePath string, headless bool) *BrowserSubagen
 		workspacePath: workspacePath,
 		headless:      headless,
 	}
+}
+
+// SetOnNavigate define o callback para mudanças de URL do navegador
+func (b *BrowserSubagentTool) SetOnNavigate(cb func(url string)) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.onNavigate = cb
+}
+
+// SetRestoreURL define a função para recuperar a última URL a fim de restaurá-la na inicialização
+func (b *BrowserSubagentTool) SetRestoreURL(cb func() string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.restoreURL = cb
 }
 
 // ID retorna o identificador único da ferramenta
@@ -151,6 +167,19 @@ func (b *BrowserSubagentTool) Execute(ctx context.Context, args json.RawMessage)
 	if err != nil {
 		return Result{Success: false, Error: "falha ao iniciar navegador: " + err.Error()}, nil
 	}
+
+	defer func() {
+		if page != nil {
+			if info, err := page.Info(); err == nil && info != nil && info.URL != "" {
+				b.mu.Lock()
+				cb := b.onNavigate
+				b.mu.Unlock()
+				if cb != nil {
+					cb(info.URL)
+				}
+			}
+		}
+	}()
 
 	var results []StepResult
 	allSuccess := true
@@ -375,6 +404,14 @@ func (b *BrowserSubagentTool) getPage() (*rod.Page, error) {
 			return nil, fmt.Errorf("falha ao abrir aba: %w", err)
 		}
 		b.page = p
+
+		if b.restoreURL != nil {
+			savedURL := b.restoreURL()
+			if savedURL != "" && savedURL != "about:blank" {
+				_ = p.Navigate(savedURL)
+				_ = p.WaitLoad()
+			}
+		}
 	}
 
 	return b.page, nil
@@ -390,3 +427,26 @@ func (b *BrowserSubagentTool) Close() {
 		b.page = nil
 	}
 }
+
+// GetCurrentPageContent retorna o HTML e a URL da página atual
+func (b *BrowserSubagentTool) GetCurrentPageContent() (string, string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.page == nil {
+		return "", "", fmt.Errorf("navegador não iniciado")
+	}
+
+	html, err := b.page.HTML()
+	if err != nil {
+		return "", "", err
+	}
+
+	info, err := b.page.Info()
+	if err != nil {
+		return html, "", nil
+	}
+
+	return html, info.URL, nil
+}
+

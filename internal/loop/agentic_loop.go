@@ -151,7 +151,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		// 0.5. Identidade Agêntica (Lembrar o modelo de suas ferramentas e capacidade de alterar o sistema)
 		messages = append(messages, llm.Message{
 			Role:    "system",
-			Content: "[SYSTEM AGENTIC IDENTITY] Você é um agente autônomo de IA com acesso completo ao sistema do usuário. Você pode ler/escrever arquivos locais (usando 'read_file', 'write_file', 'diff_replace'), executar comandos de terminal ('terminal_command'), e navegar na internet ou tirar prints de websites usando o navegador ('browser_action'). Você não necessita que o diretório atual seja um repositório Git para funcionar — trabalhe normalmente mesmo sem Git. Você NUNCA deve alegar ao usuário que é apenas um modelo de linguagem e que não pode criar/editar arquivos, rodar comandos, acessar a internet ou tirar screenshots. Use as ferramentas disponíveis imediatamente para executar o pedido do usuário.",
+			Content: "[SYSTEM AGENTIC IDENTITY] Você é um agente autônomo de IA com acesso completo ao sistema do usuário. Você pode ler/escrever arquivos locais (usando 'read_file', 'write_file', 'diff_replace'), executar comandos de terminal ('terminal_command'), e navegar na internet, realizar ações complexas ou tirar prints de websites usando o navegador ('browser_action' ou 'browser_subagent'). Você não necessita que o diretório atual seja um repositório Git para funcionar — trabalhe normalmente mesmo sem Git. Você NUNCA deve alegar ao usuário que é apenas um modelo de linguagem e que não pode criar/editar arquivos, rodar comandos, acessar a internet ou tirar screenshots. Use as ferramentas disponíveis imediatamente para executar o pedido do usuário.",
 		})
 
 		// 1. Detectar stack técnica
@@ -823,6 +823,9 @@ Ao reescrever o prompt, você deve formatar o resultado com as seguintes seçõe
    - Mesmo que o agente precise pedir confirmações ou tenha questões de alinhamento, ele deve obrigatoriamente chamar ao menos uma ferramenta na primeira resposta (ex: ler arquivos, listar diretórios, criar arquivos de esqueleto) para iniciar ativamente a execução e evitar a suspensão por inatividade.
 5. **Requisitos Não Funcionais**: Requisitos de segurança, performance, tratamento de erros robusto e arquitetura limpa adequados para a stack técnica identificada.
 6. **Critérios de Aceitação e Testes**: Conjunto de asserções que o agente deve validar para confirmar o sucesso do projeto (ex: compilação, testes unitários, validação manual).
+7. **Uso de Ferramentas Nativas de Navegação**:
+   - O agente possui ferramentas nativas de navegação na internet e automação de navegador ('browser_action' e 'browser_subagent').
+   - Se o prompt original do usuário solicitar tarefas de navegação, acesso a sites, cliques, digitações ou screenshots de páginas da web, instrua o agente a utilizar suas ferramentas nativas do navegador ('browser_action' ou 'browser_subagent') diretamente em tempo real, em vez de planejar a criação ou compilação de scripts de automação de terceiros (como Selenium, Playwright, Puppeteer ou scripts Python/JS) a menos que o usuário tenha solicitado explicitamente o código-fonte de um programa de automação.
 
 O seu retorno deve ser APENAS o novo prompt otimizado estruturado, sem introduções, explicações ou notas de rodapé adicionais.`
 

@@ -372,7 +372,14 @@ var runCmd = &cobra.Command{
 		al.RegisterTool(tools.NewGitConflictTool(workspacePath, resolved.WorkspaceJail))
 		al.RegisterTool(tools.NewHTTPClientTool(workspacePath))
 		al.RegisterTool(tools.NewScraperTool(workspacePath))
-		al.RegisterTool(tools.NewBrowserTool(workspacePath, resolved.BrowserHeadless))
+		browserTool := tools.NewBrowserTool(workspacePath, resolved.BrowserHeadless)
+		browserTool.SetOnNavigate(func(url string) {
+			_ = sm.SetBrowserURL(url)
+		})
+		browserTool.SetRestoreURL(func() string {
+			return sm.GetBrowserURL()
+		})
+		al.RegisterTool(browserTool)
 		al.RegisterTool(tools.NewComputerControlTool(workspacePath))
 		al.RegisterTool(tools.NewDatabaseTesterTool(workspacePath))
 		al.RegisterTool(tools.NewProxyTool(workspacePath, resolved.WorkspaceJail))
