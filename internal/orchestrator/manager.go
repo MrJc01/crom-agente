@@ -36,9 +36,10 @@ type RunningAgent struct {
 
 // MultiAgentManager coordena a execução simultânea de loops em múltiplos workspaces
 type MultiAgentManager struct {
-	mu            sync.RWMutex
-	runningAgents map[string]*RunningAgent // chave: workspace name
-	OnSchedule    func(workspaceName, sessionName, task string, delaySecs int, provider, model string)
+	mu               sync.RWMutex
+	runningAgents    map[string]*RunningAgent // chave: workspace name
+	OnSchedule       func(workspaceName, sessionName, task string, delaySecs int, provider, model string)
+	OnBackgroundExit func(workspaceName, sessionName, task string, provider, model string)
 }
 
 // NewMultiAgentManager cria um novo gerenciador multi-agente
@@ -279,7 +280,14 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 	}))
 	al.RegisterTool(tools.NewReadFileTool(target.Path, resolved.WorkspaceJail))
 	al.RegisterTool(tools.NewWriteFileTool(target.Path, resolved.WorkspaceJail))
-	al.RegisterTool(tools.NewTerminalCommandTool(target.Path, resolved.BlockedCommands, nil))
+	termTool := tools.NewTerminalCommandTool(target.Path, resolved.BlockedCommands, nil)
+	termTool.SetOnBackgroundExit(func(bgID, cmdStr, logs string, success bool) {
+		if m.OnBackgroundExit != nil {
+			taskMsg := fmt.Sprintf("O comando em background '%s' (ID: %s) terminou com sucesso=%t. Verifique a saída e os logs de execução para responder ao usuário. Logs:\n%s", cmdStr, bgID, success, logs)
+			m.OnBackgroundExit(workspaceName, sessionName, taskMsg, resolved.Provider, resolved.Model)
+		}
+	})
+	al.RegisterTool(termTool)
 	al.RegisterTool(tools.NewDiffReplaceTool(target.Path, resolved.WorkspaceJail))
 	al.RegisterTool(tools.NewRenameFileTool(target.Path, resolved.WorkspaceJail))
 	al.RegisterTool(tools.NewDeleteFileTool(target.Path, resolved.WorkspaceJail))

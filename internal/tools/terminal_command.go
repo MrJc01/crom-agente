@@ -81,9 +81,10 @@ func generateBgID() string {
 
 // TerminalCommandTool executa comandos de shell usando PTY com streaming e suporte a SIGINT
 type TerminalCommandTool struct {
-	workspaceRoot   string
-	blockedCommands []string
-	stream          io.Writer
+	workspaceRoot    string
+	blockedCommands  []string
+	stream           io.Writer
+	onBackgroundExit func(bgID, cmdStr, logs string, success bool)
 }
 
 // NewTerminalCommandTool cria a ferramenta terminal_command
@@ -99,6 +100,11 @@ func NewTerminalCommandTool(workspaceRoot string, blocked []string, stream ...io
 		blockedCommands: blocked,
 		stream:          s,
 	}
+}
+
+// SetOnBackgroundExit define o callback chamado quando um processo em background finaliza
+func (t *TerminalCommandTool) SetOnBackgroundExit(cb func(bgID, cmdStr, logs string, success bool)) {
+	t.onBackgroundExit = cb
 }
 
 func (t *TerminalCommandTool) ID() string {
@@ -271,6 +277,14 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 				backgroundProcsMu.Unlock()
 				_ = f.Close()
 				_ = c.Wait()
+				
+				success := false
+				if c.ProcessState != nil {
+					success = c.ProcessState.Success()
+				}
+				if t.onBackgroundExit != nil {
+					t.onBackgroundExit(bgID, command, logsBuf.String(), success)
+				}
 			}()
 
 			buffer := make([]byte, 2048)

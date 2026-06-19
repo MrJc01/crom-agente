@@ -465,3 +465,42 @@ func TestTerminalCommandTool_BackgroundActions(t *testing.T) {
 	}
 }
 
+func TestTerminalCommandTool_BackgroundExitCallback(t *testing.T) {
+	ws := t.TempDir()
+	tool := NewTerminalCommandTool(ws, nil)
+
+	callbackFired := make(chan bool, 1)
+	var firedID, firedCmd string
+	var firedSuccess bool
+
+	tool.SetOnBackgroundExit(func(bgID, cmdStr, logs string, success bool) {
+		firedID = bgID
+		firedCmd = cmdStr
+		firedSuccess = success
+		callbackFired <- true
+	})
+
+	// Run a short background command (sleep 0.1)
+	argsRun := json.RawMessage(`{"command": "sleep 0.1", "background": true}`)
+	resRun, err := tool.Execute(context.Background(), argsRun)
+	if err != nil || !resRun.Success {
+		t.Fatalf("erro ao rodar comando em background: %v, res: %+v", err, resRun)
+	}
+
+	// Wait for the callback to fire
+	select {
+	case <-callbackFired:
+		if !strings.HasPrefix(firedID, "bg-") {
+			t.Errorf("ID do processo no callback inválido: %s", firedID)
+		}
+		if !strings.Contains(firedCmd, "sleep 0.1") {
+			t.Errorf("comando incorreto no callback: %s", firedCmd)
+		}
+		if !firedSuccess {
+			t.Error("esperava sucesso=true no callback para 'sleep 0.1'")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout aguardando disparo do callback de finalização do processo background")
+	}
+}
+

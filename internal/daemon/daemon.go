@@ -44,6 +44,9 @@ func NewDaemon(headless bool) *Daemon {
 	mgr.OnSchedule = func(workspaceName, sessionName, task string, delaySecs int, provider, model string) {
 		apiServer.ScheduleTimerTask(workspaceName, sessionName, task, delaySecs, provider, model)
 	}
+	mgr.OnBackgroundExit = func(workspaceName, sessionName, task string, provider, model string) {
+		apiServer.ScheduleTimerTask(workspaceName, sessionName, task, 0, provider, model)
+	}
 
 	return &Daemon{
 		manager:    mgr,
