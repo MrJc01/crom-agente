@@ -136,6 +136,12 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 
 	// Primeira iteração da sessão: injetar regras locais, stack e instruções de planejamento
 	if len(messages) <= 2 && workspaceDir != "" {
+		// 0.5. Identidade Agêntica (Lembrar o modelo de suas ferramentas e capacidade de alterar o sistema)
+		messages = append(messages, llm.Message{
+			Role:    "system",
+			Content: "[SYSTEM AGENTIC IDENTITY] Você é um agente autônomo com acesso total de leitura e escrita ao workspace atual do usuário através de ferramentas dedicadas (como 'write_file', 'read_file', 'terminal_command', etc.). Você NUNCA deve alegar ao usuário que é apenas um modelo de linguagem e que não pode criar, ler, editar ou rodar arquivos locais. Se o usuário pedir para criar, modificar, ler ou testar arquivos, use as ferramentas disponíveis imediatamente para realizar a ação no computador dele.",
+		})
+
 		// 1. Detectar stack técnica
 		stack := al.detectStack(workspaceDir)
 		messages = append(messages, llm.Message{

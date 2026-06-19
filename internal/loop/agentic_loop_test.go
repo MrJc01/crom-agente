@@ -469,3 +469,40 @@ func TestAgenticLoop_ToolUsageAutoCorrection(t *testing.T) {
 		t.Fatal("esperada mensagem de correção [SYSTEM TOOL USAGE REQUIRED] no histórico de mensagens")
 	}
 }
+
+func TestAgenticLoop_AgenticIdentityInjection(t *testing.T) {
+	provider := llm.NewMockProvider(
+		llm.MockTextResponse("Entendido, posso criar arquivos no seu computador.", 100),
+	)
+	sm := state.NewStateManager(t.TempDir())
+	handler := &testEventHandler{}
+
+	al := New(provider, sm, handler)
+
+	err := al.Execute(context.Background(), "Olá, crie um arquivo para mim")
+	if err != nil {
+		t.Fatalf("esperado sucesso, obteve erro: %v", err)
+	}
+
+	// Verificar se a mensagem [SYSTEM AGENTIC IDENTITY] foi injetada no histórico
+	foundIdentity := false
+	for _, msg := range sm.GetMessages() {
+		if strings.Contains(msg.Content, "[SYSTEM AGENTIC IDENTITY]") {
+			foundIdentity = true
+			// Verificar que contém as palavras-chave essenciais
+			if !strings.Contains(msg.Content, "agente autônomo") {
+				t.Fatal("mensagem AGENTIC IDENTITY não contém 'agente autônomo'")
+			}
+			if !strings.Contains(msg.Content, "write_file") {
+				t.Fatal("mensagem AGENTIC IDENTITY não menciona 'write_file'")
+			}
+			if !strings.Contains(msg.Content, "NUNCA") {
+				t.Fatal("mensagem AGENTIC IDENTITY não contém proibição 'NUNCA'")
+			}
+			break
+		}
+	}
+	if !foundIdentity {
+		t.Fatal("esperada mensagem [SYSTEM AGENTIC IDENTITY] no histórico da primeira iteração")
+	}
+}
