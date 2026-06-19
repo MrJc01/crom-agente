@@ -172,7 +172,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		// 3. Forçar Planejamento
 		messages = append(messages, llm.Message{
 			Role:    "system",
-			Content: "[SYSTEM PLANNING REQUIREMENT] Se a tarefa solicitada pelo usuário for complexa ou envolver múltiplos passos, você deve descrever e listar um plano de execução detalhado em formato de checklist markdown no início de sua resposta. Use o formato:\n- [ ] Nome da tarefa\n\nÀ medida que progredir, atualize o status das tarefas:\n- [/] Tarefa em andamento\n- [x] Tarefa concluída\n\nVocê deve sempre incluir o plano de trabalho atualizado no início de seu conteúdo de texto (content) em todas as respostas (mesmo quando estiver chamando ferramentas) para que o usuário possa acompanhar o progresso de forma estruturada. Se a tarefa for simples (como uma saudação 'oi' ou conversa rápida), responda diretamente e de forma amigável sem criar um plano.",
+			Content: "[SYSTEM PLANNING REQUIREMENT] Se a tarefa solicitada pelo usuário for complexa ou envolver múltiplos passos, você deve descrever e listar um plano de execução detalhado em formato de checklist markdown no início de sua resposta. Use o formato:\n- [ ] Nome da tarefa\n\nÀ medida que progredir, atualize o status das tarefas:\n- [/] Tarefa em andamento\n- [x] Tarefa concluída\n\nVocê deve sempre incluir o plano de trabalho atualizado no início de seu conteúdo de texto (content) em todas as respostas (mesmo quando estiver chamando ferramentas) para que o usuário possa acompanhar o progresso de forma estruturada. Se houver dúvidas cruciais, ambiguidades técnicas ou decisões de design arquitetural importantes, identifique-as e liste-as sob uma seção clara chamada '**Questões de Alinhamento / Clarificações**' no início de sua resposta. Se a tarefa for simples (como uma saudação 'oi' ou conversa rápida), responda diretamente e de forma amigável sem criar um plano.",
 		})
 
 		// 3.5. Exigência de Uso de Ferramentas para Escrita de Arquivos (Evitar responder apenas com markdown)
@@ -211,7 +211,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		if phase == PhasePlanning {
 			messages = append(messages, llm.Message{
 				Role:    "system",
-				Content: "[SYSTEM PHASE: PLANNING] Esta é a fase de PLANEJAMENTO. Analise cuidadosamente o pedido e gere um checklist detalhado de todas as tarefas necessárias usando o formato `- [ ] Tarefa`. Após definir o plano, inicie imediatamente a execução do primeiro item.",
+				Content: "[SYSTEM PHASE: PLANNING] Esta é a fase de PLANEJAMENTO. Analise cuidadosamente o pedido, gere o checklist detalhado de tarefas necessárias usando o formato `- [ ] Tarefa` (e a seção de 'Questões de Alinhamento / Clarificações' se houver dúvidas), e comece a executar IMEDIATAMENTE o plano chamando pelo menos uma ferramenta (como 'read_file', 'list_dir', 'write_file', 'terminal_command') na mesma resposta. Você NUNCA deve retornar uma resposta puramente de texto com o plano sem invocar nenhuma ferramenta, pois isso fará com que o loop seja suspenso com erro de tarefas incompletas.",
 			})
 		} else {
 			messages = append(messages, llm.Message{
@@ -808,16 +808,23 @@ func compactMessages(messages []llm.Message) []llm.Message {
 	return compacted
 }
 
-const optimizerSystemPrompt = `Você é um Engenheiro de Prompt Especialista e Arquiteto de Software.
-Sua tarefa é analisar a instrução/prompt enviado pelo usuário e reescrevê-lo para torná-lo um prompt otimizado, detalhado, claro e extremamente eficaz para um agente autônomo de IA (como você mesmo).
+const optimizerSystemPrompt = `Você é um Engenheiro de Prompt Especialista e Arquiteto de Software de Elite, especializado em projetar instruções de alta fidelidade para agentes autônomos de IA (como Claude Code e Antigravity).
+Sua tarefa é analisar o prompt original do usuário e transformá-lo em uma instrução otimizada, detalhada e estruturada para um agente autônomo.
 
-Ao otimizar a instrução:
-1. Extraia o objetivo principal de forma explícita.
-2. Identifique requisitos implícitos necessários para o sucesso (arquitetura limpa, boas práticas, segurança, tratamento de erros).
-3. Adicione contexto relevante de stack técnica ou diretrizes de qualidade do código.
-4. Defina critérios claros de aceitação/verificação.
-5. Remova ambiguidades ou termos vagos.
-6. O seu retorno deve ser APENAS o novo prompt otimizado, sem introduções, comentários ou explicações (retorne diretamente o texto do prompt otimizado pronto para ser executado).`
+Ao reescrever o prompt, você deve formatar o resultado com as seguintes seções explícitas:
+
+1. **Objetivo Principal**: Descrição clara e inequívoca do que deve ser alcançado.
+2. **Questões de Alinhamento / Clarificações**: Instrua o agente a identificar e listar no início de sua primeira resposta quaisquer dúvidas cruciais, ambiguidades técnicas ou decisões de design arquitetural importantes.
+3. **Plano de Mudanças de Arquivos (Proposed Changes)**: Exija que o agente liste explicitamente todos os arquivos a criar (NEW), modificar (MODIFY) ou deletar (DELETE) antes de fazer modificações no disco.
+4. **Instruções de Execução Ativa e Uso de Ferramentas**:
+   - O agente deve começar a criar e escrever arquivos reais imediatamente no primeiro turno usando as ferramentas apropriadas ('write_file', 'terminal_command', etc.).
+   - O agente NUNCA deve apenas planejar na primeira iteração ou apresentar blocos de código em markdown no chat sem invocar as respectivas ferramentas correspondentes para aplicar as mudanças físicas no disco.
+   - O agente deve manter um plano de trabalho atualizado no início de todas as mensagens usando checklists markdown ('- [ ]' para pendente, '- [/]' para em andamento, '- [x]' para concluído).
+   - Mesmo que o agente precise pedir confirmações ou tenha questões de alinhamento, ele deve obrigatoriamente chamar ao menos uma ferramenta na primeira resposta (ex: ler arquivos, listar diretórios, criar arquivos de esqueleto) para iniciar ativamente a execução e evitar a suspensão por inatividade.
+5. **Requisitos Não Funcionais**: Requisitos de segurança, performance, tratamento de erros robusto e arquitetura limpa adequados para a stack técnica identificada.
+6. **Critérios de Aceitação e Testes**: Conjunto de asserções que o agente deve validar para confirmar o sucesso do projeto (ex: compilação, testes unitários, validação manual).
+
+O seu retorno deve ser APENAS o novo prompt otimizado estruturado, sem introduções, explicações ou notas de rodapé adicionais.`
 
 // OptimizePrompt executa uma chamada de LLM para refinar e enriquecer o prompt do usuário antes do loop ReAct
 func (al *AgenticLoop) OptimizePrompt(ctx context.Context, rawPrompt string) (string, error) {

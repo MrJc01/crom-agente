@@ -104,13 +104,14 @@ type ResolvedConfig struct {
 
 // CLIFlags contém flags passados via linha de comando (prioridade máxima)
 type CLIFlags struct {
-	Provider           string
-	Model              string
-	MaxIterations      *int
-	MaxConsecutiveFail *int
-	ToolTimeoutSeconds *int
-	MaxMessageHistory  *int
-	PermissionMode     string
+	Provider                  string
+	Model                     string
+	MaxIterations             *int
+	MaxConsecutiveFail        *int
+	ToolTimeoutSeconds        *int
+	MaxMessageHistory         *int
+	PermissionMode            string
+	DisablePromptOptimization *bool
 }
 
 // --- Defaults ---
@@ -399,6 +400,9 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 	}
 	if flags.PermissionMode != "" {
 		resolved.PermissionMode = flags.PermissionMode
+	}
+	if flags.DisablePromptOptimization != nil {
+		resolved.DisablePromptOptimization = *flags.DisablePromptOptimization
 	}
 
 	return resolved

@@ -37,6 +37,7 @@ var cliTimeout int
 var cliMaxHistory int
 var cliPermissionMode string
 var cliSession string
+var cliDisablePromptOptimization bool
 
 // rootCmd é o comando raiz do crom-agente
 var rootCmd = &cobra.Command{
@@ -436,6 +437,9 @@ func getCLIFlags(cmd *cobra.Command) config.CLIFlags {
 	if cmd.Flags().Changed("permission-mode") {
 		flags.PermissionMode = cliPermissionMode
 	}
+	if cmd.Flags().Changed("disable-prompt-optimization") {
+		flags.DisablePromptOptimization = &cliDisablePromptOptimization
+	}
 	return flags
 }
 
@@ -451,6 +455,7 @@ func init() {
 	rootCmd.PersistentFlags().IntVar(&cliTimeout, "timeout", 0, "Override: Timeout para execução de ferramentas (segundos)")
 	rootCmd.PersistentFlags().IntVar(&cliMaxHistory, "max-history", 0, "Override: Limite de mensagens mantidas no histórico")
 	rootCmd.PersistentFlags().StringVar(&cliPermissionMode, "permission-mode", "", "Override: Modo de permissão (total_access, ask_every_time, scoped)")
+	rootCmd.PersistentFlags().BoolVar(&cliDisablePromptOptimization, "disable-prompt-optimization", false, "Desabilita a otimização de prompt inicial")
 
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(stateCmd)

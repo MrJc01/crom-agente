@@ -436,7 +436,8 @@ def run_agent(task_prompt):
         "--model", "llama3",
         "--permission-mode", "total_access",
         "--max-iterations", "5",
-        "--timeout", "10"
+        "--timeout", "10",
+        "--disable-prompt-optimization"
     ]
     
     res = subprocess.run(args, capture_output=True, text=True, env=env)
