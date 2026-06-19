@@ -285,6 +285,15 @@ func LoadWorkspaceConfig(workspacePath string) (*WorkspaceConfig, error) {
 		if os.IsNotExist(err) {
 			name := filepath.Base(workspacePath)
 			cfg := DefaultWorkspaceConfig(name)
+			
+			// Tenta ler o global config para preencher o provider e model iniciais
+			if gDir, gErr := GlobalDir(); gErr == nil {
+				if gCfg, gCfgErr := LoadGlobalConfig(gDir); gCfgErr == nil && gCfg != nil {
+					cfg.Provider = gCfg.DefaultProvider
+					cfg.Model = gCfg.DefaultModel
+				}
+			}
+			
 			if saveErr := SaveWorkspaceConfig(workspacePath, cfg); saveErr != nil {
 				return nil, fmt.Errorf("erro ao criar config workspace padrão: %w", saveErr)
 			}
