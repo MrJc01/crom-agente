@@ -214,10 +214,12 @@ func (b *BrowserSubagentTool) Execute(ctx context.Context, args json.RawMessage)
 				sr.Success = false
 				sr.Message = "selector é obrigatório para 'click'"
 			} else {
-				el, err := p.Element(step.Selector)
+				searchCtx, searchCancel := context.WithTimeout(stepCtx, 5*time.Second)
+				el, err := p.Context(searchCtx).Element(step.Selector)
+				searchCancel()
 				if err != nil {
 					sr.Success = false
-					sr.Message = fmt.Sprintf("elemento %q não encontrado: %v", step.Selector, err)
+					sr.Message = fmt.Sprintf("elemento %q não encontrado (timeout 5s): %v", step.Selector, err)
 				} else if err := el.Click(proto.InputMouseButtonLeft, 1); err != nil {
 					sr.Success = false
 					sr.Message = fmt.Sprintf("falha ao clicar em %q: %v", step.Selector, err)
@@ -227,8 +229,15 @@ func (b *BrowserSubagentTool) Execute(ctx context.Context, args json.RawMessage)
 					if screenshotErr == nil {
 						sr.ScreenshotB64 = base64.StdEncoding.EncodeToString(imgBytes)
 					}
+					time.Sleep(500 * time.Millisecond)
+					newURL := ""
+					title := ""
+					if info, err := p.Info(); err == nil && info != nil {
+						newURL = info.URL
+						title = info.Title
+					}
 					sr.Success = true
-					sr.Message = fmt.Sprintf("Elemento %q clicado com sucesso", step.Selector)
+					sr.Message = fmt.Sprintf("Elemento %q clicado com sucesso. URL atual: %s | Título: %s", step.Selector, newURL, title)
 				}
 			}
 
@@ -237,16 +246,25 @@ func (b *BrowserSubagentTool) Execute(ctx context.Context, args json.RawMessage)
 				sr.Success = false
 				sr.Message = "selector e text são obrigatórios para 'type'"
 			} else {
-				el, err := p.Element(step.Selector)
+				searchCtx, searchCancel := context.WithTimeout(stepCtx, 5*time.Second)
+				el, err := p.Context(searchCtx).Element(step.Selector)
+				searchCancel()
 				if err != nil {
 					sr.Success = false
-					sr.Message = fmt.Sprintf("elemento %q não encontrado: %v", step.Selector, err)
+					sr.Message = fmt.Sprintf("elemento %q não encontrado (timeout 5s): %v", step.Selector, err)
 				} else if err := el.Input(step.Text); err != nil {
 					sr.Success = false
 					sr.Message = fmt.Sprintf("falha ao digitar em %q: %v", step.Selector, err)
 				} else {
+					time.Sleep(500 * time.Millisecond)
+					newURL := ""
+					title := ""
+					if info, err := p.Info(); err == nil && info != nil {
+						newURL = info.URL
+						title = info.Title
+					}
 					sr.Success = true
-					sr.Message = fmt.Sprintf("Texto digitado com sucesso em %q", step.Selector)
+					sr.Message = fmt.Sprintf("Texto digitado com sucesso em %q. URL atual: %s | Título: %s", step.Selector, newURL, title)
 				}
 			}
 

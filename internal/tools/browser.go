@@ -204,31 +204,53 @@ func (b *BrowserTool) Execute(ctx context.Context, args json.RawMessage) (Result
 		if params.Selector == "" {
 			return Result{Success: false, Error: "selector é obrigatório para a ação 'click'"}, nil
 		}
-		el, err := page.Element(params.Selector)
+		searchCtx, searchCancel := context.WithTimeout(timeoutCtx, 5*time.Second)
+		el, err := page.Context(searchCtx).Element(params.Selector)
+		searchCancel()
 		if err != nil {
 			sug := b.getSuggestions(page)
-			return Result{Success: false, Error: fmt.Sprintf("elemento %q não encontrado: %v.\nElementos clicáveis disponíveis na página:\n%s", params.Selector, err, sug)}, nil
+			return Result{Success: false, Error: fmt.Sprintf("elemento %q não encontrado (timeout 5s): %v.\nElementos clicáveis disponíveis na página:\n%s", params.Selector, err, sug)}, nil
 		}
 		err = el.Click(proto.InputMouseButtonLeft, 1)
 		if err != nil {
 			return Result{Success: false, Error: fmt.Sprintf("falha ao clicar no elemento %q: %v", params.Selector, err)}, nil
 		}
-		return Result{Success: true, Data: fmt.Sprintf("Elemento %q clicado com sucesso", params.Selector)}, nil
+		
+		// Aguarda um pequeno momento para renderização e transições
+		time.Sleep(500 * time.Millisecond)
+		newURL := ""
+		title := ""
+		if info, err := page.Info(); err == nil && info != nil {
+			newURL = info.URL
+			title = info.Title
+		}
+		return Result{Success: true, Data: fmt.Sprintf("Elemento %q clicado com sucesso. URL atual: %s | Título: %s", params.Selector, newURL, title)}, nil
 
 	case "type":
 		if params.Selector == "" || params.Text == "" {
 			return Result{Success: false, Error: "selector e text são obrigatórios para a ação 'type'"}, nil
 		}
-		el, err := page.Element(params.Selector)
+		searchCtx, searchCancel := context.WithTimeout(timeoutCtx, 5*time.Second)
+		el, err := page.Context(searchCtx).Element(params.Selector)
+		searchCancel()
 		if err != nil {
 			sug := b.getSuggestions(page)
-			return Result{Success: false, Error: fmt.Sprintf("elemento %q não encontrado: %v.\nElementos clicáveis disponíveis na página:\n%s", params.Selector, err, sug)}, nil
+			return Result{Success: false, Error: fmt.Sprintf("elemento %q não encontrado (timeout 5s): %v.\nElementos clicáveis disponíveis na página:\n%s", params.Selector, err, sug)}, nil
 		}
 		err = el.Input(params.Text)
 		if err != nil {
 			return Result{Success: false, Error: fmt.Sprintf("falha ao digitar no elemento %q: %v", params.Selector, err)}, nil
 		}
-		return Result{Success: true, Data: fmt.Sprintf("Texto digitado com sucesso no elemento %q", params.Selector)}, nil
+		
+		// Aguarda um pequeno momento para renderização e transições
+		time.Sleep(500 * time.Millisecond)
+		newURL := ""
+		title := ""
+		if info, err := page.Info(); err == nil && info != nil {
+			newURL = info.URL
+			title = info.Title
+		}
+		return Result{Success: true, Data: fmt.Sprintf("Texto digitado com sucesso no elemento %q. URL atual: %s | Título: %s", params.Selector, newURL, title)}, nil
 
 	case "screenshot":
 		if params.URL != "" {
