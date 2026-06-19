@@ -194,7 +194,7 @@ func (b *BrowserSubagentTool) Execute(ctx context.Context, args json.RawMessage)
 					sr.Message = fmt.Sprintf("falha ao clicar em %q: %v", step.Selector, err)
 				} else {
 					// Auto-verificação visual: tira screenshot após clique para confirmar resultado
-					imgBytes, screenshotErr := p.Screenshot(true, &proto.PageCaptureScreenshot{Format: proto.PageCaptureScreenshotFormatPng})
+					imgBytes, screenshotErr := p.Screenshot(false, &proto.PageCaptureScreenshot{Format: proto.PageCaptureScreenshotFormatPng})
 					if screenshotErr == nil {
 						sr.ScreenshotB64 = base64.StdEncoding.EncodeToString(imgBytes)
 					}
@@ -256,7 +256,7 @@ func (b *BrowserSubagentTool) Execute(ctx context.Context, args json.RawMessage)
 				_ = p.WaitLoad()
 				time.Sleep(time.Second)
 			}
-			imgBytes, err := p.Screenshot(true, &proto.PageCaptureScreenshot{Format: proto.PageCaptureScreenshotFormatPng})
+			imgBytes, err := p.Screenshot(false, &proto.PageCaptureScreenshot{Format: proto.PageCaptureScreenshotFormatPng})
 			if err != nil {
 				sr.Success = false
 				sr.Message = fmt.Sprintf("falha ao capturar screenshot: %v", err)
@@ -307,7 +307,7 @@ func (b *BrowserSubagentTool) Execute(ctx context.Context, args json.RawMessage)
 	if params.CaptureFinalScreenshot {
 		finalCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		p := page.Context(finalCtx)
-		imgBytes, err := p.Screenshot(true, &proto.PageCaptureScreenshot{Format: proto.PageCaptureScreenshotFormatPng})
+		imgBytes, err := p.Screenshot(false, &proto.PageCaptureScreenshot{Format: proto.PageCaptureScreenshotFormatPng})
 		cancel()
 		if err == nil {
 			results = append(results, StepResult{

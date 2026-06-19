@@ -417,8 +417,38 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 
 		// Executar tool calls
 		iterationHasFailure = false
-		for _, tc := range msg.ToolCalls {
+		for idx := range msg.ToolCalls {
+			tc := &msg.ToolCalls[idx]
 			toolID := tc.Function.Name
+
+			// Fallback para modelos que confundem e chamam "screenshot" diretamente em vez de "browser_action" ou "computer_control"
+			if toolID == "screenshot" {
+				if _, hasBrowser := al.tools["browser_action"]; hasBrowser {
+					toolID = "browser_action"
+					tc.Function.Name = "browser_action"
+					var rawArgs map[string]interface{}
+					if err := json.Unmarshal([]byte(tc.Function.Arguments), &rawArgs); err == nil {
+						if _, hasAction := rawArgs["action"]; !hasAction {
+							rawArgs["action"] = "screenshot"
+							if newArgs, errMar := json.Marshal(rawArgs); errMar == nil {
+								tc.Function.Arguments = string(newArgs)
+							}
+						}
+					}
+				} else if _, hasComputer := al.tools["computer_control"]; hasComputer {
+					toolID = "computer_control"
+					tc.Function.Name = "computer_control"
+					var rawArgs map[string]interface{}
+					if err := json.Unmarshal([]byte(tc.Function.Arguments), &rawArgs); err == nil {
+						if _, hasAction := rawArgs["action"]; !hasAction {
+							rawArgs["action"] = "screenshot"
+							if newArgs, errMar := json.Marshal(rawArgs); errMar == nil {
+								tc.Function.Arguments = string(newArgs)
+							}
+						}
+					}
+				}
+			}
 
 			tool, exists := al.tools[toolID]
 			if !exists {
@@ -467,25 +497,53 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 
 			// Verificar autorização do PermissionManager
 			if al.permissionManager != nil {
-				var target string
+				target := tc.Function.Arguments // Default to raw JSON arguments so it is never empty
 				if toolID == "terminal_command" {
 					var argsCmd struct {
 						Command string `json:"command"`
 					}
-					_ = json.Unmarshal([]byte(tc.Function.Arguments), &argsCmd)
-					target = argsCmd.Command
+					if err := json.Unmarshal([]byte(tc.Function.Arguments), &argsCmd); err == nil && argsCmd.Command != "" {
+						target = argsCmd.Command
+					}
 				} else if toolID == "write_file" || toolID == "read_file" {
 					var argsPath struct {
 						Path string `json:"path"`
 					}
-					_ = json.Unmarshal([]byte(tc.Function.Arguments), &argsPath)
-					target = argsPath.Path
+					if err := json.Unmarshal([]byte(tc.Function.Arguments), &argsPath); err == nil && argsPath.Path != "" {
+						target = argsPath.Path
+					}
 				} else if toolID == "diff_replace" {
 					var argsPath struct {
 						Path string `json:"path"`
 					}
-					_ = json.Unmarshal([]byte(tc.Function.Arguments), &argsPath)
-					target = argsPath.Path
+					if err := json.Unmarshal([]byte(tc.Function.Arguments), &argsPath); err == nil && argsPath.Path != "" {
+						target = argsPath.Path
+					}
+				} else if toolID == "browser_action" {
+					var argsBrowser struct {
+						Action   string `json:"action"`
+						URL      string `json:"url,omitempty"`
+						Selector string `json:"selector,omitempty"`
+						Text     string `json:"text,omitempty"`
+						Path     string `json:"path,omitempty"`
+					}
+					if err := json.Unmarshal([]byte(tc.Function.Arguments), &argsBrowser); err == nil {
+						var parts []string
+						parts = append(parts, fmt.Sprintf("Ação: %s", argsBrowser.Action))
+						if argsBrowser.URL != "" {
+							parts = append(parts, fmt.Sprintf("URL: %s", argsBrowser.URL))
+						}
+						if argsBrowser.Selector != "" {
+							parts = append(parts, fmt.Sprintf("Seletor: %s", argsBrowser.Selector))
+						}
+						if argsBrowser.Text != "" {
+							parts = append(parts, fmt.Sprintf("Texto: %s", argsBrowser.Text))
+						}
+						if argsBrowser.Path != "" {
+							parts = append(parts, fmt.Sprintf("Salvar em: %s", argsBrowser.Path))
+						}
+						target = strings.Join(parts, " | ")
+					}
 				}
 
 				// DiffZones: Renderizar diff colorido antes de pedir autorização para ferramentas de escrita

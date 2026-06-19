@@ -482,3 +482,41 @@ func TestAgenticLoop_SpawnSubagentRollback(t *testing.T) {
 		t.Errorf("esperava que o arquivo criado pelo subagente tivesse sido removido pelo rollback")
 	}
 }
+
+func TestAgenticLoop_ScreenshotFallback(t *testing.T) {
+	provider := llm.NewMockProvider(
+		// LLM chama o método inexistente "screenshot"
+		llm.MockToolCallResponse("screenshot", `{"path":"my_screenshot.png"}`, 200),
+		// LLM recebe a resposta traduzida e finaliza
+		llm.MockTextResponse("Screenshot capturado com sucesso.", 100),
+	)
+	sm := state.NewStateManager(t.TempDir())
+	handler := &testEventHandler{}
+
+	al := New(provider, sm, handler)
+	
+	// Registra o browser_action como a ferramenta correta
+	var receivedArgs string
+	al.RegisterTool(&mockTool{
+		id:          "browser_action",
+		description: "Navegador",
+		executeFunc: func(ctx context.Context, args json.RawMessage) (tools.Result, error) {
+			receivedArgs = string(args)
+			return tools.Result{Success: true, Data: "screenshot taken successfully"}, nil
+		},
+	})
+
+	err := al.Execute(context.Background(), "Tire um print")
+	if err != nil {
+		t.Fatalf("esperado sucesso, obteve erro: %v", err)
+	}
+
+	// Verifica se a chamada foi redirecionada para a ferramenta "browser_action"
+	if !strings.Contains(receivedArgs, `"action":"screenshot"`) {
+		t.Errorf("esperava action 'screenshot' inserido nos argumentos, obteve: %s", receivedArgs)
+	}
+	if !strings.Contains(receivedArgs, `"path":"my_screenshot.png"`) {
+		t.Errorf("esperava path preservado, obteve: %s", receivedArgs)
+	}
+}
+

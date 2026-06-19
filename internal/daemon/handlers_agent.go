@@ -343,7 +343,36 @@ func (s *APIServer) handleFile(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		ext := strings.ToLower(filepath.Ext(filePath))
+		contentType := "text/plain; charset=utf-8"
+		switch ext {
+		case ".png":
+			contentType = "image/png"
+		case ".jpg", ".jpeg":
+			contentType = "image/jpeg"
+		case ".gif":
+			contentType = "image/gif"
+		case ".webp":
+			contentType = "image/webp"
+		case ".ico":
+			contentType = "image/x-icon"
+		case ".svg":
+			contentType = "image/svg+xml"
+		case ".pdf":
+			contentType = "application/pdf"
+		case ".mp3":
+			contentType = "audio/mpeg"
+		case ".wav":
+			contentType = "audio/wav"
+		case ".ogg":
+			contentType = "audio/ogg"
+		case ".mp4":
+			contentType = "video/mp4"
+		case ".webm":
+			contentType = "video/webm"
+		}
+
+		w.Header().Set("Content-Type", contentType)
 		_, _ = w.Write(content)
 		return
 	}

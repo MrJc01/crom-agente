@@ -199,7 +199,7 @@ func (b *BrowserTool) Execute(ctx context.Context, args json.RawMessage) (Result
 			_ = page.WaitLoad()
 			time.Sleep(1 * time.Second) // Delay para carregamento completo de recursos visuais
 		}
-		imgBytes, err := page.Screenshot(true, &proto.PageCaptureScreenshot{Format: proto.PageCaptureScreenshotFormatPng})
+		imgBytes, err := page.Screenshot(false, &proto.PageCaptureScreenshot{Format: proto.PageCaptureScreenshotFormatPng})
 		if err != nil {
 			return Result{Success: false, Error: fmt.Sprintf("falha ao capturar screenshot: %v", err)}, nil
 		}
