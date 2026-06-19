@@ -301,6 +301,12 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		}
 
 		msg := resp.Message
+
+		// Interceptar chamadas de ferramentas alucinadas no formato Python /tool_code
+		if pyToolCalls := tryParseToolCode(msg.Content); len(pyToolCalls) > 0 {
+			msg.ToolCalls = append(msg.ToolCalls, pyToolCalls...)
+		}
+
 		messages = append(messages, msg)
 		saveMsgs(messages)
 
@@ -395,7 +401,19 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 						Content: warning,
 					})
 					saveMsgs(messages)
-					continue // Não encerra: volta para a próxima iteração
+					
+					// Pausa graciosamente para permitir que a resposta/pergunta chegue ao chat
+					_ = al.stateManager.SetStatus("idle")
+					_ = al.stateManager.AddLog("Suspenso com tarefas pendentes (aguardando input)")
+					
+					al.handler.OnEvent(AgentEvent{
+						Timestamp: time.Now(),
+						Event:     "finished",
+						Iteration: i + 1,
+						Data:      map[string]interface{}{"reason": "tasks_incomplete_pause", "total_iterations": i + 1},
+					})
+					al.handler.OnStatusChange("idle")
+					return nil
 				}
 			}
 
@@ -646,14 +664,18 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				})
 
 			} else {
-				errContent := formatToolError(toolID, result.Error)
+				errMsg := result.Error
+				if errMsg == "" && result.Data != "" {
+					errMsg = result.Data
+				}
+				errContent := formatToolError(toolID, errMsg)
 				if toolID == "terminal_command" {
 					errContent = FormatContextualError(errContent)
 				}
 				messages = append(messages, llm.Message{
 					Role: "tool", ToolCallID: tc.ID, Name: toolID, Content: errContent,
 				})
-				al.handler.OnMessage("system", fmt.Sprintf("Erro na ferramenta %s: %s", toolID, result.Error))
+				al.handler.OnMessage("system", fmt.Sprintf("Erro na ferramenta %s: %s", toolID, errMsg))
 
 				// Evento estruturado de tool_result com falha lógica
 				al.handler.OnEvent(AgentEvent{
@@ -664,7 +686,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 						"tool_call_id": tc.ID,
 						"tool":         toolID,
 						"success":      false,
-						"error":        result.Error,
+						"error":        errMsg,
 						"error_code":   ErrToolExecution,
 					},
 				})

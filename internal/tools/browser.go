@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -168,7 +169,8 @@ func (b *BrowserTool) Execute(ctx context.Context, args json.RawMessage) (Result
 		}
 		el, err := page.Element(params.Selector)
 		if err != nil {
-			return Result{Success: false, Error: fmt.Sprintf("elemento %q não encontrado: %v", params.Selector, err)}, nil
+			sug := b.getSuggestions(page)
+			return Result{Success: false, Error: fmt.Sprintf("elemento %q não encontrado: %v.\nElementos clicáveis disponíveis na página:\n%s", params.Selector, err, sug)}, nil
 		}
 		err = el.Click(proto.InputMouseButtonLeft, 1)
 		if err != nil {
@@ -182,7 +184,8 @@ func (b *BrowserTool) Execute(ctx context.Context, args json.RawMessage) (Result
 		}
 		el, err := page.Element(params.Selector)
 		if err != nil {
-			return Result{Success: false, Error: fmt.Sprintf("elemento %q não encontrado: %v", params.Selector, err)}, nil
+			sug := b.getSuggestions(page)
+			return Result{Success: false, Error: fmt.Sprintf("elemento %q não encontrado: %v.\nElementos clicáveis disponíveis na página:\n%s", params.Selector, err, sug)}, nil
 		}
 		err = el.Input(params.Text)
 		if err != nil {
@@ -229,4 +232,57 @@ func (b *BrowserTool) Execute(ctx context.Context, args json.RawMessage) (Result
 	default:
 		return Result{Success: false, Error: fmt.Sprintf("ação desconhecida: %s", params.Action)}, nil
 	}
+}
+
+// getSuggestions varre os elementos interativos da página e sugere seletores
+func (b *BrowserTool) getSuggestions(page *rod.Page) string {
+	elements, err := page.Elements("a, button, [role='button'], input[type='button'], input[type='submit']")
+	if err != nil {
+		return ""
+	}
+	var list []string
+	count := 0
+	for _, el := range elements {
+		if count >= 15 {
+			break
+		}
+		nodeDesc, err := el.Describe(1, false)
+		if err != nil {
+			continue
+		}
+		tagName := strings.ToLower(nodeDesc.LocalName)
+		if tagName == "" {
+			tagName = strings.ToLower(nodeDesc.NodeName)
+		}
+		text, _ := el.Text()
+		href, _ := el.Attribute("href")
+		id, _ := el.Attribute("id")
+		class, _ := el.Attribute("class")
+
+		selector := tagName
+		if id != nil && *id != "" {
+			selector += "#" + *id
+		} else if class != nil && *class != "" {
+			fields := strings.Fields(*class)
+			if len(fields) > 0 {
+				selector += "." + fields[0]
+			}
+		}
+		if href != nil && *href != "" && (tagName == "a" || tagName == "link") {
+			selector += fmt.Sprintf("[href=%q]", *href)
+		}
+
+		cleanText := strings.TrimSpace(text)
+		if cleanText != "" {
+			list = append(list, fmt.Sprintf("- Seletor: %q | Texto: %q", selector, cleanText))
+			count++
+		} else if href != nil && *href != "" {
+			list = append(list, fmt.Sprintf("- Seletor: %q", selector))
+			count++
+		}
+	}
+	if len(list) == 0 {
+		return "Nenhum elemento interativo óbvio foi encontrado."
+	}
+	return strings.Join(list, "\n")
 }
