@@ -42,16 +42,17 @@ type MCPServerConfig struct {
 
 // GlobalConfig contém configurações globais compartilhadas por todos os workspaces
 type GlobalConfig struct {
-	DefaultProvider           string            `json:"default_provider"`
-	DefaultModel              string            `json:"default_model"`
-	MaxIterationsDefault      int               `json:"max_iterations_default"`
-	MaxConsecutiveFailDefault int               `json:"max_consecutive_failures_default"`
-	MaxTokensPerTaskDefault   int               `json:"max_tokens_per_task_default"`
-	ToolTimeoutSecondsDefault int               `json:"tool_timeout_seconds_default"`
-	MaxMessageHistoryDefault  int               `json:"max_message_history_default"`
-	LogLevel                  string            `json:"log_level"`
-	TelemetryEnabled          bool              `json:"telemetry_enabled"`
-	MCPServers                []MCPServerConfig `json:"mcp_servers,omitempty"` // Servidores MCP globais
+	DefaultProvider                  string            `json:"default_provider"`
+	DefaultModel                     string            `json:"default_model"`
+	MaxIterationsDefault             int               `json:"max_iterations_default"`
+	MaxConsecutiveFailDefault        int               `json:"max_consecutive_failures_default"`
+	MaxTokensPerTaskDefault          int               `json:"max_tokens_per_task_default"`
+	ToolTimeoutSecondsDefault        int               `json:"tool_timeout_seconds_default"`
+	MaxMessageHistoryDefault         int               `json:"max_message_history_default"`
+	LogLevel                         string            `json:"log_level"`
+	TelemetryEnabled                 bool              `json:"telemetry_enabled"`
+	DisablePromptOptimizationDefault bool              `json:"disable_prompt_optimization_default"`
+	MCPServers                       []MCPServerConfig `json:"mcp_servers,omitempty"` // Servidores MCP globais
 }
 
 // EnvVars contém variáveis carregadas do .env (segredos)
@@ -62,40 +63,42 @@ type EnvVars struct {
 
 // WorkspaceConfig contém configurações específicas de um workspace
 type WorkspaceConfig struct {
-	WorkspaceName      string   `json:"workspace_name"`
-	Provider           string   `json:"provider,omitempty"`
-	Model              string   `json:"model,omitempty"`
-	MaxIterations      *int     `json:"max_iterations,omitempty"`
-	MaxConsecutiveFail *int     `json:"max_consecutive_failures,omitempty"`
-	MaxTokensPerTask   *int     `json:"max_tokens_per_task,omitempty"`
-	ToolTimeoutSeconds *int     `json:"tool_timeout_seconds,omitempty"`
-	MaxMessageHistory  *int     `json:"max_message_history,omitempty"`
-	PermissionMode     string   `json:"permission_mode"`
-	WorkspaceJail      bool     `json:"workspace_jail"`
-	AllowedTools       []string `json:"allowed_tools,omitempty"`
-	BlockedCommands    []string `json:"blocked_commands,omitempty"`
-	AutoVerify         bool     `json:"auto_verify"`
-	AutoSelfCheck      bool     `json:"auto_self_check"`
-	BrowserHeadless    *bool    `json:"browser_headless,omitempty"`
+	WorkspaceName             string   `json:"workspace_name"`
+	Provider                  string   `json:"provider,omitempty"`
+	Model                     string   `json:"model,omitempty"`
+	MaxIterations             *int     `json:"max_iterations,omitempty"`
+	MaxConsecutiveFail        *int     `json:"max_consecutive_failures,omitempty"`
+	MaxTokensPerTask          *int     `json:"max_tokens_per_task,omitempty"`
+	ToolTimeoutSeconds        *int     `json:"tool_timeout_seconds,omitempty"`
+	MaxMessageHistory         *int     `json:"max_message_history,omitempty"`
+	PermissionMode            string   `json:"permission_mode"`
+	WorkspaceJail             bool     `json:"workspace_jail"`
+	AllowedTools              []string `json:"allowed_tools,omitempty"`
+	BlockedCommands           []string `json:"blocked_commands,omitempty"`
+	AutoVerify                bool     `json:"auto_verify"`
+	AutoSelfCheck             bool     `json:"auto_self_check"`
+	BrowserHeadless           *bool    `json:"browser_headless,omitempty"`
+	DisablePromptOptimization *bool    `json:"disable_prompt_optimization,omitempty"`
 }
 
 // ResolvedConfig é o resultado do merge de todas as camadas de configuração
 type ResolvedConfig struct {
-	Provider           string
-	Model              string
-	MaxIterations      int
-	MaxConsecutiveFail int
-	MaxTokensPerTask   int
-	ToolTimeoutSeconds int
-	MaxMessageHistory  int
-	PermissionMode     string
-	WorkspaceJail      bool
-	AutoVerify         bool
-	AutoSelfCheck      bool
-	AllowedTools       []string
-	BlockedCommands    []string
-	LogLevel           string
-	BrowserHeadless    bool
+	Provider                  string
+	Model                     string
+	MaxIterations             int
+	MaxConsecutiveFail        int
+	MaxTokensPerTask          int
+	ToolTimeoutSeconds        int
+	MaxMessageHistory         int
+	PermissionMode            string
+	WorkspaceJail             bool
+	AutoVerify                bool
+	AutoSelfCheck             bool
+	AllowedTools              []string
+	BlockedCommands           []string
+	LogLevel                  string
+	BrowserHeadless           bool
+	DisablePromptOptimization bool
 }
 
 
@@ -115,15 +118,16 @@ type CLIFlags struct {
 // DefaultGlobalConfig retorna uma configuração global com valores padrão sensatos
 func DefaultGlobalConfig() *GlobalConfig {
 	return &GlobalConfig{
-		DefaultProvider:           "openai",
-		DefaultModel:              "gpt-4o",
-		MaxIterationsDefault:      15,
-		MaxConsecutiveFailDefault: 3,
-		MaxTokensPerTaskDefault:   100000,
-		ToolTimeoutSecondsDefault: 30,
-		MaxMessageHistoryDefault:  40,
-		LogLevel:                  "info",
-		TelemetryEnabled:          false,
+		DefaultProvider:                  "openai",
+		DefaultModel:                     "gpt-4o",
+		MaxIterationsDefault:             15,
+		MaxConsecutiveFailDefault:        3,
+		MaxTokensPerTaskDefault:          100000,
+		ToolTimeoutSecondsDefault:        30,
+		MaxMessageHistoryDefault:         40,
+		LogLevel:                         "info",
+		TelemetryEnabled:                 false,
+		DisablePromptOptimizationDefault: false,
 	}
 }
 
@@ -318,19 +322,20 @@ func SaveWorkspaceConfig(workspacePath string, cfg *WorkspaceConfig) error {
 func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *ResolvedConfig {
 	resolved := &ResolvedConfig{
 		// Base: defaults globais
-		Provider:           global.DefaultProvider,
-		Model:              global.DefaultModel,
-		MaxIterations:      global.MaxIterationsDefault,
-		MaxConsecutiveFail: global.MaxConsecutiveFailDefault,
-		MaxTokensPerTask:   global.MaxTokensPerTaskDefault,
-		ToolTimeoutSeconds: global.ToolTimeoutSecondsDefault,
-		MaxMessageHistory:  global.MaxMessageHistoryDefault,
-		LogLevel:           global.LogLevel,
-		PermissionMode:     "scoped",
-		WorkspaceJail:      true,
-		AutoVerify:         true,
-		AutoSelfCheck:      true,
-		BrowserHeadless:    true, // por padrão roda de fundo
+		Provider:                  global.DefaultProvider,
+		Model:                     global.DefaultModel,
+		MaxIterations:             global.MaxIterationsDefault,
+		MaxConsecutiveFail:        global.MaxConsecutiveFailDefault,
+		MaxTokensPerTask:          global.MaxTokensPerTaskDefault,
+		ToolTimeoutSeconds:        global.ToolTimeoutSecondsDefault,
+		MaxMessageHistory:         global.MaxMessageHistoryDefault,
+		LogLevel:                  global.LogLevel,
+		PermissionMode:            "scoped",
+		WorkspaceJail:             true,
+		AutoVerify:                true,
+		AutoSelfCheck:             true,
+		BrowserHeadless:           true, // por padrão roda de fundo
+		DisablePromptOptimization: global.DisablePromptOptimizationDefault,
 	}
 
 	// Camada 2: Workspace overrides
@@ -366,6 +371,9 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 		resolved.BlockedCommands = workspace.BlockedCommands
 		if workspace.BrowserHeadless != nil {
 			resolved.BrowserHeadless = *workspace.BrowserHeadless
+		}
+		if workspace.DisablePromptOptimization != nil {
+			resolved.DisablePromptOptimization = *workspace.DisablePromptOptimization
 		}
 	}
 

@@ -33,6 +33,9 @@ type daemonAPIEventHandler struct {
 	onFinished    func()
 	lastStatus    string
 	autoApprove   bool
+	pendingAction string
+	pendingTarget string
+	mu            sync.Mutex
 }
 
 func (h *daemonAPIEventHandler) OnStatusChange(status string) {
@@ -74,11 +77,16 @@ func (h *daemonAPIEventHandler) OnMessage(role string, content string) {
 	})
 }
 
-func (h *daemonAPIEventHandler) AskPermission(action, target string) (bool, bool) {
+func (h *daemonAPIEventHandler) AskPermission(ctx context.Context, action, target string) (bool, bool) {
 	if h.autoApprove {
 		log.Printf("[daemonAPIEventHandler] Auto-approving permission check for action: %s - %s", action, target)
 		return true, false
 	}
+
+	h.mu.Lock()
+	h.pendingAction = action
+	h.pendingTarget = target
+	h.mu.Unlock()
 
 	payload, _ := json.Marshal(map[string]string{
 		"type":   "ask_permission",
@@ -92,8 +100,20 @@ func (h *daemonAPIEventHandler) AskPermission(action, target string) (bool, bool
 		Data:    payload,
 	})
 
-	res := <-h.permRespChan
-	return res.approved, res.remember
+	select {
+	case <-ctx.Done():
+		h.mu.Lock()
+		h.pendingAction = ""
+		h.pendingTarget = ""
+		h.mu.Unlock()
+		return false, false
+	case res := <-h.permRespChan:
+		h.mu.Lock()
+		h.pendingAction = ""
+		h.pendingTarget = ""
+		h.mu.Unlock()
+		return res.approved, res.remember
+	}
 }
 
 func (h *daemonAPIEventHandler) OnEvent(event loop.AgentEvent) {

@@ -12,14 +12,14 @@ CROM_BIN="$TESTS_DIR/.bin/crom-agente"
 # Redireciona o HOME para uma pasta local de testes para isolar as execuções.
 # Isso força o agente a executar em modo standalone (sem usar o daemon ativo do usuário)
 # e evita efeitos colaterais no HOME real do usuário.
-REAL_HOME="$HOME"
+REAL_HOME="${REAL_HOME:-$HOME}"
 export HOME="$TESTS_DIR/.home"
 mkdir -p "$HOME/.crom"
 
-if [[ -f "$REAL_HOME/.crom/.env" ]]; then
+if [[ -f "$REAL_HOME/.crom/.env" && "$(realpath "$REAL_HOME/.crom/.env")" != "$(realpath "$HOME/.crom/.env")" ]]; then
     cp "$REAL_HOME/.crom/.env" "$HOME/.crom/.env"
 fi
-if [[ -f "$REAL_HOME/.crom/global.json" ]]; then
+if [[ -f "$REAL_HOME/.crom/global.json" && "$(realpath "$REAL_HOME/.crom/global.json")" != "$(realpath "$HOME/.crom/global.json")" ]]; then
     cp "$REAL_HOME/.crom/global.json" "$HOME/.crom/global.json"
 fi
 

@@ -1,6 +1,7 @@
 package permission
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,7 +11,7 @@ func TestPermissionManager_TotalAccess(t *testing.T) {
 	ws := t.TempDir()
 	pm := NewPermissionManager(ws, "total_access", nil)
 
-	approved, err := pm.Authorize("command", "rm -rf /")
+	approved, err := pm.Authorize(context.Background(), "command", "rm -rf /")
 	if err != nil {
 		t.Fatalf("erro ao autorizar: %v", err)
 	}
@@ -22,7 +23,7 @@ func TestPermissionManager_TotalAccess(t *testing.T) {
 func TestPermissionManager_AskEveryTime(t *testing.T) {
 	ws := t.TempDir()
 	called := false
-	pm := NewPermissionManager(ws, "ask_every_time", func(action, target string) (bool, bool) {
+	pm := NewPermissionManager(ws, "ask_every_time", func(ctx context.Context, action, target string) (bool, bool) {
 		called = true
 		if action == "command" && target == "git diff" {
 			return true, false
@@ -30,7 +31,7 @@ func TestPermissionManager_AskEveryTime(t *testing.T) {
 		return false, false
 	})
 
-	approved, err := pm.Authorize("command", "git diff")
+	approved, err := pm.Authorize(context.Background(), "command", "git diff")
 	if err != nil {
 		t.Fatalf("erro ao autorizar: %v", err)
 	}
@@ -40,7 +41,7 @@ func TestPermissionManager_AskEveryTime(t *testing.T) {
 
 	// Tenta ação não aprovada
 	called = false
-	approved, _ = pm.Authorize("command", "git push")
+	approved, _ = pm.Authorize(context.Background(), "command", "git push")
 	if approved || !called {
 		t.Fatalf("esperava reprovação, chamada=%t", called)
 	}
@@ -51,12 +52,12 @@ func TestPermissionManager_Scoped_ApprovedAndRemember(t *testing.T) {
 
 	// 1. Primeira autorização com aprovação + remember
 	called := false
-	pm := NewPermissionManager(ws, "scoped", func(action, target string) (bool, bool) {
+	pm := NewPermissionManager(ws, "scoped", func(ctx context.Context, action, target string) (bool, bool) {
 		called = true
 		return true, true // aprova e manda salvar
 	})
 
-	approved, err := pm.Authorize("write_file", "/workspace/src/main.go")
+	approved, err := pm.Authorize(context.Background(), "write_file", "/workspace/src/main.go")
 	if err != nil {
 		t.Fatalf("erro ao autorizar: %v", err)
 	}
@@ -72,12 +73,12 @@ func TestPermissionManager_Scoped_ApprovedAndRemember(t *testing.T) {
 
 	// 2. Segunda autorização para a mesma ação (deve usar o cache de grants sem perguntar)
 	called = false
-	pm2 := NewPermissionManager(ws, "scoped", func(action, target string) (bool, bool) {
+	pm2 := NewPermissionManager(ws, "scoped", func(ctx context.Context, action, target string) (bool, bool) {
 		called = true
 		return false, false
 	})
 
-	approved, err = pm2.Authorize("write_file", "/workspace/src/main.go")
+	approved, err = pm2.Authorize(context.Background(), "write_file", "/workspace/src/main.go")
 	if err != nil {
 		t.Fatalf("erro ao autorizar no cache: %v", err)
 	}
@@ -99,33 +100,33 @@ func TestPermissionManager_Scoped_WildcardMatching(t *testing.T) {
 	_ = pm.saveGrantsLocked()
 
 	// 1. Testa match wildcard de comando
-	pm2 := NewPermissionManager(ws, "scoped", func(action, target string) (bool, bool) {
+	pm2 := NewPermissionManager(ws, "scoped", func(ctx context.Context, action, target string) (bool, bool) {
 		t.Fatal("não deveria ter chamado askFunc")
 		return false, false
 	})
 
-	approved, _ := pm2.Authorize("command", "git checkout main")
+	approved, _ := pm2.Authorize(context.Background(), "command", "git checkout main")
 	if !approved {
 		t.Fatal("esperado match com 'git *'")
 	}
 
 	// 2. Testa match de arquivo
-	approved, _ = pm2.Authorize("write_file", "/workspace/src/utils/file.go")
+	approved, _ = pm2.Authorize(context.Background(), "write_file", "/workspace/src/utils/file.go")
 	if !approved {
 		t.Fatal("esperado match com '/workspace/src/*'")
 	}
 
 	// 3. Testa match universal de leitura
-	approved, _ = pm2.Authorize("read_file", "/etc/passwd")
+	approved, _ = pm2.Authorize(context.Background(), "read_file", "/etc/passwd")
 	if !approved {
 		t.Fatal("esperado match com '*'")
 	}
 
 	// 4. Sem match
-	pm3 := NewPermissionManager(ws, "scoped", func(action, target string) (bool, bool) {
+	pm3 := NewPermissionManager(ws, "scoped", func(ctx context.Context, action, target string) (bool, bool) {
 		return true, false
 	})
-	approved, _ = pm3.Authorize("write_file", "/etc/passwd")
+	approved, _ = pm3.Authorize(context.Background(), "write_file", "/etc/passwd")
 	if !approved {
 		t.Fatal("esperada aprovação interativa após sem match")
 	}

@@ -331,7 +331,7 @@ var runCmd = &cobra.Command{
 		}
 
 		// 8. Inicializar o PermissionManager interativo
-		askFunc := func(action, target string) (bool, bool) {
+		askFunc := func(ctx context.Context, action, target string) (bool, bool) {
 			cmd.Printf("\n⚠️  [HITL] crom-agente solicita permissão para a ação [%s] no alvo: %q\n", action, target)
 			cmd.Print("👉 Pressione [a] para aprovar uma vez, [s] para sempre permitir, [r] para rejeitar: ")
 			var response string

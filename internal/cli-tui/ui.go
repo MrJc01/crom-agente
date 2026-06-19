@@ -193,7 +193,7 @@ func Start(opts Options) error {
 	al.RegisterTool(tools.NewTerminalCommandTool(opts.WorkspacePath, resolved.BlockedCommands))
 
 	// Configurar permission manager
-	askFunc := func(action, target string) (bool, bool) {
+	askFunc := func(ctx context.Context, action, target string) (bool, bool) {
 		model.spinner.Stop()
 		fmt.Printf("\n\033[33m⚠️  [HITL] crom-agente solicita permissão para a ação [%s] no alvo: %q\033[0m\n", action, target)
 		fmt.Print("👉 Pressione \033[1;32m[a]\033[0m para aprovar uma vez, \033[1;36m[s]\033[0m para sempre permitir, \033[1;31m[r]\033[0m para rejeitar: ")

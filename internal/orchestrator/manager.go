@@ -250,7 +250,7 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 	agentCtx, cancel := context.WithCancel(ctx)
 
 	// 7. Inicializa o PermissionManager
-	askFunc := func(action, target string) (bool, bool) {
+	askFunc := func(ctx context.Context, action, target string) (bool, bool) {
 		fmt.Printf("\n⚠️  [HITL Multi-Agente] Solicitação de permissão: [%s] no alvo: %q\n", action, target)
 		fmt.Print("👉 Pressione [a] para aprovar uma vez, [s] para sempre permitir, [r] para rejeitar: ")
 		var response string
@@ -265,9 +265,15 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 		return false, false
 	}
 	if pr, ok := handler.(interface {
-		AskPermission(action, target string) (bool, bool)
+		AskPermission(ctx context.Context, action, target string) (bool, bool)
 	}); ok {
 		askFunc = pr.AskPermission
+	} else if pr, ok := handler.(interface {
+		AskPermission(action, target string) (bool, bool)
+	}); ok {
+		askFunc = func(ctx context.Context, action, target string) (bool, bool) {
+			return pr.AskPermission(action, target)
+		}
 	}
 	pm := permission.NewPermissionManager(target.Path, resolved.PermissionMode, askFunc)
 

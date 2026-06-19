@@ -1,0 +1,77 @@
+[
+  {
+    "test": 1,
+    "name": "CLI Help & Version Info",
+    "status": "PASS"
+  },
+  {
+    "test": 2,
+    "name": "CLI State Inspection",
+    "status": "PASS"
+  },
+  {
+    "test": 3,
+    "name": "File Creation (write_file)",
+    "status": "PASS"
+  },
+  {
+    "test": 4,
+    "name": "File Reading (read_file)",
+    "status": "PASS"
+  },
+  {
+    "test": 5,
+    "name": "Diff Replacement (diff_replace)",
+    "status": "PASS"
+  },
+  {
+    "test": 6,
+    "name": "File Deletion (delete_file)",
+    "status": "PASS"
+  },
+  {
+    "test": 7,
+    "name": "Directory Tree Scan (tree)",
+    "status": "PASS"
+  },
+  {
+    "test": 8,
+    "name": "Content Search (grep_search)",
+    "status": "PASS"
+  },
+  {
+    "test": 9,
+    "name": "Git Init & Status (git_status)",
+    "status": "PASS"
+  },
+  {
+    "test": 10,
+    "name": "Git Commit (git_add / git_commit)",
+    "status": "PASS"
+  },
+  {
+    "test": 11,
+    "name": "Git Branching (git_branch)",
+    "status": "PASS"
+  },
+  {
+    "test": 12,
+    "name": "HTTP Client requests (http_client)",
+    "status": "PASS"
+  },
+  {
+    "test": 13,
+    "name": "Page Scraping (scraper)",
+    "status": "PASS"
+  },
+  {
+    "test": 14,
+    "name": "Browser Automation (browser_action)",
+    "status": "PASS"
+  },
+  {
+    "test": 15,
+    "name": "Coding Helper (complexity_reducer)",
+    "status": "PASS"
+  }
+]

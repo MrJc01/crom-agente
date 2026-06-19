@@ -37,12 +37,12 @@ type AgenticLoop struct {
 	handler           EventHandler
 	config            *config.ResolvedConfig
 	permissionManager interface {
-		Authorize(action, target string) (bool, error)
+		Authorize(ctx context.Context, action, target string) (bool, error)
 	}
 }
 
 func (al *AgenticLoop) SetPermissionManager(pm interface {
-	Authorize(action, target string) (bool, error)
+	Authorize(ctx context.Context, action, target string) (bool, error)
 }) {
 	al.permissionManager = pm
 }
@@ -60,12 +60,13 @@ func New(provider llm.Provider, sm *state.StateManager, handler EventHandler, cf
 	} else {
 		// Defaults hardcoded para backward compatibility
 		resolvedCfg = &config.ResolvedConfig{
-			MaxIterations:      15,
-			MaxConsecutiveFail: 3,
-			ToolTimeoutSeconds: 30,
-			MaxMessageHistory:  40,
-			AutoVerify:         true,
-			PermissionMode:     "scoped",
+			MaxIterations:             15,
+			MaxConsecutiveFail:        3,
+			ToolTimeoutSeconds:        30,
+			MaxMessageHistory:         40,
+			AutoVerify:                true,
+			PermissionMode:            "scoped",
+			DisablePromptOptimization: true, // Disables by default in tests that don't pass a custom config!
 		}
 	}
 
@@ -119,6 +120,17 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 	}
 
 	if len(messages) == 0 {
+		if al.config == nil || !al.config.DisablePromptOptimization {
+			// Otimização do prompt inicial via camada agêntica
+			optimized, err := al.OptimizePrompt(ctx, intent)
+			if err == nil && optimized != "" {
+				al.handler.OnMessage("system", fmt.Sprintf("🔮 Prompt otimizado pelo Agente:\n%s", optimized))
+				intent = optimized
+				if al.stateManager != nil {
+					_ = al.stateManager.SetActiveTask(intent)
+				}
+			}
+		}
 		messages = []llm.Message{
 			{Role: "user", Content: intent},
 		}
@@ -569,7 +581,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 					al.renderDiffZone(tc.Function.Arguments, toolID, workspaceDir)
 				}
 
-				approved, authErr := al.permissionManager.Authorize(toolID, target)
+				approved, authErr := al.permissionManager.Authorize(ctx, toolID, target)
 				if authErr != nil || !approved {
 					errMsg := fmt.Sprintf("Ação '%s' rejeitada pelo usuário ou pelas políticas de segurança.", toolID)
 					al.handler.OnMessage("system", errMsg)
@@ -795,5 +807,42 @@ func compactMessages(messages []llm.Message) []llm.Message {
 	log.Printf("[AgenticLoop] Compactou histórico de %d para %d mensagens", len(messages), len(compacted))
 	return compacted
 }
+
+const optimizerSystemPrompt = `Você é um Engenheiro de Prompt Especialista e Arquiteto de Software.
+Sua tarefa é analisar a instrução/prompt enviado pelo usuário e reescrevê-lo para torná-lo um prompt otimizado, detalhado, claro e extremamente eficaz para um agente autônomo de IA (como você mesmo).
+
+Ao otimizar a instrução:
+1. Extraia o objetivo principal de forma explícita.
+2. Identifique requisitos implícitos necessários para o sucesso (arquitetura limpa, boas práticas, segurança, tratamento de erros).
+3. Adicione contexto relevante de stack técnica ou diretrizes de qualidade do código.
+4. Defina critérios claros de aceitação/verificação.
+5. Remova ambiguidades ou termos vagos.
+6. O seu retorno deve ser APENAS o novo prompt otimizado, sem introduções, comentários ou explicações (retorne diretamente o texto do prompt otimizado pronto para ser executado).`
+
+// OptimizePrompt executa uma chamada de LLM para refinar e enriquecer o prompt do usuário antes do loop ReAct
+func (al *AgenticLoop) OptimizePrompt(ctx context.Context, rawPrompt string) (string, error) {
+	// Se o prompt for muito curto ou for um comando simples/TUI slash command, não otimiza
+	if len(rawPrompt) < 5 || strings.HasPrefix(rawPrompt, "/") {
+		return rawPrompt, nil
+	}
+
+	messages := []llm.Message{
+		{Role: "system", Content: optimizerSystemPrompt},
+		{Role: "user", Content: fmt.Sprintf("Prompt original do usuário: %q\n\nPor favor, retorne o prompt otimizado de forma direta:", rawPrompt)},
+	}
+
+	resp, err := al.provider.SendMessages(ctx, messages, llm.RequestOptions{})
+	if err != nil {
+		return "", err
+	}
+
+	optimized := strings.TrimSpace(resp.Message.Content)
+	if optimized == "" {
+		return "", fmt.Errorf("resposta de otimização em branco")
+	}
+
+	return optimized, nil
+}
+
 
 

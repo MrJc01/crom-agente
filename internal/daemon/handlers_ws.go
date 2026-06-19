@@ -70,6 +70,23 @@ func (s *APIServer) handleWS(w http.ResponseWriter, r *http.Request) {
 						Stream:  h.lastStatus != "finished" && h.lastStatus != "idle" && !strings.HasPrefix(h.lastStatus, "error:"),
 						Data:    statusPayload,
 					})
+
+					h.mu.Lock()
+					pendingAct := h.pendingAction
+					pendingTgt := h.pendingTarget
+					h.mu.Unlock()
+					if pendingAct != "" {
+						permPayload, _ := json.Marshal(map[string]string{
+							"type":   "ask_permission",
+							"action": pendingAct,
+							"target": pendingTgt,
+						})
+						_ = conn.WriteJSON(IPCResponse{
+							Success: true,
+							Stream:  true,
+							Data:    permPayload,
+						})
+					}
 				} else {
 					// Se não houver agente rodando ativo, sincroniza o cliente para 'idle'
 					statusPayload, _ := json.Marshal(map[string]string{

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/llm"
 	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/tools"
@@ -517,6 +518,43 @@ func TestAgenticLoop_ScreenshotFallback(t *testing.T) {
 	}
 	if !strings.Contains(receivedArgs, `"path":"my_screenshot.png"`) {
 		t.Errorf("esperava path preservado, obteve: %s", receivedArgs)
+	}
+}
+
+func TestAgenticLoop_PromptOptimization(t *testing.T) {
+	provider := llm.NewMockProvider(
+		// 1ª chamada: Otimização do prompt
+		llm.MockTextResponse("PROMPT OTIMIZADO: crie uma API REST Go com cobertura de testes", 50),
+		// 2ª chamada: Resposta do ReAct loop
+		llm.MockTextResponse("Olá! Processando o prompt otimizado.", 100),
+	)
+	sm := state.NewStateManager(t.TempDir())
+	handler := &testEventHandler{}
+
+	al := New(provider, sm, handler, &config.ResolvedConfig{
+		MaxIterations:             15,
+		MaxConsecutiveFail:        3,
+		ToolTimeoutSeconds:        30,
+		MaxMessageHistory:         40,
+		AutoVerify:                true,
+		PermissionMode:            "scoped",
+		DisablePromptOptimization: false,
+	})
+	err := al.Execute(context.Background(), "Crie api go")
+	if err != nil {
+		t.Fatalf("esperado sucesso, obteve erro: %v", err)
+	}
+
+	// O prompt original deve ter sido substituído pelo otimizado
+	messages := sm.GetMessages()
+	if len(messages) < 2 {
+		t.Fatalf("esperado histórico de mensagens contendo o prompt otimizado, obteve tamanho %d", len(messages))
+	}
+
+	// A primeira mensagem (user) deve ser o prompt otimizado
+	firstMsg := messages[0]
+	if firstMsg.Role != "user" || !strings.Contains(firstMsg.Content, "PROMPT OTIMIZADO") {
+		t.Errorf("esperado prompt otimizado na primeira mensagem, obteve: %v", firstMsg)
 	}
 }
 

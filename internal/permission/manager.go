@@ -1,6 +1,7 @@
 package permission
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -36,11 +37,11 @@ type PermissionManager struct {
 	mode           PermissionMode
 	grants         []Grant
 	grantsFilePath string
-	askFunc        func(action, target string) (bool, bool) // (approved, remember)
+	askFunc        func(ctx context.Context, action, target string) (bool, bool) // (approved, remember)
 }
 
 // NewPermissionManager cria um novo gerenciador de permissões
-func NewPermissionManager(workspacePath string, mode string, askFunc func(action, target string) (bool, bool)) *PermissionManager {
+func NewPermissionManager(workspacePath string, mode string, askFunc func(ctx context.Context, action, target string) (bool, bool)) *PermissionManager {
 	pmMode := ModeScoped
 	switch mode {
 	case "total_access":
@@ -91,7 +92,7 @@ func (pm *PermissionManager) saveGrantsLocked() error {
 }
 
 // Authorize verifica se a ação solicitada é permitida, consultando o usuário ou arquivo de grants se necessário
-func (pm *PermissionManager) Authorize(action, target string) (bool, error) {
+func (pm *PermissionManager) Authorize(ctx context.Context, action, target string) (bool, error) {
 	if pm.mode == ModeTotalAccess {
 		return true, nil
 	}
@@ -113,7 +114,7 @@ func (pm *PermissionManager) Authorize(action, target string) (bool, error) {
 		if pm.askFunc == nil {
 			return false, fmt.Errorf("interação com usuário desabilitada (askFunc é nil)")
 		}
-		approved, _ := pm.askFunc(action, target)
+		approved, _ := pm.askFunc(ctx, action, target)
 		return approved, nil
 	}
 
@@ -122,7 +123,7 @@ func (pm *PermissionManager) Authorize(action, target string) (bool, error) {
 		return false, fmt.Errorf("interação com usuário desabilitada (askFunc é nil)")
 	}
 
-	approved, remember := pm.askFunc(action, target)
+	approved, remember := pm.askFunc(ctx, action, target)
 	if approved && remember {
 		pm.grants = append(pm.grants, Grant{Action: action, Target: target})
 		_ = pm.saveGrantsLocked()
