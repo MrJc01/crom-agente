@@ -243,8 +243,8 @@ func (b *BrowserSubagentTool) Execute(ctx context.Context, args json.RawMessage)
 				sr.Message = fmt.Sprintf("falha ao obter HTML: %v", err)
 			} else {
 				// Trunca para não inflar o relatório
-				if len(html) > 2000 {
-					html = html[:2000] + "...[truncado]"
+				if len(html) > 500000 {
+					html = html[:500000] + "...[truncado]"
 				}
 				sr.Success = true
 				sr.Message = "HTML obtido:\n" + html
