@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -1410,7 +1411,7 @@ body {
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(newHTML))
+		w.Write([]byte(cleanHTMLIntegrity(newHTML)))
 		return
 	}
 
@@ -1482,11 +1483,22 @@ body {
 				newHTML = baseTag + "\n" + htmlStr
 			}
 		}
-		w.Write([]byte(newHTML))
+		w.Write([]byte(cleanHTMLIntegrity(newHTML)))
 	} else {
 		// Copiar dados binários ou outro tipo de resposta diretamente
 		_, _ = io.Copy(w, resp.Body)
 	}
+}
+
+var (
+	integrityRegex   = regexp.MustCompile(`(?i)\s+integrity\s*=\s*["'][^"']*["']`)
+	crossoriginRegex = regexp.MustCompile(`(?i)\s+crossorigin\s*=\s*["'][^"']*["']`)
+)
+
+func cleanHTMLIntegrity(html string) string {
+	html = integrityRegex.ReplaceAllString(html, "")
+	html = crossoriginRegex.ReplaceAllString(html, "")
+	return html
 }
 
 
