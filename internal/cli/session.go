@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/crom/crom-agente/internal/state"
 	"github.com/spf13/cobra"
@@ -36,11 +35,7 @@ var sessionListCmd = &cobra.Command{
 		count := 0
 		for _, entry := range entries {
 			if entry.IsDir() {
-				continue
-			}
-			name := entry.Name()
-			if strings.HasSuffix(name, ".json") {
-				cmd.Printf("  - %s\n", strings.TrimSuffix(name, ".json"))
+				cmd.Printf("  - %s\n", entry.Name())
 				count++
 			}
 		}
@@ -73,11 +68,18 @@ var sessionDeleteCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
-		sessionFile := filepath.Join(storagePath, "sessions", name+".json")
-		if err := os.Remove(sessionFile); err != nil {
+		sessionDir := filepath.Join(storagePath, "sessions", name)
+		info, err := os.Stat(sessionDir)
+		if err != nil {
 			if os.IsNotExist(err) {
 				return fmt.Errorf("sessão '%s' não encontrada", name)
 			}
+			return err
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("sessão '%s' não encontrada", name)
+		}
+		if err := os.RemoveAll(sessionDir); err != nil {
 			return err
 		}
 		cmd.Printf("✓ Sessão '%s' excluída com sucesso.\n", name)

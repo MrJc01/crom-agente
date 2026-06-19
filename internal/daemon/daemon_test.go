@@ -207,6 +207,7 @@ func TestDaemon_Autostart(t *testing.T) {
 func TestAPIServer_HealthAndStatus(t *testing.T) {
 	tempHome := t.TempDir()
 	t.Setenv("HOME", tempHome)
+	t.Setenv("CROM_ENABLE_AUTH", "true")
 
 	gDir, _ := config.GlobalDir()
 	_ = os.MkdirAll(gDir, 0755)
@@ -276,6 +277,7 @@ func TestAPIServer_HealthAndStatus(t *testing.T) {
 func TestAPIServer_WebSocket(t *testing.T) {
 	tempHome := t.TempDir()
 	t.Setenv("HOME", tempHome)
+	t.Setenv("CROM_ENABLE_AUTH", "true")
 
 	gDir, _ := config.GlobalDir()
 	_ = os.MkdirAll(gDir, 0755)
@@ -338,6 +340,7 @@ func TestAPIServer_WebSocket(t *testing.T) {
 func TestAPIServer_TokenAuthentication(t *testing.T) {
 	tempHome := t.TempDir()
 	t.Setenv("HOME", tempHome)
+	t.Setenv("CROM_ENABLE_AUTH", "true")
 
 	gDir, _ := config.GlobalDir()
 	_ = os.MkdirAll(gDir, 0755)
@@ -431,6 +434,7 @@ func TestAPIServer_TokenAuthentication(t *testing.T) {
 func TestGRPCServer_TokenAuthentication(t *testing.T) {
 	tempHome := t.TempDir()
 	t.Setenv("HOME", tempHome)
+	t.Setenv("CROM_ENABLE_AUTH", "true")
 
 	gDir, _ := config.GlobalDir()
 	_ = os.MkdirAll(gDir, 0755)
@@ -508,6 +512,7 @@ func TestGRPCServer_TokenAuthentication(t *testing.T) {
 func TestAPIServer_MultipleWebSocketsConcurrency(t *testing.T) {
 	tempHome := t.TempDir()
 	t.Setenv("HOME", tempHome)
+	t.Setenv("CROM_ENABLE_AUTH", "true")
 
 	gDir, _ := config.GlobalDir()
 	_ = os.MkdirAll(gDir, 0755)

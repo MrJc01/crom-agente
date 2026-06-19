@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/llm"
 	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/tools"
@@ -87,10 +86,8 @@ func TestAgenticLoop_ToolCallSuccess(t *testing.T) {
 	provider := llm.NewMockProvider(
 		// 1ª: LLM pede read_file
 		llm.MockToolCallResponse("read_file", `{"path":"/tmp/test.txt"}`, 200),
-		// 2ª: LLM responde com texto (entra em fase de verificação)
+		// 2ª: LLM responde com texto
 		llm.MockTextResponse("Arquivo lido com sucesso.", 150),
-		// 3ª: Fase de verificação concluída
-		llm.MockTextResponse("Verificação ok.", 50),
 	)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
@@ -108,8 +105,8 @@ func TestAgenticLoop_ToolCallSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("esperado sucesso, obteve erro: %v", err)
 	}
-	if provider.TotalCalls() != 3 {
-		t.Fatalf("esperado 3 chamadas ao LLM (tool+verify+final), obteve %d", provider.TotalCalls())
+	if provider.TotalCalls() != 2 {
+		t.Fatalf("esperado 2 chamadas ao LLM (tool+final), obteve %d", provider.TotalCalls())
 	}
 }
 
@@ -117,10 +114,8 @@ func TestAgenticLoop_ToolCallFailure(t *testing.T) {
 	provider := llm.NewMockProvider(
 		// 1ª: LLM pede read_file
 		llm.MockToolCallResponse("read_file", `{"path":"/nope"}`, 200),
-		// 2ª: LLM responde com texto (entra em verificação)
+		// 2ª: LLM responde com texto
 		llm.MockTextResponse("O arquivo não foi encontrado.", 100),
-		// 3ª: Fase de verificação
-		llm.MockTextResponse("Nada mais a fazer.", 50),
 	)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
@@ -144,10 +139,8 @@ func TestAgenticLoop_ToolNotFound(t *testing.T) {
 	provider := llm.NewMockProvider(
 		// LLM pede ferramenta inexistente
 		llm.MockToolCallResponse("delete_universe", `{}`, 200),
-		// LLM reconhece o erro (entra em verificação pois tool foi executada)
+		// LLM reconhece o erro
 		llm.MockTextResponse("Ok, ferramenta não disponível.", 50),
-		// Fase de verificação
-		llm.MockTextResponse("Nada mais a fazer.", 30),
 	)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
@@ -194,62 +187,7 @@ func TestAgenticLoop_EmptyResponseAutoCorrection(t *testing.T) {
 	}
 }
 
-func TestAgenticLoop_LeakedToolCallAutoCorrection(t *testing.T) {
-	provider := llm.NewMockProvider(
-		// 1ª: LLM vaza tool call no texto
-		llm.MockTextResponse(`Vou usar write_file para criar o arquivo {"name":"test"}`, 100),
-		// 2ª: LLM corrige e faz texto normal
-		llm.MockTextResponse("Desculpe, tarefa concluída sem necessidade de edição.", 80),
-	)
-	sm := state.NewStateManager(t.TempDir())
-	handler := &testEventHandler{}
 
-	al := New(provider, sm, handler)
-	err := al.Execute(context.Background(), "Crie um arquivo")
-
-	if err != nil {
-		t.Fatalf("esperado sucesso, obteve erro: %v", err)
-	}
-	if provider.TotalCalls() != 2 {
-		t.Fatalf("esperado 2 chamadas (1 autocorreção + 1 final), obteve %d", provider.TotalCalls())
-	}
-}
-
-func TestAgenticLoop_VerificationPhase(t *testing.T) {
-	provider := llm.NewMockProvider(
-		// 1ª: LLM pede write_file
-		llm.MockToolCallResponse("write_file", `{"path":"/tmp/a.go","content":"package main"}`, 300),
-		// 2ª: LLM responde com texto (achou que terminou) → deve entrar em verificação
-		llm.MockTextResponse("Arquivo criado com sucesso.", 100),
-		// 3ª: LLM executa verificação e confirma
-		llm.MockTextResponse("Verificação completa. Tudo certo.", 80),
-	)
-	sm := state.NewStateManager(t.TempDir())
-	handler := &testEventHandler{}
-
-	al := New(provider, sm, handler)
-	al.RegisterTool(&mockTool{id: "write_file", description: "Escreve arquivo"})
-
-	err := al.Execute(context.Background(), "Crie o arquivo a.go")
-	if err != nil {
-		t.Fatalf("esperado sucesso, obteve erro: %v", err)
-	}
-	if provider.TotalCalls() != 3 {
-		t.Fatalf("esperado 3 chamadas (tool + texto + verificação), obteve %d", provider.TotalCalls())
-	}
-
-	// Verificar que entrou na fase de verificação
-	found := false
-	for _, m := range handler.Messages {
-		if strings.Contains(m.Content, "verificação") || strings.Contains(m.Content, "Verificação") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatal("esperado mensagem sobre fase de verificação nos eventos")
-	}
-}
 
 func TestAgenticLoop_RepetitiveLoopDetection(t *testing.T) {
 	// Cenário: LLM fica chamando a mesma tool com os mesmos args repetidamente.
@@ -262,8 +200,6 @@ func TestAgenticLoop_RepetitiveLoopDetection(t *testing.T) {
 		llm.MockToolCallResponse("read_file", `{"path":"/tmp/a.txt"}`, 50),
 		// Iteração 4: finalmente responde com texto (após loop warning injetado)
 		llm.MockTextResponse("Ok, mudei de estratégia.", 50),
-		// Iteração 5: verificação
-		llm.MockTextResponse("Verificação ok.", 50),
 	)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
@@ -421,54 +357,7 @@ func TestDetectRepetitiveLoop(t *testing.T) {
 	}
 }
 
-func TestAgenticLoop_ToolUsageAutoCorrection(t *testing.T) {
-	provider := llm.NewMockProvider(
-		// 1ª resposta do LLM: finge que concluiu escrevendo em markdown e marcando concluído
-		llm.MockTextResponse("- [x] Criar arquivo index.php\n\n```php\n<?php echo 'hello'; ?>\n```\nConcluí!", 100),
-		// 2ª resposta: após correção do sistema, o LLM chama a ferramenta write_file
-		llm.MockToolCallResponse("write_file", `{"path":"index.php","content":"<?php echo 'hello'; ?>"}`, 200),
-		// 3ª resposta: resposta para a fase de verificação
-		llm.MockTextResponse("Tudo funcionando.", 100),
-		// 4ª resposta: confirmação final
-		llm.MockTextResponse("Tudo pronto.", 80),
-	)
-	sm := state.NewStateManager(t.TempDir())
-	handler := &testEventHandler{}
 
-	resolvedCfg := &config.ResolvedConfig{
-		MaxIterations:      15,
-		MaxConsecutiveFail: 3,
-		ToolTimeoutSeconds: 30,
-		MaxMessageHistory:  40,
-		AutoVerify:         false,
-		AutoSelfCheck:      false,
-	}
-
-	al := New(provider, sm, handler, resolvedCfg)
-	al.RegisterTool(&mockTool{id: "write_file", description: "Escreve arquivo"})
-
-	err := al.Execute(context.Background(), "Criar arquivo php")
-	if err != nil {
-		t.Fatalf("esperado sucesso, obteve erro: %v", err)
-	}
-
-	// Esperamos 4 chamadas ao LLM (tentativa de markdown -> correção -> tool call -> verificação -> final)
-	if provider.TotalCalls() != 4 {
-		t.Fatalf("esperado 4 chamadas, obteve %d", provider.TotalCalls())
-	}
-
-	// Verificar se a mensagem de correção do sistema foi enviada para o histórico do assistente
-	foundCorrection := false
-	for _, msg := range sm.GetMessages() {
-		if strings.Contains(msg.Content, "[SYSTEM TOOL USAGE REQUIRED]") {
-			foundCorrection = true
-			break
-		}
-	}
-	if !foundCorrection {
-		t.Fatal("esperada mensagem de correção [SYSTEM TOOL USAGE REQUIRED] no histórico de mensagens")
-	}
-}
 
 func TestAgenticLoop_AgenticIdentityInjection(t *testing.T) {
 	provider := llm.NewMockProvider(

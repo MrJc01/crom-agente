@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 
+	"time"
+
 	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/llm"
 	"github.com/crom/crom-agente/internal/loop"
@@ -233,12 +235,10 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 
 	// 5. Instancia StateManager
 	storageDir := filepath.Join(target.Path, ".crom")
-	var sm *state.StateManager
-	if sessionName != "" {
-		sm = state.NewSessionStateManager(storageDir, sessionName)
-	} else {
-		sm = state.NewStateManager(storageDir)
+	if sessionName == "" {
+		sessionName = fmt.Sprintf("session-%d", time.Now().UnixNano())
 	}
+	sm := state.NewSessionStateManager(storageDir, sessionName)
 	if err := sm.LoadState(); err != nil {
 		return err
 	}

@@ -160,7 +160,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		// 3. Forçar Planejamento
 		messages = append(messages, llm.Message{
 			Role:    "system",
-			Content: "[SYSTEM PLANNING REQUIREMENT] Na sua primeira resposta, antes de executar qualquer ferramenta ou comando de terminal, você deve obrigatoriamente descrever e listar um plano de execução detalhado em formato de checklist markdown. Use o formato:\n- [ ] Nome da tarefa\n\nÀ medida que progredir, você deve atualizar o status das tarefas na sua resposta usando o mesmo formato:\n- [/] Tarefa em andamento\n- [x] Tarefa concluída\n\nVocê deve sempre incluir o plano de trabalho atualizado no início de seu conteúdo de texto (content) em todas as respostas (mesmo quando estiver chamando ferramentas) para que o usuário possa acompanhar o progresso de forma estruturada.",
+			Content: "[SYSTEM PLANNING REQUIREMENT] Se a tarefa solicitada pelo usuário for complexa ou envolver múltiplos passos, você deve descrever e listar um plano de execução detalhado em formato de checklist markdown no início de sua resposta. Use o formato:\n- [ ] Nome da tarefa\n\nÀ medida que progredir, atualize o status das tarefas:\n- [/] Tarefa em andamento\n- [x] Tarefa concluída\n\nVocê deve sempre incluir o plano de trabalho atualizado no início de seu conteúdo de texto (content) em todas as respostas (mesmo quando estiver chamando ferramentas) para que o usuário possa acompanhar o progresso de forma estruturada. Se a tarefa for simples (como uma saudação 'oi' ou conversa rápida), responda diretamente e de forma amigável sem criar um plano.",
 		})
 
 		// 3.5. Exigência de Uso de Ferramentas para Escrita de Arquivos (Evitar responder apenas com markdown)
@@ -178,15 +178,12 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			}
 			messages = append(messages, llm.Message{
 				Role:    "system",
-				Content: fmt.Sprintf("[SYSTEM SESSION ISOLATION] Qualquer arquivo de planejamento adicional (exceto o plan.md automático), scripts temporários, rascunhos de testes, checklists de tarefas (como task.md) ou artefatos gerados especificamente para esta sessão devem ser salvos OBRIGATORIAMENTE dentro do diretório desta sessão: %s/. Use este caminho para ler/escrever recursos relacionados ao contexto deste chat.", displayDir),
+				Content: fmt.Sprintf("[SYSTEM SESSION ISOLATION] Qualquer arquivo de planejamento adicional (exceto o plan.md automático), scripts temporários, rascunhos de testes, checklists de tarefas (como task.md) ou artefatos gerados especificamente para esta sessão devem ser salvos OBRigATORIAMENTE dentro do diretório desta sessão: %s/. Use este caminho para ler/escrever recursos relacionados ao contexto deste chat.", displayDir),
 			})
 		}
 		saveMsgs(messages)
 	}
 
-	hasExecutedTool := false
-	hasVerified := false
-	hasSelfChecked := false
 	consecutiveFailures := 0
 	timerScheduled := false
 
@@ -206,6 +203,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		default:
 		}
 
+		iterationHasFailure := false
 		al.handler.OnStatusChange("thinking")
 		al.handler.OnEvent(AgentEvent{
 			Timestamp: time.Now(),
@@ -305,8 +303,39 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			al.handler.OnMessage("assistant", msg.Content)
 		}
 
-		// Sem tool calls: verificar se devemos encerrar ou entrar em fase de verificação
-		if len(msg.ToolCalls) == 0 {
+		// Se a resposta for totalmente vazia (sem texto e sem tool calls), é uma falha
+		if msg.Content == "" && len(msg.ToolCalls) == 0 {
+			al.handler.OnMessage("system", "Resposta vazia do LLM. Solicitando resposta válida.")
+			al.handler.OnEvent(AgentEvent{
+				Timestamp: time.Now(),
+				Event:     "error",
+				Iteration: i + 1,
+				Data: map[string]interface{}{
+					"error": AgentError{
+						Code:    ErrLLMEmptyResponse,
+						Message: "O modelo retornou uma resposta em branco.",
+					},
+				},
+			})
+			messages = append(messages, llm.Message{
+				Role:    "system",
+				Content: "[SYSTEM CORRECTION] Você enviou uma resposta em branco. Por favor, responda com texto ou execute uma chamada de ferramenta válida.",
+			})
+			saveMsgs(messages)
+			iterationHasFailure = true
+			consecutiveFailures++
+			if consecutiveFailures >= al.config.MaxConsecutiveFail {
+				al.handler.OnMessage("system", fmt.Sprintf("Abortando: %d falhas consecutivas.", al.config.MaxConsecutiveFail))
+				al.handler.OnEvent(AgentEvent{
+					Timestamp: time.Now(),
+					Event:     "finished",
+					Iteration: i + 1,
+					Data: map[string]interface{}{"reason": "consecutive_failures", "total_iterations": i + 1},
+				})
+				return fmt.Errorf("abortando: %d falhas consecutivas", al.config.MaxConsecutiveFail)
+			}
+			continue
+		} else if len(msg.ToolCalls) == 0 {
 			if timerScheduled {
 				al.handler.OnMessage("system", "Timer agendado. Suspendendo execução do agente até o timer expirar.")
 				if al.stateManager != nil {
@@ -323,118 +352,8 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				return nil
 			}
 
-			// Resposta vazia: auto-correção
-			if msg.Content == "" {
-				al.handler.OnMessage("system", "Auto-correção: resposta vazia recebida.")
-				al.handler.OnEvent(AgentEvent{
-					Timestamp: time.Now(),
-					Event:     "error",
-					Iteration: i + 1,
-					Data: map[string]interface{}{
-						"error": AgentError{Code: ErrLLMEmptyResponse, Message: "Resposta vazia recebida do LLM"},
-					},
-				})
-				messages = append(messages, llm.Message{
-					Role:    "user",
-					Content: "[SYSTEM AUTO-CORRECTION] Sua resposta estava vazia. Forneça uma resposta textual ou execute uma ferramenta.",
-				})
-				saveMsgs(messages)
-				consecutiveFailures++
-				if consecutiveFailures >= al.config.MaxConsecutiveFail {
-					al.handler.OnEvent(AgentEvent{
-						Timestamp: time.Now(),
-						Event:     "finished",
-						Iteration: i + 1,
-						Data: map[string]interface{}{"reason": "consecutive_failures", "total_iterations": i + 1},
-					})
-					return fmt.Errorf("abortando: %d falhas consecutivas", consecutiveFailures)
-				}
-				continue
-			}
-
-			// Detectar tool call leaking no texto
-			if !hasExecutedTool && looksLikeLeakedToolCall(msg.Content) {
-				al.handler.OnMessage("system", "Auto-correção: tool call detectada no texto.")
-				messages = append(messages, llm.Message{
-					Role:    "user",
-					Content: "[SYSTEM AUTO-CORRECTION] Você escreveu texto parecido com uma chamada de ferramenta. Use a API nativa de function calling.",
-				})
-				saveMsgs(messages)
-				continue
-			}
-
-			// CORREÇÃO: Se nenhuma ferramenta foi executada e a resposta contém tarefas pendentes (plano),
-			// forçar o agente a começar a executar em vez de encerrar prematuramente.
-			if !hasExecutedTool && containsPendingPlan(msg.Content) {
-				al.handler.OnMessage("system", "Plano detectado sem execução. Forçando início da execução.")
-				messages = append(messages, llm.Message{
-					Role:    "system",
-					Content: "[SYSTEM EXECUTION REQUIRED] Você descreveu um plano com tarefas pendentes (- [ ]) mas NÃO executou nenhuma ferramenta. Pare de apenas descrever e COMECE A EXECUTAR AGORA usando as ferramentas disponíveis (write_file, terminal_command, etc.). Crie os arquivos, escreva o código e execute os comandos necessários. Não peça confirmação — execute o plano imediatamente.",
-				})
-				saveMsgs(messages)
-				continue
-			}
-
-			// CORREÇÃO: Se nenhuma ferramenta foi executada, mas o assistente marcou itens de escrita/criação como concluídos
-			// e apresentou blocos de código, alertar que as ferramentas físicas de escrita de arquivos devem ser chamadas.
-			if !hasExecutedTool && hasCodeBlocksAndCompletedPlan(msg.Content) {
-				al.handler.OnMessage("system", "Código detectado em markdown sem execução de ferramenta.")
-				messages = append(messages, llm.Message{
-					Role:    "system",
-					Content: "[SYSTEM TOOL USAGE REQUIRED] Você marcou tarefas de criação/modificação como concluídas e forneceu o código no chat, mas NÃO executou nenhuma ferramenta de escrita de arquivos (como write_file ou diff_replace). Lembre-se: blocos de código markdown no chat NÃO criam arquivos no disco do usuário. Você deve obrigatoriamente chamar a ferramenta apropriada para salvar o código nos arquivos correspondentes no disco antes de considerar a tarefa concluída.",
-				})
-				saveMsgs(messages)
-				continue
-			}
-
-			// Fase de verificação
-			if hasExecutedTool && !hasVerified {
-				hasVerified = true
-				al.handler.OnMessage("system", "Entrando na fase de verificação.")
-				messages = append(messages, llm.Message{
-					Role: "system",
-					Content: `Fase de Verificação:
-Analise as alterações que você fez. Tem certeza absoluta de que tudo está correto?
-Se houver testes ou comandos de compilação, execute-os agora para validar.
-Se encontrar erros, corrija-os antes de finalizar.`,
-				})
-				saveMsgs(messages)
-				continue
-			}
-
-			// Fase de auto-validação lógica antes de encerrar
-			if al.config.AutoVerify && !hasVerified && workspaceDir != "" {
-				if ok, errMsg := al.autoValidate(ctx, workspaceDir); !ok {
-					hasVerified = true // Para impedir loop infinito
-					al.handler.OnMessage("system", "Falha na auto-validação estática.")
-					messages = append(messages, llm.Message{
-						Role:    "user",
-						Content: errMsg,
-					})
-					saveMsgs(messages)
-					continue
-				}
-			}
-
-			// Auto-verificação final: comparar com o pedido original do usuário antes de encerrar
-			if al.config.AutoSelfCheck && !hasSelfChecked {
-				hasSelfChecked = true
-				userIntent := extractLastUserIntent(messages)
-				if userIntent != "" {
-					al.handler.OnMessage("system", "Auto-verificação: confirmando se a tarefa foi concluída.")
-					messages = append(messages, llm.Message{
-						Role: "system",
-						Content: fmt.Sprintf(`[SYSTEM SELF-CHECK] Antes de encerrar, verifique se você realmente completou o que o usuário pediu.
-O pedido original/último do usuário foi: %q
-Se você NÃO criou todos os arquivos necessários ou NÃO executou todos os passos, continue trabalhando agora usando as ferramentas.
-Se tudo foi realmente concluído, responda com um resumo final do que foi feito.`, userIntent),
-					})
-					saveMsgs(messages)
-					continue
-				}
-			}
-
-			// Loop encerrado normalmente
+			// Se não há chamadas de ferramentas, a tarefa foi concluída ou o agente respondeu textualmente ao usuário.
+			// Finaliza o loop ReAct normalmente.
 			if al.stateManager != nil {
 				_ = al.stateManager.SetStatus("idle")
 				_ = al.stateManager.AddLog(fmt.Sprintf("Tarefa concluída: %s", intent))
@@ -450,9 +369,8 @@ Se tudo foi realmente concluído, responda com um resumo final do que foi feito.
 		}
 
 		// Executar tool calls
-		iterationHasFailure := false
+		iterationHasFailure = false
 		for _, tc := range msg.ToolCalls {
-			hasExecutedTool = true
 			toolID := tc.Function.Name
 
 			tool, exists := al.tools[toolID]
@@ -729,17 +647,6 @@ func assistantSignature(msg llm.Message) string {
 	return sig
 }
 
-// looksLikeLeakedToolCall detecta se o LLM tentou gerar uma tool call no texto
-func looksLikeLeakedToolCall(content string) bool {
-	indicators := []string{`"name":`, `<call>`, `write_file`, `read_file`, `terminal_command`}
-	for _, indicator := range indicators {
-		if strings.Contains(content, indicator) {
-			return true
-		}
-	}
-	return false
-}
-
 // compactMessages aplica compactação simples removendo mensagens antigas se houver muitas
 func compactMessages(messages []llm.Message) []llm.Message {
 	const maxMessages = 40
@@ -757,58 +664,4 @@ func compactMessages(messages []llm.Message) []llm.Message {
 	return compacted
 }
 
-// containsPendingPlan verifica se o conteúdo da mensagem contém itens de checklist pendentes
-func containsPendingPlan(content string) bool {
-	lines := strings.Split(content, "\n")
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "- [ ]") || strings.HasPrefix(trimmed, "- [/]") {
-			return true
-		}
-	}
-	return false
-}
-
-// extractLastUserIntent retorna o conteúdo da última mensagem do usuário (não-system) para auto-verificação
-func extractLastUserIntent(messages []llm.Message) string {
-	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Role == "user" && !strings.HasPrefix(messages[i].Content, "[SYSTEM") {
-			return messages[i].Content
-		}
-	}
-	return ""
-}
-
-// hasCodeBlocksAndCompletedPlan verifica se a mensagem contém blocos de código e tarefas completas que deveriam ter usado ferramentas
-func hasCodeBlocksAndCompletedPlan(content string) bool {
-	if !strings.Contains(content, "```") {
-		return false
-	}
-	lines := strings.Split(content, "\n")
-	actionVerbs := []string{
-		"criar", "create", "implementar", "implement", "escrever", "write",
-		"salvar", "save", "adicionar", "add", "editar", "edit", "atualizar",
-		"update", "excluir", "delete", "remover", "remove", "gerar", "generate",
-		"crud", "setup", "configurar", "definir", "define",
-	}
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		isCompleted := false
-		var title string
-		if strings.HasPrefix(trimmed, "- [x]") || strings.HasPrefix(trimmed, "* [x]") ||
-			strings.HasPrefix(trimmed, "- [X]") || strings.HasPrefix(trimmed, "* [X]") {
-			isCompleted = true
-			title = strings.TrimSpace(trimmed[5:])
-		}
-		if isCompleted && title != "" {
-			titleLower := strings.ToLower(title)
-			for _, verb := range actionVerbs {
-				if strings.Contains(titleLower, verb) {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
 

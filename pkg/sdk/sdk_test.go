@@ -153,7 +153,7 @@ func TestSDK_Session(t *testing.T) {
 	}
 
 	// Verifica se a sessão correspondente foi salva
-	sessionFile := filepath.Join(wsDir, ".crom", "sessions", sessionName+".json")
+	sessionFile := filepath.Join(wsDir, ".crom", "sessions", sessionName, "session.json")
 	if _, err := os.Stat(sessionFile); os.IsNotExist(err) {
 		t.Fatalf("esperava arquivo de sessão criado em %s, mas não existe", sessionFile)
 	}
