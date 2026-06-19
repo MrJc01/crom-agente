@@ -55,6 +55,10 @@ func (c *ComputerControlTool) ParametersSchema() json.RawMessage {
 			"text": {
 				"type": "string",
 				"description": "Texto para digitar (para key_type) ou tecla para pressionar (ex: 'Return', 'space' para key_press)"
+			},
+			"path": {
+				"type": "string",
+				"description": "Caminho opcional do arquivo para salvar a captura de tela (ex: 'screenshot.png'). Se especificado, grava a imagem diretamente no disco no caminho informado."
 			}
 		},
 		"required": ["action"]
@@ -73,6 +77,7 @@ func (c *ComputerControlTool) Execute(ctx context.Context, args json.RawMessage)
 		X      int    `json:"x"`
 		Y      int    `json:"y"`
 		Text   string `json:"text"`
+		Path   string `json:"path"`
 	}
 
 	if err := json.Unmarshal(args, &params); err != nil {
@@ -81,7 +86,7 @@ func (c *ComputerControlTool) Execute(ctx context.Context, args json.RawMessage)
 
 	switch params.Action {
 	case "screenshot":
-		return c.takeScreenshot(ctx)
+		return c.takeScreenshot(ctx, params.Path)
 	case "mouse_move":
 		return c.mouseMove(ctx, params.X, params.Y)
 	case "mouse_click":
@@ -101,7 +106,7 @@ func (c *ComputerControlTool) Execute(ctx context.Context, args json.RawMessage)
 	}
 }
 
-func (c *ComputerControlTool) takeScreenshot(ctx context.Context) (Result, error) {
+func (c *ComputerControlTool) takeScreenshot(ctx context.Context, savePath string) (Result, error) {
 	tempFile := filepath.Join(os.TempDir(), "crom_screenshot.png")
 	defer os.Remove(tempFile)
 
@@ -147,6 +152,20 @@ func (c *ComputerControlTool) takeScreenshot(ctx context.Context) (Result, error
 	}
 
 	b64 := base64.StdEncoding.EncodeToString(imgBytes)
+	if savePath != "" {
+		targetFile, err := ValidatePath(c.workspacePath, savePath, false)
+		if err != nil {
+			return Result{Success: false, Error: fmt.Sprintf("caminho de destino inválido: %v", err)}, nil
+		}
+		if err := os.MkdirAll(filepath.Dir(targetFile), 0755); err != nil {
+			return Result{Success: false, Error: fmt.Sprintf("falha ao criar diretórios pai: %v", err)}, nil
+		}
+		if err := os.WriteFile(targetFile, imgBytes, 0644); err != nil {
+			return Result{Success: false, Error: fmt.Sprintf("falha ao salvar screenshot no disco: %v", err)}, nil
+		}
+		return Result{Success: true, Data: "image:base64:" + b64 + "\n✓ Screenshot salvo em: " + savePath}, nil
+	}
+
 	return Result{Success: true, Data: "image:base64:" + b64}, nil
 }
 

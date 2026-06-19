@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -61,6 +63,10 @@ func (b *BrowserTool) ParametersSchema() json.RawMessage {
 			"text": {
 				"type": "string",
 				"description": "Texto a ser digitado (obrigatório para action 'type')"
+			},
+			"path": {
+				"type": "string",
+				"description": "Caminho opcional do arquivo para salvar a captura de tela (ex: 'screenshot.png'). Se especificado, grava a imagem diretamente no disco no caminho informado."
 			}
 		},
 		"required": ["action"]
@@ -79,6 +85,10 @@ func (b *BrowserTool) getPage() (*rod.Page, error) {
 
 	if b.browser == nil {
 		l := launcher.New().Headless(b.headless)
+		l.Set("disable-gpu")
+		l.Set("no-sandbox")
+		l.Set("disable-setuid-sandbox")
+		l.Set("disable-dev-shm-usage")
 		
 		// Procura navegador no PATH padrão (Chrome, Chromium, Brave, Edge)
 		if path, found := launcher.LookPath(); found {
@@ -122,6 +132,7 @@ func (b *BrowserTool) Execute(ctx context.Context, args json.RawMessage) (Result
 		URL      string `json:"url"`
 		Selector string `json:"selector"`
 		Text     string `json:"text"`
+		Path     string `json:"path"`
 	}
 
 	if err := json.Unmarshal(args, &params); err != nil {
@@ -180,11 +191,32 @@ func (b *BrowserTool) Execute(ctx context.Context, args json.RawMessage) (Result
 		return Result{Success: true, Data: fmt.Sprintf("Texto digitado com sucesso no elemento %q", params.Selector)}, nil
 
 	case "screenshot":
+		if params.URL != "" {
+			err := page.Navigate(params.URL)
+			if err != nil {
+				return Result{Success: false, Error: fmt.Sprintf("falha ao navegar para %s antes de capturar screenshot: %v", params.URL, err)}, nil
+			}
+			_ = page.WaitLoad()
+			time.Sleep(1 * time.Second) // Delay para carregamento completo de recursos visuais
+		}
 		imgBytes, err := page.Screenshot(true, &proto.PageCaptureScreenshot{Format: proto.PageCaptureScreenshotFormatPng})
 		if err != nil {
 			return Result{Success: false, Error: fmt.Sprintf("falha ao capturar screenshot: %v", err)}, nil
 		}
 		b64 := base64.StdEncoding.EncodeToString(imgBytes)
+		if params.Path != "" {
+			targetFile, err := ValidatePath(b.workspacePath, params.Path, false)
+			if err != nil {
+				return Result{Success: false, Error: fmt.Sprintf("caminho de destino inválido: %v", err)}, nil
+			}
+			if err := os.MkdirAll(filepath.Dir(targetFile), 0755); err != nil {
+				return Result{Success: false, Error: fmt.Sprintf("falha ao criar diretórios pai: %v", err)}, nil
+			}
+			if err := os.WriteFile(targetFile, imgBytes, 0644); err != nil {
+				return Result{Success: false, Error: fmt.Sprintf("falha ao salvar screenshot no disco: %v", err)}, nil
+			}
+			return Result{Success: true, Data: "image:base64:" + b64 + "\n✓ Screenshot salvo em: " + params.Path}, nil
+		}
 		return Result{Success: true, Data: "image:base64:" + b64}, nil
 
 	case "get_html":

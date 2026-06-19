@@ -139,7 +139,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		// 0.5. Identidade Agêntica (Lembrar o modelo de suas ferramentas e capacidade de alterar o sistema)
 		messages = append(messages, llm.Message{
 			Role:    "system",
-			Content: "[SYSTEM AGENTIC IDENTITY] Você é um agente autônomo com acesso total de leitura e escrita ao workspace atual do usuário através de ferramentas dedicadas (como 'write_file', 'read_file', 'terminal_command', etc.). Você NUNCA deve alegar ao usuário que é apenas um modelo de linguagem e que não pode criar, ler, editar ou rodar arquivos locais. Se o usuário pedir para criar, modificar, ler ou testar arquivos, use as ferramentas disponíveis imediatamente para realizar a ação no computador dele.",
+			Content: "[SYSTEM AGENTIC IDENTITY] Você é um agente autônomo de IA com acesso completo ao sistema do usuário. Você pode ler/escrever arquivos locais (usando 'read_file', 'write_file', 'diff_replace'), executar comandos de terminal ('terminal_command'), e navegar na internet ou tirar prints de websites usando o navegador ('browser_action'). Você não necessita que o diretório atual seja um repositório Git para funcionar — trabalhe normalmente mesmo sem Git. Você NUNCA deve alegar ao usuário que é apenas um modelo de linguagem e que não pode criar/editar arquivos, rodar comandos, acessar a internet ou tirar screenshots. Use as ferramentas disponíveis imediatamente para executar o pedido do usuário.",
 		})
 
 		// 1. Detectar stack técnica
@@ -169,6 +169,12 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			Content: "[SYSTEM TOOL USAGE REQUIREMENT] IMPORTANTE: Responder apenas com blocos de código markdown no chat NÃO cria, altera ou escreve arquivos no workspace do usuário. Se o seu plano envolve criar, editar ou excluir arquivos, você deve OBRIGATORIAMENTE chamar as ferramentas apropriadas (como 'write_file', 'diff_replace', etc.) para realizar essas ações no disco. Nunca marque uma tarefa de criação/modificação de código como concluída (- [x]) a menos que você tenha efetivamente executado a chamada de ferramenta correspondente com sucesso.",
 		})
 
+		// 3.6. Exigência de Uso do parâmetro 'path' para Capturas de Tela
+		messages = append(messages, llm.Message{
+			Role:    "system",
+			Content: "[SYSTEM SCREENSHOT PATH REQUIREMENT] IMPORTANTE: Ao tirar capturas de tela (screenshots) usando as ferramentas 'browser_action' ou 'computer_control', você deve OBRIGATORIAMENTE fornecer o parâmetro 'path' (ex: 'screenshot.png') se o usuário solicitou salvar a imagem. Se você não fornecer o 'path', a imagem NÃO será salva no disco e você não conseguirá salvá-la posteriormente usando a ferramenta 'write_file', pois a ferramenta 'write_file' serve apenas para arquivos de texto e a imagem é um arquivo binário.",
+		})
+
 		// 4. Diretório de Sessão para Artefatos, Tasks e Scripts
 		if sessionDir != "" && strings.Contains(al.stateManager.FilePath(), "sessions") {
 			relSessionDir, errRel := filepath.Rel(workspaceDir, sessionDir)
@@ -178,7 +184,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			}
 			messages = append(messages, llm.Message{
 				Role:    "system",
-				Content: fmt.Sprintf("[SYSTEM SESSION ISOLATION] Qualquer arquivo de planejamento adicional (exceto o plan.md automático), scripts temporários, rascunhos de testes, checklists de tarefas (como task.md) ou artefatos gerados especificamente para esta sessão devem ser salvos OBRigATORIAMENTE dentro do diretório desta sessão: %s/. Use este caminho para ler/escrever recursos relacionados ao contexto deste chat.", displayDir),
+				Content: fmt.Sprintf("[SYSTEM SESSION ISOLATION] Qualquer arquivo de planejamento interno adicional (exceto o plan.md automático), scripts temporários internos do agente, rascunhos de testes ou checklists de tarefas internas (como task.md) devem ser salvos OBRIGATORIAMENTE dentro do diretório desta sessão: %s/. No entanto, arquivos de código fonte do projeto, capturas de tela/imagens solicitadas pelo usuário, relatórios finais ou quaisquer ativos/entregáveis que façam parte do projeto do usuário DEVEM ser salvos na pasta raiz do workspace ou no caminho explicitamente solicitado pelo usuário, e NÃO na pasta da sessão.", displayDir),
 			})
 		}
 		saveMsgs(messages)
@@ -506,9 +512,14 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 					timerScheduled = true
 				}
 				if strings.HasPrefix(result.Data, "image:base64:") {
+					// Extrai texto adicional se houver
+					toolMsgContent := "✓ Captura de tela realizada com sucesso."
+					if idx := strings.Index(result.Data, "\n"); idx != -1 {
+						toolMsgContent += " " + strings.TrimSpace(result.Data[idx+1:])
+					}
 					// 1. Adiciona a resposta da ferramenta como texto simples para validação do esquema da API
 					messages = append(messages, llm.Message{
-						Role: "tool", ToolCallID: tc.ID, Name: toolID, Content: "✓ Captura de tela realizada com sucesso.",
+						Role: "tool", ToolCallID: tc.ID, Name: toolID, Content: toolMsgContent,
 					})
 					// 2. Adiciona uma mensagem de usuário auxiliar contendo o payload da imagem para o VLM processar
 					messages = append(messages, llm.Message{
