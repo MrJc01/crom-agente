@@ -38,6 +38,7 @@ type RunningAgent struct {
 type MultiAgentManager struct {
 	mu               sync.RWMutex
 	runningAgents    map[string]*RunningAgent // chave: workspace name
+	MCPManager       *MCPManager              // gerenciador de servidores MCP globais
 	OnSchedule       func(workspaceName, sessionName, task string, delaySecs int, provider, model string)
 	OnBackgroundExit func(workspaceName, sessionName, task string, provider, model string)
 }
@@ -46,6 +47,7 @@ type MultiAgentManager struct {
 func NewMultiAgentManager() *MultiAgentManager {
 	return &MultiAgentManager{
 		runningAgents: make(map[string]*RunningAgent),
+		MCPManager:    NewMCPManager(),
 	}
 }
 
@@ -304,6 +306,7 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 	al.RegisterTool(tools.NewHTTPClientTool(target.Path))
 	al.RegisterTool(tools.NewScraperTool(target.Path))
 	al.RegisterTool(tools.NewBrowserTool(target.Path, resolved.BrowserHeadless))
+	al.RegisterTool(tools.NewBrowserSubagentTool(target.Path, resolved.BrowserHeadless))
 	al.RegisterTool(tools.NewComputerControlTool(target.Path))
 	al.RegisterTool(tools.NewDatabaseTesterTool(target.Path))
 	al.RegisterTool(tools.NewProxyTool(target.Path, resolved.WorkspaceJail))
@@ -320,6 +323,13 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 		GetCustomTools() []tools.Tool
 	}); ok {
 		for _, t := range tp.GetCustomTools() {
+			al.RegisterTool(t)
+		}
+	}
+
+	// Registrar ferramentas dos servidores MCP globais
+	if m.MCPManager != nil {
+		for _, t := range m.MCPManager.GetAllTools() {
 			al.RegisterTool(t)
 		}
 	}
@@ -388,3 +398,43 @@ func (m *MultiAgentManager) ListRunningAgents() []*RunningAgent {
 	}
 	return agents
 }
+
+// InitMCPFromConfig lê a configuração global (~/.crom/global.json) e inicializa todos os servidores MCP configurados.
+// Deve ser chamado uma vez na inicialização do daemon, antes de aceitar sessões.
+func (m *MultiAgentManager) InitMCPFromConfig(ctx context.Context) error {
+	gDir, err := config.GlobalDir()
+	if err != nil {
+		return fmt.Errorf("falha ao obter diretório global: %w", err)
+	}
+
+	global, err := config.LoadGlobalConfig(gDir)
+	if err != nil {
+		return fmt.Errorf("falha ao carregar config global: %w", err)
+	}
+
+	if len(global.MCPServers) == 0 {
+		return nil // Nenhum servidor MCP configurado — OK
+	}
+
+	if m.MCPManager == nil {
+		m.MCPManager = NewMCPManager()
+	}
+
+	m.MCPManager.StartAll(ctx, global.MCPServers)
+	return nil
+}
+
+// Shutdown encerra todos os agentes ativos e os servidores MCP de forma graciosa
+func (m *MultiAgentManager) Shutdown() {
+	m.mu.Lock()
+	for name, agent := range m.runningAgents {
+		agent.Cancel()
+		delete(m.runningAgents, name)
+	}
+	m.mu.Unlock()
+
+	if m.MCPManager != nil {
+		m.MCPManager.StopAll()
+	}
+}
+

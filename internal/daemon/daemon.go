@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -132,6 +133,11 @@ func (d *Daemon) Start() error {
 		return err
 	}
 
+	// 4.5 Inicializa os servidores MCP configurados
+	if err := d.manager.InitMCPFromConfig(context.Background()); err != nil {
+		log.Printf("[Daemon] Erro ao inicializar servidores MCP globais: %v", err)
+	}
+
 	// 5. Configura tratamento de sinais do OS
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -232,12 +238,8 @@ func (d *Daemon) Start() error {
 func (d *Daemon) Stop() {
 	log.Printf("[Daemon] Iniciando desligamento gracioso...")
 
-	// Cancela todos os agentes ativos
-	running := d.manager.ListRunningAgents()
-	for _, a := range running {
-		log.Printf("[Daemon] Cancelando execucao ativa no workspace '%s'", a.WorkspaceName)
-		_ = d.manager.StopAgent(a.WorkspaceName)
-	}
+	// Cancela todos os agentes ativos e para os servidores MCP configurados
+	d.manager.Shutdown()
 
 	// Para o servidor IPC, API HTTP/WS e gRPC
 	d.ipc.Stop()

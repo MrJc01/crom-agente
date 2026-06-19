@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -393,5 +396,89 @@ func TestAgenticLoop_AgenticIdentityInjection(t *testing.T) {
 	}
 	if !foundIdentity {
 		t.Fatal("esperada mensagem [SYSTEM AGENTIC IDENTITY] no histórico da primeira iteração")
+	}
+}
+
+func TestAgenticLoop_SpawnSubagentRollback(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Inicializa o diretório como um repositório Git
+	runGit := func(args ...string) error {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = tempDir
+		return cmd.Run()
+	}
+
+	if err := runGit("init"); err != nil {
+		t.Skipf("pulando teste de rollback (git init falhou): %v", err)
+		return
+	}
+	_ = runGit("config", "user.email", "test@crom.ia")
+	_ = runGit("config", "user.name", "Test User")
+
+	initialFile := filepath.Join(tempDir, "initial.txt")
+	if err := os.WriteFile(initialFile, []byte("original content"), 0644); err != nil {
+		t.Fatalf("erro ao criar arquivo inicial: %v", err)
+	}
+
+	if err := runGit("add", "."); err != nil {
+		t.Fatalf("git add falhou: %v", err)
+	}
+	if err := runGit("commit", "-m", "initial commit"); err != nil {
+		t.Fatalf("git commit falhou: %v", err)
+	}
+
+	// Mock do Provider
+	provider := llm.NewMockProvider(
+		// 1ª: Chama spawn_subagent
+		llm.MockToolCallResponse("spawn_subagent", `{"task":"modify initial.txt"}`, 100),
+		// 2ª: LLM reconhece a falha e responde
+		llm.MockTextResponse("O subagente falhou e o rollback foi executado.", 150),
+	)
+
+	_ = os.MkdirAll(filepath.Join(tempDir, ".crom"), 0755)
+	sm := state.NewStateManager(tempDir)
+
+	al := New(provider, sm, nil)
+	
+	// Registra spawn_subagent com a lógica de rollback do teste
+	al.RegisterTool(&mockTool{
+		id:          "spawn_subagent",
+		description: "Simula o spawn",
+		executeFunc: func(ctx context.Context, args json.RawMessage) (tools.Result, error) {
+			// Simula a escrita de alterações que deverão ser desfeitas
+			modifiedFile := filepath.Join(tempDir, "initial.txt")
+			_ = os.WriteFile(modifiedFile, []byte("corrupted content"), 0644)
+			newFile := filepath.Join(tempDir, "added_by_subagent.txt")
+			_ = os.WriteFile(newFile, []byte("should be deleted"), 0644)
+
+			// Executa rollback com base na lógica de rollbackGit
+			_ = rollbackGit(tempDir)
+
+			return tools.Result{
+				Success: false,
+				Error:   "subagente falhou de teste",
+			}, nil
+		},
+	})
+
+	err := al.Execute(context.Background(), "Subagente faça a tarefa")
+	if err != nil {
+		t.Fatalf("esperado sucesso no loop principal (que trata a falha), obteve erro: %v", err)
+	}
+
+	// Verifica se os arquivos foram restaurados ao commit inicial
+	content, err := os.ReadFile(initialFile)
+	if err != nil {
+		t.Fatalf("erro ao ler arquivo inicial: %v", err)
+	}
+	if string(content) != "original content" {
+		t.Errorf("esperava conteúdo 'original content', obteve '%s'", string(content))
+	}
+
+	// O novo arquivo não deve existir (reset --hard remove arquivos não rastreados criados pelo subagente)
+	addedFile := filepath.Join(tempDir, "added_by_subagent.txt")
+	if _, err := os.Stat(addedFile); err == nil || !os.IsNotExist(err) {
+		t.Errorf("esperava que o arquivo criado pelo subagente tivesse sido removido pelo rollback")
 	}
 }

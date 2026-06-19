@@ -169,10 +169,16 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			Content: "[SYSTEM TOOL USAGE REQUIREMENT] IMPORTANTE: Responder apenas com blocos de código markdown no chat NÃO cria, altera ou escreve arquivos no workspace do usuário. Se o seu plano envolve criar, editar ou excluir arquivos, você deve OBRIGATORIAMENTE chamar as ferramentas apropriadas (como 'write_file', 'diff_replace', etc.) para realizar essas ações no disco. Nunca marque uma tarefa de criação/modificação de código como concluída (- [x]) a menos que você tenha efetivamente executado a chamada de ferramenta correspondente com sucesso.",
 		})
 
+		// 3.5.5. Planejamento de Impacto de Arquivos (Proposed Changes)
+		messages = append(messages, llm.Message{
+			Role:    "system",
+			Content: "[SYSTEM FILE IMPACT PLANNING] Antes de realizar modificações ou criar novos arquivos no disco, você deve descrever um plano de impacto de arquivos contendo uma seção 'Proposed Changes' listando explicitamente os arquivos que serão criados (NEW), modificados (MODIFY) ou excluídos (DELETE).",
+		})
+
 		// 3.6. Exigência de Uso do parâmetro 'path' para Capturas de Tela
 		messages = append(messages, llm.Message{
 			Role:    "system",
-			Content: "[SYSTEM SCREENSHOT PATH REQUIREMENT] IMPORTANTE: Ao tirar capturas de tela (screenshots) usando as ferramentas 'browser_action' ou 'computer_control', você deve OBRIGATORIAMENTE fornecer o parâmetro 'path' (ex: 'screenshot.png') se o usuário solicitou salvar a imagem. Se você não fornecer o 'path', a imagem NÃO será salva no disco e você não conseguirá salvá-la posteriormente usando a ferramenta 'write_file', pois a ferramenta 'write_file' serve apenas para arquivos de texto e a imagem é um arquivo binário.",
+			Content: "[SYSTEM SCREENSHOT PATH REQUIREMENT] IMPORTANTE: Ao tirar capturas de tela (screenshots) usando a ferramenta 'browser_action' (com o parâmetro 'action' definido como 'screenshot') ou a ferramenta 'computer_control' (com o parâmetro 'action' definido como 'screenshot'), você deve OBRIGATORIAMENTE fornecer o parâmetro 'path' (ex: 'screenshot.png') se o usuário solicitou salvar a imagem. Se você não fornecer o 'path', a imagem NÃO será salva no disco e você não conseguirá salvá-la posteriormente usando a ferramenta 'write_file'. Não tente chamar uma ferramenta com o nome 'screenshot' (ela não existe); você deve chamar 'browser_action' ou 'computer_control' com 'action' definido como 'screenshot'.",
 		})
 
 		// 4. Diretório de Sessão para Artefatos, Tasks e Scripts
@@ -185,6 +191,20 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			messages = append(messages, llm.Message{
 				Role:    "system",
 				Content: fmt.Sprintf("[SYSTEM SESSION ISOLATION] Qualquer arquivo de planejamento interno adicional (exceto o plan.md automático), scripts temporários internos do agente, rascunhos de testes ou checklists de tarefas internas (como task.md) devem ser salvos OBRIGATORIAMENTE dentro do diretório desta sessão: %s/. No entanto, arquivos de código fonte do projeto, capturas de tela/imagens solicitadas pelo usuário, relatórios finais ou quaisquer ativos/entregáveis que façam parte do projeto do usuário DEVEM ser salvos na pasta raiz do workspace ou no caminho explicitamente solicitado pelo usuário, e NÃO na pasta da sessão.", displayDir),
+			})
+		}
+
+		// 5. Injetar fase atual (Planning ou Execution) no contexto da sessão
+		phase := GetCurrentPhase(al.stateManager)
+		if phase == PhasePlanning {
+			messages = append(messages, llm.Message{
+				Role:    "system",
+				Content: "[SYSTEM PHASE: PLANNING] Esta é a fase de PLANEJAMENTO. Analise cuidadosamente o pedido e gere um checklist detalhado de todas as tarefas necessárias usando o formato `- [ ] Tarefa`. Após definir o plano, inicie imediatamente a execução do primeiro item.",
+			})
+		} else {
+			messages = append(messages, llm.Message{
+				Role:    "system",
+				Content: "[SYSTEM PHASE: EXECUTION] Esta é a fase de EXECUÇÃO. O plano já foi definido. Concentre-se em executar as tarefas pendentes `[ ]` e em andamento `[/]`, atualizando o checklist com `[x]` à medida que conclui cada item. NÃO repita itens já concluídos `[x]`.",
 			})
 		}
 		saveMsgs(messages)
@@ -356,6 +376,27 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				})
 				al.handler.OnStatusChange("idle")
 				return nil
+			}
+
+			// Verifica se ainda existem tarefas pendentes no plano antes de encerrar
+			if al.stateManager != nil {
+				currentPlan := al.stateManager.GetPlan()
+				if HasPendingTasks(currentPlan) {
+					warning := GeneratePendingTasksWarning(currentPlan)
+					al.handler.OnMessage("system", warning)
+					al.handler.OnEvent(AgentEvent{
+						Timestamp: time.Now(),
+						Event:     "warning",
+						Iteration: i + 1,
+						Data: map[string]interface{}{"reason": "tasks_incomplete", "warning": warning},
+					})
+					messages = append(messages, llm.Message{
+						Role:    "system",
+						Content: warning,
+					})
+					saveMsgs(messages)
+					continue // Não encerra: volta para a próxima iteração
+				}
 			}
 
 			// Se não há chamadas de ferramentas, a tarefa foi concluída ou o agente respondeu textualmente ao usuário.

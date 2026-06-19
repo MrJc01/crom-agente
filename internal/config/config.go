@@ -30,17 +30,28 @@ const (
 	WorkspaceConfigFile = "config.json"
 )
 
+// MCPServerConfig descreve a configuração de um servidor MCP externo
+// Pode ser um subprocesso (via Command+Args) ou um servidor remoto SSE (via URL)
+type MCPServerConfig struct {
+	Name    string   `json:"name"`
+	Command string   `json:"command,omitempty"` // ex: "npx", "python"
+	Args    []string `json:"args,omitempty"`    // ex: ["-y", "@modelcontextprotocol/server-filesystem"]
+	URL     string   `json:"url,omitempty"`     // URL do servidor SSE remoto (alternativa ao Command)
+	Env     []string `json:"env,omitempty"`     // Variáveis de ambiente extras: ["KEY=VALUE"]
+}
+
 // GlobalConfig contém configurações globais compartilhadas por todos os workspaces
 type GlobalConfig struct {
-	DefaultProvider           string `json:"default_provider"`
-	DefaultModel              string `json:"default_model"`
-	MaxIterationsDefault      int    `json:"max_iterations_default"`
-	MaxConsecutiveFailDefault int    `json:"max_consecutive_failures_default"`
-	MaxTokensPerTaskDefault   int    `json:"max_tokens_per_task_default"`
-	ToolTimeoutSecondsDefault int    `json:"tool_timeout_seconds_default"`
-	MaxMessageHistoryDefault  int    `json:"max_message_history_default"`
-	LogLevel                  string `json:"log_level"`
-	TelemetryEnabled          bool   `json:"telemetry_enabled"`
+	DefaultProvider           string            `json:"default_provider"`
+	DefaultModel              string            `json:"default_model"`
+	MaxIterationsDefault      int               `json:"max_iterations_default"`
+	MaxConsecutiveFailDefault int               `json:"max_consecutive_failures_default"`
+	MaxTokensPerTaskDefault   int               `json:"max_tokens_per_task_default"`
+	ToolTimeoutSecondsDefault int               `json:"tool_timeout_seconds_default"`
+	MaxMessageHistoryDefault  int               `json:"max_message_history_default"`
+	LogLevel                  string            `json:"log_level"`
+	TelemetryEnabled          bool              `json:"telemetry_enabled"`
+	MCPServers                []MCPServerConfig `json:"mcp_servers,omitempty"` // Servidores MCP globais
 }
 
 // EnvVars contém variáveis carregadas do .env (segredos)

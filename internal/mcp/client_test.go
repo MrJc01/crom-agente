@@ -5,7 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -36,6 +39,11 @@ func TestHelperProcess(t *testing.T) {
 			resp.Result = json.RawMessage(`{"tools": [{"name": "mcp_tool", "description": "mock tool", "inputSchema": {"type": "object"}}]}`)
 		case "tools/call":
 			resp.Result = json.RawMessage(`{"content": [{"type": "text", "text": "mcp response text"}]}`)
+		case "test/error":
+			resp.Error = &JSONRPCError{
+				Code:    -32601,
+				Message: "Method not found",
+			}
 		default:
 			continue
 		}
@@ -99,3 +107,92 @@ func TestMCPClient_E2E(t *testing.T) {
 		t.Fatalf("dados do wrapper incorretos: %s", res.Data)
 	}
 }
+
+func TestMCPClient_Error(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	cmd := os.Args[0]
+	args := []string{"-test.run=TestHelperProcess"}
+	t.Setenv("GO_WANT_HELPER_PROCESS", "1")
+
+	client, err := NewMCPClient(cmd, args)
+	if err != nil {
+		t.Fatalf("erro ao criar MCPClient: %v", err)
+	}
+	defer client.Close()
+
+	// Chama método que simula erro
+	_, err = client.Call(ctx, "test/error", nil)
+	if err == nil {
+		t.Fatal("esperava erro ao chamar método inválido, obteve nil")
+	}
+	if !strings.Contains(err.Error(), "erro RPC -32601: Method not found") {
+		t.Fatalf("erro inesperado: %v", err)
+	}
+}
+
+func TestMCPClientSSE_E2E(t *testing.T) {
+	// Cria um servidor HTTP mock
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/rpc" && r.Method == http.MethodPost {
+			var req JSONRPCRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
+			var resp JSONRPCResponse
+			resp.JSONRPC = "2.0"
+			resp.ID = req.ID
+
+			switch req.Method {
+			case "initialize":
+				resp.Result = json.RawMessage(`{"protocolVersion": "2024-11-05", "serverInfo": {"name": "mock-sse-server"}}`)
+			case "tools/list":
+				resp.Result = json.RawMessage(`{"tools": [{"name": "sse_tool", "description": "mock sse tool", "inputSchema": {"type": "object"}}]}`)
+			case "tools/call":
+				resp.Result = json.RawMessage(`{"content": [{"type": "text", "text": "sse response text"}]}`)
+			default:
+				http.Error(w, "method not found", http.StatusNotFound)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	client, err := NewMCPClientSSE(server.URL)
+	if err != nil {
+		t.Fatalf("failed to create MCPClientSSE: %v", err)
+	}
+
+	if err := client.Initialize(ctx); err != nil {
+		t.Fatalf("failed to Initialize: %v", err)
+	}
+
+	tools, err := client.ListTools(ctx)
+	if err != nil {
+		t.Fatalf("failed to ListTools: %v", err)
+	}
+	if len(tools) != 1 || tools[0].Name != "sse_tool" {
+		t.Fatalf("unexpected tools: %+v", tools)
+	}
+
+	val, err := client.CallTool(ctx, "sse_tool", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("failed to CallTool: %v", err)
+	}
+	if val != "sse response text" {
+		t.Fatalf("unexpected response: %s", val)
+	}
+}
+

@@ -59,7 +59,13 @@ func (al *AgenticLoop) RegisterSpawnSubagentTool() {
 
 // rollbackGit desfaz qualquer modificação efetuada nos arquivos locais
 func rollbackGit(workspaceDir string) error {
-	cmd := exec.Command("git", "reset", "--hard", "HEAD")
-	cmd.Dir = workspaceDir
-	return cmd.Run()
+	cmdReset := exec.Command("git", "reset", "--hard", "HEAD")
+	cmdReset.Dir = workspaceDir
+	if err := cmdReset.Run(); err != nil {
+		return err
+	}
+	
+	cmdClean := exec.Command("git", "clean", "-fd")
+	cmdClean.Dir = workspaceDir
+	return cmdClean.Run()
 }

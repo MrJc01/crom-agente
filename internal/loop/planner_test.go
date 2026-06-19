@@ -1,6 +1,8 @@
 package loop
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -89,3 +91,56 @@ func TestUpdatePlannerAndSync(t *testing.T) {
 		t.Fatalf("contexto não contém status da Task 3: %s", ctxText)
 	}
 }
+
+func TestPlannerHelpers(t *testing.T) {
+	ws := t.TempDir()
+	sm := state.NewStateManager(ws)
+	_ = sm.LoadState()
+
+	// Initially plan is empty, phase should be planning
+	if GetCurrentPhase(sm) != PhasePlanning {
+		t.Errorf("expected PhasePlanning for empty plan")
+	}
+
+	plan := []state.TaskItem{
+		{Title: "Task 1", Status: "pending"},
+		{Title: "Task 2", Status: "in_progress"},
+		{Title: "Task 3", Status: "completed"},
+	}
+
+	if !HasPendingTasks(plan) {
+		t.Errorf("expected true for HasPendingTasks because of pending/in_progress tasks")
+	}
+
+	if HasPendingTasks([]state.TaskItem{{Title: "Task 3", Status: "completed"}}) {
+		t.Errorf("expected false for HasPendingTasks when all tasks are completed")
+	}
+
+	warning := GeneratePendingTasksWarning(plan)
+	if !strings.Contains(warning, "Task 1") || !strings.Contains(warning, "Task 2") || strings.Contains(warning, "Task 3") {
+		t.Errorf("unexpected warning content: %s", warning)
+	}
+
+	_ = sm.SetPlan(plan)
+	// Now phase should be Execution because we have an in_progress task
+	if GetCurrentPhase(sm) != PhaseExecution {
+		t.Errorf("expected PhaseExecution when tasks are in progress or completed")
+	}
+
+	err := WriteTaskMdToSession(sm, plan)
+	if err != nil {
+		t.Fatalf("failed to write task.md: %v", err)
+	}
+
+	taskMdPath := filepath.Join(filepath.Dir(sm.FilePath()), "task.md")
+	data, err := os.ReadFile(taskMdPath)
+	if err != nil {
+		t.Fatalf("failed to read written task.md: %v", err)
+	}
+
+	content := string(data)
+	if !strings.Contains(content, "- [ ] Task 1") || !strings.Contains(content, "- [/] Task 2") || !strings.Contains(content, "- [x] Task 3") {
+		t.Errorf("task.md has invalid content: %s", content)
+	}
+}
+

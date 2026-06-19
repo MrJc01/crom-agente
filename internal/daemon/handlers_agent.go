@@ -1260,3 +1260,34 @@ func (s *APIServer) handleDevicesScreens(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
+
+func (s *APIServer) handleMCPStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if !s.authorize(w, r) {
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if s.manager.MCPManager == nil {
+		w.Write([]byte("[]"))
+		return
+	}
+
+	data, err := s.manager.MCPManager.MCPStatusJSON()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Erro ao gerar JSON de status MCP: %v", err), http.StatusInternalServerError)
+		return
+	}
+	w.Write(data)
+}
+
