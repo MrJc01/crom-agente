@@ -396,38 +396,6 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				return nil
 			}
 
-			// Verifica se ainda existem tarefas pendentes no plano antes de encerrar
-			if al.stateManager != nil {
-				currentPlan := al.stateManager.GetPlan()
-				if HasPendingTasks(currentPlan) {
-					warning := GeneratePendingTasksWarning(currentPlan)
-					al.handler.OnMessage("system", warning)
-					al.handler.OnEvent(AgentEvent{
-						Timestamp: time.Now(),
-						Event:     "warning",
-						Iteration: i + 1,
-						Data: map[string]interface{}{"reason": "tasks_incomplete", "warning": warning},
-					})
-					messages = append(messages, llm.Message{
-						Role:    "system",
-						Content: warning,
-					})
-					saveMsgs(messages)
-					
-					// Pausa graciosamente para permitir que a resposta/pergunta chegue ao chat
-					_ = al.stateManager.SetStatus("idle")
-					_ = al.stateManager.AddLog("Suspenso com tarefas pendentes (aguardando input)")
-					
-					al.handler.OnEvent(AgentEvent{
-						Timestamp: time.Now(),
-						Event:     "finished",
-						Iteration: i + 1,
-						Data:      map[string]interface{}{"reason": "tasks_incomplete_pause", "total_iterations": i + 1},
-					})
-					al.handler.OnStatusChange("idle")
-					return nil
-				}
-			}
 
 			// Se não há chamadas de ferramentas, a tarefa foi concluída ou o agente respondeu textualmente ao usuário.
 			// Finaliza o loop ReAct normalmente.

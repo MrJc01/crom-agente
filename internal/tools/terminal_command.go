@@ -247,10 +247,21 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 		bgCtx := context.Background()
 		c := exec.CommandContext(bgCtx, "bash", "-c", command)
 		c.Dir = t.workspaceRoot
+		c.SysProcAttr = &syscall.SysProcAttr{
+			Setpgid: true, // Executa em um grupo de processos separado para isolar sinais do processo pai
+		}
 
-		f, err := pty.Start(c)
+		stdout, err := c.StdoutPipe()
 		if err != nil {
-			return Result{Success: false, Error: fmt.Sprintf("erro ao iniciar pseudo-terminal em background: %s", err.Error())}, nil
+			return Result{Success: false, Error: fmt.Sprintf("erro ao iniciar pipe de stdout: %s", err.Error())}, nil
+		}
+		stderr, err := c.StderrPipe()
+		if err != nil {
+			return Result{Success: false, Error: fmt.Sprintf("erro ao iniciar pipe de stderr: %s", err.Error())}, nil
+		}
+
+		if err := c.Start(); err != nil {
+			return Result{Success: false, Error: fmt.Sprintf("erro ao iniciar comando em background: %s", err.Error())}, nil
 		}
 
 		bgID := generateBgID()
@@ -260,7 +271,7 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 			ID:        bgID,
 			Command:   command,
 			Cmd:       c,
-			PTY:       f,
+			PTY:       nil, // Não usamos PTY para daemons em background, evitando SIGHUP
 			StartedAt: time.Now(),
 			Logs:      logsBuf,
 		}
@@ -269,28 +280,15 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 		backgroundProcs[bgID] = p
 		backgroundProcsMu.Unlock()
 
-		// Goroutine para ler a saída em background
-		go func() {
-			defer func() {
-				backgroundProcsMu.Lock()
-				delete(backgroundProcs, bgID)
-				backgroundProcsMu.Unlock()
-				_ = f.Close()
-				_ = c.Wait()
-				
-				success := false
-				if c.ProcessState != nil {
-					success = c.ProcessState.Success()
-				}
-				if t.onBackgroundExit != nil {
-					t.onBackgroundExit(bgID, command, logsBuf.String(), success)
-				}
-			}()
+		var wg sync.WaitGroup
+		wg.Add(2)
 
+		// Goroutine para ler stdout
+		go func() {
+			defer wg.Done()
 			buffer := make([]byte, 2048)
 			for {
-				_ = f.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
-				n, readErr := f.Read(buffer)
+				n, readErr := stdout.Read(buffer)
 				if n > 0 {
 					chunk := buffer[:n]
 					_, _ = logsBuf.Write(chunk)
@@ -299,17 +297,45 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 					}
 				}
 				if readErr != nil {
-					if readErr == io.EOF || strings.Contains(readErr.Error(), "input/output error") {
-						return
-					}
-					if strings.Contains(readErr.Error(), "i/o timeout") {
-						if c.ProcessState != nil && c.ProcessState.Exited() {
-							return
-						}
-						continue
-					}
 					return
 				}
+			}
+		}()
+
+		// Goroutine para ler stderr
+		go func() {
+			defer wg.Done()
+			buffer := make([]byte, 2048)
+			for {
+				n, readErr := stderr.Read(buffer)
+				if n > 0 {
+					chunk := buffer[:n]
+					_, _ = logsBuf.Write(chunk)
+					if t.stream != nil {
+						_, _ = t.stream.Write(chunk)
+					}
+				}
+				if readErr != nil {
+					return
+				}
+			}
+		}()
+
+		// Goroutine para aguardar o fim do processo e limpar mapas
+		go func() {
+			wg.Wait()
+			_ = c.Wait()
+
+			backgroundProcsMu.Lock()
+			delete(backgroundProcs, bgID)
+			backgroundProcsMu.Unlock()
+
+			success := false
+			if c.ProcessState != nil {
+				success = c.ProcessState.Success()
+			}
+			if t.onBackgroundExit != nil {
+				t.onBackgroundExit(bgID, command, logsBuf.String(), success)
 			}
 		}()
 
