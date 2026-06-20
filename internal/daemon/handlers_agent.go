@@ -919,7 +919,21 @@ func (s *APIServer) handleTranscribe(w http.ResponseWriter, r *http.Request) {
 	}
 	defer os.Remove(tempFile)
 
-	pythonScript := "/home/j/Área de trabalho/GitHub/crom-agente5/crom-agente/scripts/transcribe.py"
+	possiblePaths := []string{
+		"/home/j/Documentos/GitHub/crom-agente/scripts/transcribe.py",
+		"/home/j/Área de trabalho/GitHub/crom-agente5/crom-agente/scripts/transcribe.py",
+		"./scripts/transcribe.py",
+	}
+	var pythonScript string
+	for _, p := range possiblePaths {
+		if _, err := os.Stat(p); err == nil {
+			pythonScript = p
+			break
+		}
+	}
+	if pythonScript == "" {
+		pythonScript = "/home/j/Documentos/GitHub/crom-agente/scripts/transcribe.py"
+	}
 	cmd := exec.Command("python3", pythonScript, tempFile)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

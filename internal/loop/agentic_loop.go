@@ -161,6 +161,12 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			Content: fmt.Sprintf("[SYSTEM STACK DETECTED] A stack técnica deste projeto foi identificada como: %s. Priorize comandos e validações desta stack.", stack),
 		})
 
+		// 1.5. Instrução de Conflito de Portas (Address already in use)
+		messages = append(messages, llm.Message{
+			Role:    "system",
+			Content: "[SYSTEM PORT CONFLICT HANDLING] Se você tentar iniciar um servidor (ex: npm run dev, go run, etc.) e ele falhar com um erro como 'Address already in use', 'port already in use', ou 'listen tcp :8080: bind: address already in use', você deve identificar imediatamente a porta conflitante, tentar utilizar uma porta alternativa (ex: 8081, 8082, 3001, etc.) ou configurar a porta via variáveis de ambiente/parâmetros do comando, e continuar a execução sem desistir.",
+		})
+
 		// 2. Carregar regras locais
 		if localRules := al.loadLocalRules(workspaceDir); localRules != "" {
 			messages = append(messages, llm.Message{

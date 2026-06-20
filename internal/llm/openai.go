@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -132,8 +133,11 @@ func parseMultimodalContent(text string) interface{} {
 func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []Message, opts RequestOptions) (*Response, error) {
 	url := p.URL
 
-	reqMessages := make([]openAIChatMessage, len(messages))
-	for i, m := range messages {
+	// Layer 2: Extrai o contexto escrito da mídia antes do envio
+	injectedMessages := ExtractAndInjectMediaContext(ctx, messages, p.Name(), p.apiKey, p.URL)
+
+	reqMessages := make([]openAIChatMessage, len(injectedMessages))
+	for i, m := range injectedMessages {
 		var content interface{} = m.Content
 		if m.Role == "user" {
 			content = parseMultimodalContent(m.Content)
@@ -146,7 +150,6 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []Message, o
 			Name:       m.Name,
 		}
 	}
-
 
 	type openAIRequest struct {
 		Model      string              `json:"model"`
@@ -230,8 +233,55 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []Message, o
 
 	if resp.StatusCode != http.StatusOK {
 		bodyStr := string(bodyBytes)
-		// Se falhar devido a suporte de ferramentas, tenta novamente em modo texto puro
-		if len(opts.Tools) > 0 && (strings.Contains(bodyStr, "tool") || strings.Contains(bodyStr, "support") || strings.Contains(bodyStr, "parameter")) {
+
+		// Detecta erros relacionados à falta de suporte de visão/multimodal
+		isVisionError := strings.Contains(bodyStr, "support") || strings.Contains(bodyStr, "vision") ||
+			strings.Contains(bodyStr, "image") || strings.Contains(bodyStr, "multimodal") ||
+			strings.Contains(bodyStr, "endpoint") || strings.Contains(bodyStr, "404")
+
+		if isVisionError {
+			log.Printf("[OpenAIProvider] Detectado erro de compatibilidade de visão (%d). Fazendo fallback para texto puro com Layer 2...", resp.StatusCode)
+			
+			// Remove payloads nativos de visão, retendo a descrição textual da imagem já injetada
+			for idx := range reqMessages {
+				reqMessages[idx].Content = StripMultimodalPayloads(reqMessages[idx].Content)
+			}
+			reqBody.Messages = reqMessages
+
+			// Se também falhar devido a suporte de ferramentas, remove-as
+			if len(opts.Tools) > 0 && (strings.Contains(bodyStr, "tool") || strings.Contains(bodyStr, "parameter")) {
+				reqBody.Tools = nil
+				reqBody.ToolChoice = nil
+				reqBody.Messages = sanitizeMessagesForTextOnly(reqMessages)
+			}
+
+			jsonData, err = json.Marshal(reqBody)
+			if err != nil {
+				return nil, fmt.Errorf("openai: erro ao serializar request de retry de visão: %w", err)
+			}
+
+			req, err = http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+			if err != nil {
+				return nil, fmt.Errorf("openai: erro ao criar request de retry de visão: %w", err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer "+p.apiKey)
+
+			respRetry, err := client.Do(req)
+			if err != nil {
+				return nil, fmt.Errorf("openai: falha na requisição de retry de visão: %w", err)
+			}
+			defer respRetry.Body.Close()
+
+			bodyBytes, err = io.ReadAll(respRetry.Body)
+			if err != nil {
+				return nil, fmt.Errorf("openai: erro ao ler body de retry de visão: %w", err)
+			}
+
+			if respRetry.StatusCode != http.StatusOK {
+				return nil, fmt.Errorf("openai: retry de visão failed (%d): %s", respRetry.StatusCode, string(bodyBytes))
+			}
+		} else if len(opts.Tools) > 0 && (strings.Contains(bodyStr, "tool") || strings.Contains(bodyStr, "support") || strings.Contains(bodyStr, "parameter")) {
 			reqBody.Tools = nil
 			reqBody.ToolChoice = nil
 			reqBody.Messages = sanitizeMessagesForTextOnly(reqMessages)

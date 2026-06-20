@@ -86,8 +86,13 @@ func (p *GeminiProvider) SendMessages(ctx context.Context, messages []Message, o
 		Name       string      `json:"name,omitempty"`
 	}
 
-	reqMessages := make([]geminiChatMessage, len(messages))
-	for i, m := range messages {
+	// Layer 2: Extrai o contexto escrito da mídia antes do envio
+	// Gera a URL completa com a chave para uso do MediaExtractor se ele precisar fazer VLM
+	completeURL := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/chat/completions?key=%s", p.apiKey)
+	injectedMessages := ExtractAndInjectMediaContext(ctx, messages, p.Name(), p.apiKey, completeURL)
+
+	reqMessages := make([]geminiChatMessage, len(injectedMessages))
+	for i, m := range injectedMessages {
 		role := m.Role
 		var content interface{} = m.Content
 		if m.Role == "user" {
@@ -149,7 +154,48 @@ func (p *GeminiProvider) SendMessages(ctx context.Context, messages []Message, o
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("gemini: status HTTP inválido (%d): %s", resp.StatusCode, string(bodyBytes))
+		bodyStr := string(bodyBytes)
+
+		// Detecta erros relacionados à falta de suporte de visão/multimodal
+		isVisionError := strings.Contains(bodyStr, "support") || strings.Contains(bodyStr, "vision") ||
+			strings.Contains(bodyStr, "image") || strings.Contains(bodyStr, "multimodal") ||
+			strings.Contains(bodyStr, "endpoint") || strings.Contains(bodyStr, "404")
+
+		if isVisionError {
+			// Remove payloads nativos de visão, retendo a descrição textual da imagem já injetada
+			for idx := range reqMessages {
+				reqMessages[idx].Content = StripMultimodalPayloads(reqMessages[idx].Content)
+			}
+			reqBody.Messages = reqMessages
+
+			jsonData, err = json.Marshal(reqBody)
+			if err != nil {
+				return nil, fmt.Errorf("gemini: erro ao serializar request de retry de visão: %w", err)
+			}
+
+			req, err = http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+			if err != nil {
+				return nil, fmt.Errorf("gemini: erro ao criar request de retry de visão: %w", err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+
+			respRetry, err := client.Do(req)
+			if err != nil {
+				return nil, fmt.Errorf("gemini: falha na requisição de retry de visão: %w", err)
+			}
+			defer respRetry.Body.Close()
+
+			bodyBytes, err = io.ReadAll(respRetry.Body)
+			if err != nil {
+				return nil, fmt.Errorf("gemini: erro ao ler body de retry de visão: %w", err)
+			}
+
+			if respRetry.StatusCode != http.StatusOK {
+				return nil, fmt.Errorf("gemini: retry de visão failed (%d): %s", respRetry.StatusCode, string(bodyBytes))
+			}
+		} else {
+			return nil, fmt.Errorf("gemini: status HTTP inválido (%d): %s", resp.StatusCode, bodyStr)
+		}
 	}
 
 	type geminiResponse struct {

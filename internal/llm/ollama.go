@@ -55,12 +55,17 @@ func (p *OllamaProvider) SendMessages(ctx context.Context, messages []Message, o
 	// Detecta se é o modelo deepseek para contornar bug de template no Ollama
 	isDeepSeek := strings.Contains(strings.ToLower(p.model), "deepseek")
 
-	reqMessages := make([]ollamaChatMessage, len(messages))
-	for i, m := range messages {
+	// Layer 2: Extrai o contexto escrito da mídia antes do envio
+	injectedMessages := ExtractAndInjectMediaContext(ctx, messages, p.Name(), "", p.endpoint)
+
+	reqMessages := make([]ollamaChatMessage, len(injectedMessages))
+	for i, m := range injectedMessages {
 		var tcs []ollamaToolCall
 		content := m.Content
 		if strings.HasPrefix(content, "image:base64:") {
-			content = "[Imagem: Captura de tela codificada em Base64]"
+			// Substitui o payload da imagem nativa pelo indicador textual se o modelo não for de visão,
+			// mas como já injetamos a descrição do Layer 2 no Content, podemos omitir o base64 bruto.
+			content = "[Imagem: Captura de tela processada]"
 		}
 
 
