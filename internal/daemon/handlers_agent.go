@@ -413,6 +413,36 @@ func (s *APIServer) handleFile(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "Metodo nao permitido", http.StatusMethodNotAllowed)
 }
 
+func (s *APIServer) handleReveal(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if !s.authorize(w, r) {
+		return
+	}
+
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		http.Error(w, "caminho obrigatorio", http.StatusBadRequest)
+		return
+	}
+
+	err := openPath(path)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"success":true}`))
+}
+
 type ScheduledTask struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
