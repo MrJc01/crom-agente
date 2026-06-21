@@ -55,3 +55,4 @@ tests/.results/
 tests/**/server
 tests/**/api
 tests/**/.git/
+tests/11_comprehensive_tests/test_results.json

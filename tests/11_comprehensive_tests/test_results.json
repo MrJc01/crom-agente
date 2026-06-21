@@ -12,66 +12,79 @@
   {
     "test": 3,
     "name": "File Creation (write_file)",
-    "status": "PASS"
+    "status": "FAIL",
+    "reason": "File Hello.txt was not created"
   },
   {
     "test": 4,
     "name": "File Reading (read_file)",
-    "status": "PASS"
+    "status": "FAIL",
+    "reason": "Agent failed to read file"
   },
   {
     "test": 5,
     "name": "Diff Replacement (diff_replace)",
-    "status": "PASS"
+    "status": "FAIL",
+    "reason": "File code.py was not modified: old_content\n"
   },
   {
     "test": 6,
     "name": "File Deletion (delete_file)",
-    "status": "PASS"
+    "status": "FAIL",
+    "reason": "File obsoleto.log still exists"
   },
   {
     "test": 7,
     "name": "Directory Tree Scan (tree)",
-    "status": "PASS"
+    "status": "FAIL",
+    "reason": "tree scan failed"
   },
   {
     "test": 8,
     "name": "Content Search (grep_search)",
-    "status": "PASS"
+    "status": "FAIL",
+    "reason": "grep_search failed"
   },
   {
     "test": 9,
     "name": "Git Init & Status (git_status)",
-    "status": "PASS"
+    "status": "FAIL",
+    "reason": "git_status failed"
   },
   {
     "test": 10,
     "name": "Git Commit (git_add / git_commit)",
-    "status": "PASS"
+    "status": "FAIL",
+    "reason": "Git commit not found in log: "
   },
   {
     "test": 11,
     "name": "Git Branching (git_branch)",
-    "status": "PASS"
+    "status": "FAIL",
+    "reason": "Git branches: * master\n"
   },
   {
     "test": 12,
     "name": "HTTP Client requests (http_client)",
-    "status": "PASS"
+    "status": "FAIL",
+    "reason": "http_client request failed"
   },
   {
     "test": 13,
     "name": "Page Scraping (scraper)",
-    "status": "PASS"
+    "status": "FAIL",
+    "reason": "scraper request failed"
   },
   {
     "test": 14,
     "name": "Browser Automation (browser_action)",
-    "status": "PASS"
+    "status": "FAIL",
+    "reason": "browser_action screenshot failed"
   },
   {
     "test": 15,
     "name": "Coding Helper (complexity_reducer)",
-    "status": "PASS"
+    "status": "FAIL",
+    "reason": "complexity_reducer failed"
   }
 ]
