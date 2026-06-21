@@ -1,0 +1,1 @@
+# Esse arquivo será preenchido após as clarificações
