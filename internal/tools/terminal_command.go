@@ -82,6 +82,7 @@ func generateBgID() string {
 // TerminalCommandTool executa comandos de shell usando PTY com streaming e suporte a SIGINT
 type TerminalCommandTool struct {
 	workspaceRoot    string
+	jailDir          string
 	blockedCommands  []string
 	stream           io.Writer
 	onBackgroundExit func(bgID, cmdStr, logs string, success bool)
@@ -97,9 +98,15 @@ func NewTerminalCommandTool(workspaceRoot string, blocked []string, stream ...io
 	}
 	return &TerminalCommandTool{
 		workspaceRoot:   workspaceRoot,
+		jailDir:         "", // Pode ser configurado via setter para habilitar o chroot isolation (Item 32)
 		blockedCommands: blocked,
 		stream:          s,
 	}
+}
+
+// SetJailDir define o diretorio para usar como chroot sandbox isolado
+func (t *TerminalCommandTool) SetJailDir(dir string) {
+	t.jailDir = dir
 }
 
 // SetOnBackgroundExit define o callback chamado quando um processo em background finaliza
@@ -252,6 +259,10 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 			Setpgid: true, // Executa em um grupo de processos separado para isolar sinais do processo pai
 		}
 
+		if t.jailDir != "" {
+			c.SysProcAttr.Chroot = t.jailDir // Isolar execução com chroot (Item 32)
+		}
+
 		// Garante que o cancel do context será chamado se algo der errado na inicialização
 		// ou armazenamos no BackgroundProcess para ele limpar depois
 
@@ -378,6 +389,12 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 	// Executa em bash -c (modo foreground)
 	c := exec.CommandContext(ctx, "bash", "-c", command)
 	c.Dir = t.workspaceRoot
+
+	if t.jailDir != "" {
+		c.SysProcAttr = &syscall.SysProcAttr{
+			Chroot: t.jailDir,
+		}
+	}
 
 	f, err := pty.Start(c)
 	if err != nil {
