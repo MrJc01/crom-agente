@@ -8,6 +8,8 @@ import (
 	"io"
 	"log"
 	"log/slog"
+	"net/http"
+	_ "net/http/pprof" // Para monitorar memory leaks (Item 30)
 	"os"
 	"os/exec"
 	"os/signal"
@@ -120,6 +122,15 @@ func (d *Daemon) Start() error {
 		d.cleanup()
 		return err
 	}
+
+	// 2.8 Inicia servidor pprof para monitoramento de memory leaks (Item 30)
+	go func() {
+		slog.Info("Iniciando servidor de profiling (pprof) em http://localhost:6060/debug/pprof")
+		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+			slog.Warn("Servidor pprof finalizado ou falhou", "erro", err)
+		}
+	}()
+
 	d.apiServer.SessionToken = d.sessionToken
 	d.grpcServer.SessionToken = d.sessionToken
 
