@@ -219,6 +219,17 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 	if err != nil {
 		return err
 	}
+	// Mescla as chaves secretas e envs locais do projeto se existirem
+	if localEnv, err := config.LoadEnvVars(target.Path); err == nil {
+		for k, v := range localEnv.All() {
+			env.Set(k, v)
+		}
+	}
+	if localCromEnv, err := config.LoadEnvVars(filepath.Join(target.Path, ".crom")); err == nil {
+		for k, v := range localCromEnv.All() {
+			env.Set(k, v)
+		}
+	}
 	workspaceCfg, err := config.LoadWorkspaceConfig(target.Path)
 	if err != nil {
 		return err

@@ -42,10 +42,18 @@ func (al *AgenticLoop) loadLocalRules(workspaceDir string) string {
 		return ""
 	}
 	var rules []string
+	// Lê da raiz do workspace
 	for _, ruleFile := range []string{".cromrules", ".voidrules"} {
 		path := filepath.Join(workspaceDir, ruleFile)
 		if data, err := os.ReadFile(path); err == nil {
 			rules = append(rules, fmt.Sprintf("=== Regras de %s ===\n%s", ruleFile, string(data)))
+		}
+	}
+	// Lê também do subdiretório .crom/ se existir
+	for _, ruleFile := range []string{".cromrules", ".voidrules"} {
+		path := filepath.Join(workspaceDir, ".crom", ruleFile)
+		if data, err := os.ReadFile(path); err == nil {
+			rules = append(rules, fmt.Sprintf("=== Regras de .crom/%s ===\n%s", ruleFile, string(data)))
 		}
 	}
 	return strings.Join(rules, "\n\n")

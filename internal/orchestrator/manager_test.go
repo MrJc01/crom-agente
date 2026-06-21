@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -126,5 +127,48 @@ func TestMultiAgentManager_StartStopAgent(t *testing.T) {
 	runningAfter := mgr.ListRunningAgents()
 	if len(runningAfter) != 0 {
 		t.Fatalf("esperava 0 agentes ativos, obteve %d", len(runningAfter))
+	}
+}
+
+func TestMultiAgentManager_EnvOverride(t *testing.T) {
+	wsDir := t.TempDir()
+
+	// 1. Cria .env na raiz
+	rootEnvPath := filepath.Join(wsDir, ".env")
+	err := os.WriteFile(rootEnvPath, []byte("API_KEY=root_key\nOTHER_KEY=root_other"), 0644)
+	if err != nil {
+		t.Fatalf("erro ao criar .env raiz: %v", err)
+	}
+
+	// 2. Cria .crom/.env
+	cromDir := filepath.Join(wsDir, ".crom")
+	_ = os.MkdirAll(cromDir, 0755)
+	cromEnvPath := filepath.Join(cromDir, ".env")
+	err = os.WriteFile(cromEnvPath, []byte("API_KEY=crom_key\nNEW_KEY=crom_new"), 0644)
+	if err != nil {
+		t.Fatalf("erro ao criar .crom/.env: %v", err)
+	}
+
+	// 3. Simula a logica do manager
+	env, _ := config.LoadEnvVars(wsDir)
+	
+	// Carrega de .crom/
+	if localCromEnv, err := config.LoadEnvVars(filepath.Join(wsDir, ".crom")); err == nil {
+		for k, v := range localCromEnv.All() {
+			env.Set(k, v)
+		}
+	}
+
+	// Verifica se a chave foi sobrescrita
+	if env.Get("API_KEY") != "crom_key" {
+		t.Errorf("esperava 'crom_key', obteve '%s'", env.Get("API_KEY"))
+	}
+	// Verifica se a chave da raiz foi mantida
+	if env.Get("OTHER_KEY") != "root_other" {
+		t.Errorf("esperava 'root_other', obteve '%s'", env.Get("OTHER_KEY"))
+	}
+	// Verifica se a nova chave de crom existe
+	if env.Get("NEW_KEY") != "crom_new" {
+		t.Errorf("esperava 'crom_new', obteve '%s'", env.Get("NEW_KEY"))
 	}
 }
