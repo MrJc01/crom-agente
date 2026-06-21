@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/llm"
 	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/tools"
@@ -231,7 +232,10 @@ func TestAgentEvent_MaxIterationsEmitsFinished(t *testing.T) {
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
 
-	al := New(provider, sm, handler)
+	al := New(provider, sm, handler, &config.ResolvedConfig{
+		MaxIterations: 15,
+		MaxMessageHistory: 100,
+	})
 	al.RegisterTool(&mockTool{id: "echo", description: "Ecoa"})
 
 	_ = al.Execute(context.Background(), "Loop")

@@ -7,11 +7,11 @@ import (
 
 // SpawnSubagentTool permite criar agentes filhos assíncronos
 type SpawnSubagentTool struct {
-	spawnFunc func(ctx context.Context, task string) (Result, error)
+	spawnFunc func(ctx context.Context, agentName string, task string) (Result, error)
 }
 
 // NewSpawnSubagentTool cria a ferramenta spawn_subagent
-func NewSpawnSubagentTool(spawnFunc func(ctx context.Context, task string) (Result, error)) *SpawnSubagentTool {
+func NewSpawnSubagentTool(spawnFunc func(ctx context.Context, agentName string, task string) (Result, error)) *SpawnSubagentTool {
 	return &SpawnSubagentTool{
 		spawnFunc: spawnFunc,
 	}
@@ -32,6 +32,10 @@ func (t *SpawnSubagentTool) ParametersSchema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",
 		"properties": {
+			"agent_name": {
+				"type": "string",
+				"description": "Nome do subagente a instanciar (ex: reviewer, documenter, tester). Se vazio, cria genérico."
+			},
 			"task": {
 				"type": "string",
 				"description": "Instrução específica e detalhada para o subagente executar"
@@ -49,7 +53,8 @@ func (t *SpawnSubagentTool) RequiresApproval() bool {
 // Execute executa o callback de spawn
 func (t *SpawnSubagentTool) Execute(ctx context.Context, args json.RawMessage) (Result, error) {
 	var input struct {
-		Task string `json:"task"`
+		AgentName string `json:"agent_name"`
+		Task      string `json:"task"`
 	}
 	if err := json.Unmarshal(args, &input); err != nil {
 		return Result{Success: false, Error: "argumentos inválidos de JSON"}, nil
@@ -59,5 +64,5 @@ func (t *SpawnSubagentTool) Execute(ctx context.Context, args json.RawMessage) (
 		return Result{Success: false, Error: "spawner de subagente não configurado"}, nil
 	}
 
-	return t.spawnFunc(ctx, input.Task)
+	return t.spawnFunc(ctx, input.AgentName, input.Task)
 }

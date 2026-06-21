@@ -39,6 +39,7 @@ type AgenticLoop struct {
 	permissionManager interface {
 		Authorize(ctx context.Context, action, target string) (bool, error)
 	}
+	promptManager     *config.PromptManager
 }
 
 func (al *AgenticLoop) SetPermissionManager(pm interface {
@@ -70,12 +71,18 @@ func New(provider llm.Provider, sm *state.StateManager, handler EventHandler, cf
 		}
 	}
 
+	var pm *config.PromptManager
+	if sm != nil {
+		pm = config.NewPromptManager(sm.GetWorkspaceDir())
+	}
+
 	return &AgenticLoop{
-		provider:     provider,
-		tools:        make(map[string]tools.Tool),
-		stateManager: sm,
-		handler:      handler,
-		config:       resolvedCfg,
+		provider:      provider,
+		tools:         make(map[string]tools.Tool),
+		stateManager:  sm,
+		handler:       handler,
+		config:        resolvedCfg,
+		promptManager: pm,
 	}
 }
 
@@ -148,23 +155,20 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 
 	// Primeira iteração da sessão: injetar regras locais, stack e instruções de planejamento
 	if len(messages) <= 2 && workspaceDir != "" {
-		// 0.5. Identidade Agêntica (Lembrar o modelo de suas ferramentas e capacidade de alterar o sistema)
-		messages = append(messages, llm.Message{
-			Role:    "system",
-			Content: "[SYSTEM AGENTIC IDENTITY] Você é um agente autônomo de IA com acesso completo ao sistema do usuário. Você pode ler/escrever arquivos locais (usando 'read_file', 'write_file', 'diff_replace'), executar comandos de terminal ('terminal_command'), e navegar na internet, realizar ações complexas ou tirar prints de websites usando o navegador ('browser_action' ou 'browser_subagent'). Você não necessita que o diretório atual seja um repositório Git para funcionar — trabalhe normalmente mesmo sem Git. Você NUNCA deve alegar ao usuário que é apenas um modelo de linguagem e que não pode criar/editar arquivos, rodar comandos, acessar a internet ou tirar screenshots. Use as ferramentas disponíveis imediatamente para executar o pedido do usuário.",
-		})
+		if al.promptManager != nil {
+			for _, p := range al.promptManager.GetAllEnabled() {
+				messages = append(messages, llm.Message{
+					Role:    "system",
+					Content: p.Content,
+				})
+			}
+		}
 
-		// 1. Detectar stack técnica
+		// 1. Detectar stack técnica (Dinâmico)
 		stack := al.detectStack(workspaceDir)
 		messages = append(messages, llm.Message{
 			Role:    "system",
 			Content: fmt.Sprintf("[SYSTEM STACK DETECTED] A stack técnica deste projeto foi identificada como: %s. Priorize comandos e validações desta stack.", stack),
-		})
-
-		// 1.5. Instrução de Conflito de Portas (Address already in use)
-		messages = append(messages, llm.Message{
-			Role:    "system",
-			Content: "[SYSTEM PORT CONFLICT HANDLING] Se você tentar iniciar um servidor (ex: npm run dev, go run, etc.) e ele falhar com um erro como 'Address already in use', 'port already in use', ou 'listen tcp :8080: bind: address already in use', você deve identificar imediatamente a porta conflitante, tentar utilizar uma porta alternativa (ex: 8081, 8082, 3001, etc.) ou configurar a porta via variáveis de ambiente/parâmetros do comando, e continuar a execução sem desistir.",
 		})
 
 		// 2. Carregar regras locais
@@ -175,31 +179,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			})
 		}
 
-		// 3. Forçar Planejamento
-		messages = append(messages, llm.Message{
-			Role:    "system",
-			Content: "[SYSTEM PLANNING REQUIREMENT] Se a tarefa solicitada pelo usuário for complexa ou envolver múltiplos passos, você deve descrever e listar um plano de execução detalhado em formato de checklist markdown no início de sua resposta. Use o formato:\n- [ ] Nome da tarefa\n\nÀ medida que progredir, atualize o status das tarefas:\n- [/] Tarefa em andamento\n- [x] Tarefa concluída\n\nVocê deve sempre incluir o plano de trabalho atualizado no início de seu conteúdo de texto (content) em todas as respostas (mesmo quando estiver chamando ferramentas) para que o usuário possa acompanhar o progresso de forma estruturada. Se houver dúvidas cruciais, ambiguidades técnicas ou decisões de design arquitetural importantes, identifique-as e liste-as sob uma seção clara chamada '**Questões de Alinhamento / Clarificações**' no início de sua resposta. Se a tarefa for simples (como uma saudação 'oi' ou conversa rápida), responda diretamente e de forma amigável sem criar um plano.",
-		})
-
-		// 3.5. Exigência de Uso de Ferramentas para Escrita de Arquivos (Evitar responder apenas com markdown)
-		messages = append(messages, llm.Message{
-			Role:    "system",
-			Content: "[SYSTEM TOOL USAGE REQUIREMENT] IMPORTANTE: Responder apenas com blocos de código markdown no chat NÃO cria, altera ou escreve arquivos no workspace do usuário. Se o seu plano envolve criar, editar ou excluir arquivos, você deve OBRIGATORIAMENTE chamar as ferramentas apropriadas (como 'write_file', 'diff_replace', etc.) para realizar essas ações no disco. Nunca marque uma tarefa de criação/modificação de código como concluída (- [x]) a menos que você tenha efetivamente executado a chamada de ferramenta correspondente com sucesso.",
-		})
-
-		// 3.5.5. Planejamento de Impacto de Arquivos (Proposed Changes)
-		messages = append(messages, llm.Message{
-			Role:    "system",
-			Content: "[SYSTEM FILE IMPACT PLANNING] Antes de realizar modificações ou criar novos arquivos no disco, você deve descrever um plano de impacto de arquivos contendo uma seção 'Proposed Changes' listando explicitamente os arquivos que serão criados (NEW), modificados (MODIFY) ou excluídos (DELETE).",
-		})
-
-		// 3.6. Exigência de Uso do parâmetro 'path' para Capturas de Tela
-		messages = append(messages, llm.Message{
-			Role:    "system",
-			Content: "[SYSTEM SCREENSHOT PATH REQUIREMENT] IMPORTANTE: Ao tirar capturas de tela (screenshots) usando a ferramenta 'browser_action' (com o parâmetro 'action' definido como 'screenshot') ou a ferramenta 'computer_control' (com o parâmetro 'action' definido como 'screenshot'), você deve OBRIGATORIAMENTE fornecer o parâmetro 'path' (ex: 'screenshot.png') se o usuário solicitou salvar a imagem. Se você não fornecer o 'path', a imagem NÃO será salva no disco e você não conseguirá salvá-la posteriormente usando a ferramenta 'write_file'. Não tente chamar uma ferramenta com o nome 'screenshot' (ela não existe); você deve chamar 'browser_action' ou 'computer_control' com 'action' definido como 'screenshot'.",
-		})
-
-		// 4. Diretório de Sessão para Artefatos, Tasks e Scripts
+		// 4. Diretório de Sessão para Artefatos, Tasks e Scripts (Dinâmico)
 		if sessionDir != "" && strings.Contains(al.stateManager.FilePath(), "sessions") {
 			relSessionDir, errRel := filepath.Rel(workspaceDir, sessionDir)
 			displayDir := sessionDir
@@ -212,18 +192,22 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			})
 		}
 
-		// 5. Injetar fase atual (Planning ou Execution) no contexto da sessão
+		// 5. Injetar fase atual (Planning ou Execution)
 		phase := GetCurrentPhase(al.stateManager)
-		if phase == PhasePlanning {
-			messages = append(messages, llm.Message{
-				Role:    "system",
-				Content: "[SYSTEM PHASE: PLANNING] Esta é a fase de PLANEJAMENTO. Analise cuidadosamente o pedido, gere o checklist detalhado de tarefas necessárias usando o formato `- [ ] Tarefa` (e a seção de 'Questões de Alinhamento / Clarificações' se houver dúvidas), e comece a executar IMEDIATAMENTE o plano chamando pelo menos uma ferramenta (como 'read_file', 'list_dir', 'write_file', 'terminal_command') na mesma resposta. Você NUNCA deve retornar uma resposta puramente de texto com o plano sem invocar nenhuma ferramenta, pois isso fará com que o loop seja suspenso com erro de tarefas incompletas.",
-			})
-		} else {
-			messages = append(messages, llm.Message{
-				Role:    "system",
-				Content: "[SYSTEM PHASE: EXECUTION] Esta é a fase de EXECUÇÃO. O plano já foi definido. Concentre-se em executar as tarefas pendentes `[ ]` e em andamento `[/]`, atualizando o checklist com `[x]` à medida que conclui cada item. NÃO repita itens já concluídos `[x]`.",
-			})
+		if al.promptManager != nil {
+			var phasePrompt config.PromptTemplate
+			var ok bool
+			if phase == PhasePlanning {
+				phasePrompt, ok = al.promptManager.GetPrompt("phase_planning")
+			} else {
+				phasePrompt, ok = al.promptManager.GetPrompt("phase_execution")
+			}
+			if ok && phasePrompt.Enabled {
+				messages = append(messages, llm.Message{
+					Role:    "system",
+					Content: phasePrompt.Content,
+				})
+			}
 		}
 		saveMsgs(messages)
 	}
@@ -232,6 +216,11 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 	timerScheduled := false
 
 	for i := 0; i < al.config.MaxIterations; i++ {
+		iterLog := state.IterationLog{
+			Iteration: i + 1,
+			Timestamp: time.Now(),
+		}
+
 		select {
 		case <-ctx.Done():
 			al.handler.OnMessage("system", "Loop cancelado pelo contexto.")
@@ -270,7 +259,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		}
 
 		// Construir definições de ferramentas para o LLM
-		opts := al.buildRequestOptions()
+		opts := al.buildRequestOptions(intent)
 
 		// Injetar plano de trabalho atualizado de forma dinâmica no contexto
 		runMessages := messages
@@ -285,7 +274,8 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		}
 
 		// Chamar o LLM
-		resp, err := al.provider.SendMessages(ctx, compactMessages(runMessages), opts)
+		compactedMsgs := al.compactMessages(ctx, runMessages)
+		resp, err := al.provider.SendMessages(ctx, compactedMsgs, opts)
 		if err != nil {
 			errMsg := err.Error()
 			al.handler.OnMessage("system", fmt.Sprintf("Erro na requisição ao LLM: %s", errMsg))
@@ -319,6 +309,13 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		}
 
 		msg := resp.Message
+
+		iterLog.PromptTokens = resp.Usage.PromptTokens
+		iterLog.CompletionTokens = resp.Usage.CompletionTokens
+		iterLog.TotalTokens = resp.Usage.TotalTokens
+		iterLog.MessagesCount = len(compactedMsgs)
+		iterLog.Messages = make([]llm.Message, len(compactedMsgs))
+		copy(iterLog.Messages, compactedMsgs)
 
 		// Interceptar chamadas de ferramentas alucinadas no formato Python /tool_code
 		if pyToolCalls := tryParseToolCode(msg.Content); len(pyToolCalls) > 0 {
@@ -382,7 +379,13 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 					Iteration: i + 1,
 					Data: map[string]interface{}{"reason": "consecutive_failures", "total_iterations": i + 1},
 				})
+				if al.stateManager != nil {
+					_ = al.stateManager.SaveIterationLog(i+1, iterLog)
+				}
 				return fmt.Errorf("abortando: %d falhas consecutivas", al.config.MaxConsecutiveFail)
+			}
+			if al.stateManager != nil {
+				_ = al.stateManager.SaveIterationLog(i+1, iterLog)
 			}
 			continue
 		} else if len(msg.ToolCalls) == 0 {
@@ -399,6 +402,9 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 					Data: map[string]interface{}{"reason": "suspended_timer", "total_iterations": i + 1},
 				})
 				al.handler.OnStatusChange("idle")
+				if al.stateManager != nil {
+					_ = al.stateManager.SaveIterationLog(i+1, iterLog)
+				}
 				return nil
 			}
 
@@ -416,6 +422,9 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				Data: map[string]interface{}{"reason": "completed", "total_iterations": i + 1},
 			})
 			al.handler.OnStatusChange("finished")
+			if al.stateManager != nil {
+				_ = al.stateManager.SaveIterationLog(i+1, iterLog)
+			}
 			return nil
 		}
 
@@ -457,6 +466,12 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			tool, exists := al.tools[toolID]
 			if !exists {
 				errMsg := fmt.Sprintf("Ferramenta '%s' não encontrada.", toolID)
+				iterLog.ToolsCalled = append(iterLog.ToolsCalled, state.ToolTrace{
+					ToolName:   toolID,
+					Args:       tc.Function.Arguments,
+					Success:    false,
+					Output:     errMsg,
+				})
 				al.handler.OnMessage("system", errMsg)
 				al.handler.OnEvent(AgentEvent{
 					Timestamp: time.Now(),
@@ -558,6 +573,12 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				approved, authErr := al.permissionManager.Authorize(ctx, toolID, target)
 				if authErr != nil || !approved {
 					errMsg := fmt.Sprintf("Ação '%s' rejeitada pelo usuário ou pelas políticas de segurança.", toolID)
+					iterLog.ToolsCalled = append(iterLog.ToolsCalled, state.ToolTrace{
+						ToolName:   toolID,
+						Args:       tc.Function.Arguments,
+						Success:    false,
+						Output:     errMsg,
+					})
 					al.handler.OnMessage("system", errMsg)
 					al.handler.OnEvent(AgentEvent{
 						Timestamp: time.Now(),
@@ -578,11 +599,20 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 
 
 			// Executar com timeout
+			toolStartTime := time.Now()
 			toolCtx, cancel := context.WithTimeout(ctx, time.Duration(al.config.ToolTimeoutSeconds)*time.Second)
 			result, execErr := tool.Execute(toolCtx, json.RawMessage(tc.Function.Arguments))
 			cancel()
+			toolDuration := time.Since(toolStartTime).Milliseconds()
 
 			if execErr != nil {
+				iterLog.ToolsCalled = append(iterLog.ToolsCalled, state.ToolTrace{
+					ToolName:   toolID,
+					Args:       tc.Function.Arguments,
+					Success:    false,
+					Output:     execErr.Error(),
+					DurationMs: toolDuration,
+				})
 				errContent := formatToolError(toolID, execErr.Error())
 				messages = append(messages, llm.Message{
 					Role: "tool", ToolCallID: tc.ID, Name: toolID, Content: errContent,
@@ -611,6 +641,13 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			}
 
 			if result.Success {
+				iterLog.ToolsCalled = append(iterLog.ToolsCalled, state.ToolTrace{
+					ToolName:   toolID,
+					Args:       tc.Function.Arguments,
+					Success:    true,
+					Output:     result.Data,
+					DurationMs: toolDuration,
+				})
 				if toolID == "schedule_timer" {
 					timerScheduled = true
 				}
@@ -654,6 +691,13 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				if errMsg == "" && result.Data != "" {
 					errMsg = result.Data
 				}
+				iterLog.ToolsCalled = append(iterLog.ToolsCalled, state.ToolTrace{
+					ToolName:   toolID,
+					Args:       tc.Function.Arguments,
+					Success:    false,
+					Output:     errMsg,
+					DurationMs: toolDuration,
+				})
 				errContent := formatToolError(toolID, errMsg)
 				if toolID == "terminal_command" {
 					errContent = FormatContextualError(errContent)
@@ -680,6 +724,10 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			}
 		}
 		saveMsgs(messages)
+
+		if al.stateManager != nil {
+			_ = al.stateManager.SaveIterationLog(i+1, iterLog)
+		}
 
 		if iterationHasFailure {
 			consecutiveFailures++
@@ -710,13 +758,22 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 }
 
 // buildRequestOptions constrói as definições de ferramentas para enviar ao LLM
-func (al *AgenticLoop) buildRequestOptions() llm.RequestOptions {
+func (al *AgenticLoop) buildRequestOptions(intent string) llm.RequestOptions {
 	if len(al.tools) == 0 {
 		return llm.RequestOptions{}
 	}
 
 	defs := make([]llm.ToolDefinition, 0, len(al.tools))
+	intentLower := strings.ToLower(intent)
+	
 	for _, t := range al.tools {
+		// Tool Pruning Rudimentar: se temos muitas ferramentas, podemos podar ferramentas super específicas
+		// se a intenção atual claramente não envolve seus domínios (ex: mcp)
+		if strings.HasPrefix(t.ID(), "mcp_") && !strings.Contains(intentLower, "mcp") && !strings.Contains(intentLower, "external") {
+			// Skip MCP tools se não parecerem relevantes
+			continue
+		}
+
 		defs = append(defs, llm.ToolDefinition{
 			Type: "function",
 			Function: llm.ToolFunctionSchema{
@@ -765,18 +822,72 @@ func assistantSignature(msg llm.Message) string {
 	return sig
 }
 
-// compactMessages aplica compactação simples removendo mensagens antigas se houver muitas
-func compactMessages(messages []llm.Message) []llm.Message {
-	const maxMessages = 40
-	if len(messages) <= maxMessages {
+// compactMessages aplica compactação inteligente usando o LLM para resumir o meio da conversa
+func (al *AgenticLoop) compactMessages(ctx context.Context, messages []llm.Message) []llm.Message {
+	maxMsgs := al.config.MaxMessageHistory
+	if maxMsgs <= 0 {
+		maxMsgs = 40
+	}
+
+	if len(messages) <= maxMsgs {
 		return messages
 	}
 
-	// Preserva a primeira mensagem (user intent) e as últimas N
-	keepFromEnd := maxMessages - 1
-	compacted := make([]llm.Message, 0, maxMessages)
-	compacted = append(compacted, messages[0])
-	compacted = append(compacted, messages[len(messages)-keepFromEnd:]...)
+	keepRecent := 15
+	if maxMsgs < 20 {
+		keepRecent = 5
+	}
+
+	middleStart := 0
+	for i, m := range messages {
+		if m.Role == "user" {
+			middleStart = i + 1
+			break
+		}
+	}
+
+	if middleStart == 0 || middleStart >= len(messages)-keepRecent {
+		// Fallback para truncamento simples
+		keepFromEnd := maxMsgs - 1
+		compacted := make([]llm.Message, 0, maxMsgs)
+		compacted = append(compacted, messages[0])
+		compacted = append(compacted, messages[len(messages)-keepFromEnd:]...)
+		return compacted
+	}
+
+	middleEnd := len(messages) - keepRecent
+
+	var toSummarize string
+	for i := middleStart; i < middleEnd; i++ {
+		content := truncateStr(messages[i].Content, 500)
+		toSummarize += fmt.Sprintf("[%s]: %s\n", messages[i].Role, content)
+		if len(messages[i].ToolCalls) > 0 {
+			toSummarize += fmt.Sprintf("[%s] executou %d chamadas de ferramenta.\n", messages[i].Role, len(messages[i].ToolCalls))
+		}
+	}
+
+	summaryPrompt := fmt.Sprintf("Resuma de forma extremamente concisa (max 2 parágrafos) os eventos, resultados e decisões do bloco de conversa a seguir para que o agente principal saiba o que já foi tentado e concluído.\n\nCONVERSA:\n%s", toSummarize)
+
+	resp, err := al.provider.SendMessages(ctx, []llm.Message{
+		{Role: "system", Content: "Você resume histórico técnico do agente. Seja direto e objetivo."},
+		{Role: "user", Content: summaryPrompt},
+	}, llm.RequestOptions{})
+
+	var compacted []llm.Message
+	if err == nil && resp.Message.Content != "" {
+		al.handler.OnMessage("system", "Otimização de tokens: histórico intermediário resumido via LLM.")
+		compacted = append(compacted, messages[:middleStart]...)
+		compacted = append(compacted, llm.Message{
+			Role:    "system",
+			Content: fmt.Sprintf("[SYSTEM HISTORY SUMMARY] Um trecho intermediário da conversa foi compactado:\n%s", resp.Message.Content),
+		})
+		compacted = append(compacted, messages[middleEnd:]...)
+	} else {
+		// Fallback
+		keepFromEnd := maxMsgs - 1
+		compacted = append(compacted, messages[0])
+		compacted = append(compacted, messages[len(messages)-keepFromEnd:]...)
+	}
 
 	log.Printf("[AgenticLoop] Compactou histórico de %d para %d mensagens", len(messages), len(compacted))
 	return compacted

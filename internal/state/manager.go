@@ -20,6 +20,28 @@ const (
 	MaxRelevantLogs = 20
 )
 
+// ToolTrace representa o rastro exato de uma execução de ferramenta
+type ToolTrace struct {
+	ToolName   string `json:"tool_name"`
+	Args       string `json:"args"`
+	Success    bool   `json:"success"`
+	Output     string `json:"output"`
+	DurationMs int64  `json:"duration_ms"`
+}
+
+// IterationLog contém todos os dados granulares de uma iteração do LLM
+type IterationLog struct {
+	Iteration         int           `json:"iteration"`
+	Timestamp         time.Time     `json:"timestamp"`
+	PromptTokens      int           `json:"prompt_tokens"`
+	CompletionTokens  int           `json:"completion_tokens"`
+	TotalTokens       int           `json:"total_tokens"`
+	MessagesCount     int           `json:"messages_count"`
+	Messages          []llm.Message `json:"messages"`
+	SystemPromptsUsed []string      `json:"system_prompts_used,omitempty"`
+	ToolsCalled       []ToolTrace   `json:"tools_called,omitempty"`
+}
+
 // TaskItem representa uma sub-tarefa no plano de execução do agente
 type TaskItem struct {
 	Title       string `json:"title"`
@@ -276,4 +298,41 @@ func (sm *StateManager) SetBrowserURL(url string) error {
 	defer sm.mu.Unlock()
 	sm.state.BrowserURL = url
 	return sm.saveStateLocked()
+}
+
+// SaveIterationLog grava o log granular de uma iteração na pasta 'iterations' da sessão
+func (sm *StateManager) SaveIterationLog(iteration int, logData IterationLog) error {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	dir := filepath.Join(filepath.Dir(sm.filePath), "iterations")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("erro ao criar diretório de iterations: %w", err)
+	}
+
+	fileName := fmt.Sprintf("%03d.json", iteration)
+	fullPath := filepath.Join(dir, fileName)
+
+	// Applica redação no conteúdo para log
+	logCopy := logData
+	if logCopy.Messages != nil {
+		redactedMsgs := make([]llm.Message, len(logCopy.Messages))
+		for i, m := range logCopy.Messages {
+			m.Content = security.Redact(m.Content)
+			redactedMsgs[i] = m
+		}
+		logCopy.Messages = redactedMsgs
+	}
+	for i, t := range logCopy.ToolsCalled {
+		t.Args = security.Redact(t.Args)
+		t.Output = security.Redact(t.Output)
+		logCopy.ToolsCalled[i] = t
+	}
+
+	data, err := json.MarshalIndent(logCopy, "", "  ")
+	if err != nil {
+		return fmt.Errorf("erro ao serializar IterationLog: %w", err)
+	}
+
+	return os.WriteFile(fullPath, data, 0644)
 }

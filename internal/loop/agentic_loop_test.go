@@ -280,7 +280,10 @@ func TestAgenticLoop_MaxIterationsExceeded(t *testing.T) {
 	provider := llm.NewMockProvider(responses...)
 	sm := state.NewStateManager(t.TempDir())
 
-	al := New(provider, sm, nil)
+	al := New(provider, sm, nil, &config.ResolvedConfig{
+		MaxIterations: 15,
+		MaxMessageHistory: 100,
+	})
 	al.RegisterTool(&mockTool{id: "echo", description: "Ecoa texto"})
 
 	err := al.Execute(context.Background(), "Loop infinito")
@@ -319,20 +322,32 @@ func TestAgenticLoop_ConsecutiveToolFailuresAbort(t *testing.T) {
 }
 
 func TestCompactMessages(t *testing.T) {
+	provider := llm.NewMockProvider(
+		llm.MockTextResponse("Resumo do histórico", 100),
+	)
+	al := New(provider, nil, &testEventHandler{})
+
 	// Cria 50 mensagens (acima do limite de 40)
 	msgs := make([]llm.Message, 50)
 	for i := range msgs {
 		msgs[i] = llm.Message{Role: "user", Content: fmt.Sprintf("msg-%d", i)}
 	}
 
-	compacted := compactMessages(msgs)
-	if len(compacted) != 40 {
-		t.Fatalf("esperado 40 mensagens após compactação, obteve %d", len(compacted))
+	compacted := al.compactMessages(context.Background(), msgs)
+	
+	// A nova compactação cria 1 (intent) + 1 (resumo) + 15 (recentes) = 17
+	if len(compacted) != 17 {
+		t.Fatalf("esperado 17 mensagens após compactação inteligente, obteve %d", len(compacted))
 	}
 
 	// A primeira mensagem deve ser preservada
 	if compacted[0].Content != "msg-0" {
 		t.Fatalf("primeira mensagem não preservada: %s", compacted[0].Content)
+	}
+
+	// A segunda mensagem deve conter o resumo
+	if !strings.Contains(compacted[1].Content, "Resumo do histórico") {
+		t.Fatalf("esperado resumo, obteve: %s", compacted[1].Content)
 	}
 
 	// A última mensagem deve ser a mais recente
