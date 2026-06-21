@@ -39,26 +39,51 @@ type Daemon struct {
 	GRPCPort     int
 	sessionToken string
 }
+// DaemonConfig define dependências para DI (Item 22)
+type DaemonConfig struct {
+	Manager    *orchestrator.MultiAgentManager
+	IPCServer  *IPCServer
+	APIServer  *APIServer
+	GRPCServer *GRPCServer
+	Notifier   *DesktopNotifier
+}
 
 // NewDaemon cria um novo Daemon
-func NewDaemon(headless bool) *Daemon {
-	mgr := orchestrator.NewMultiAgentManager()
-	ipcServer := NewIPCServer(mgr)
-	apiServer := NewAPIServer(mgr, ipcServer.router)
-
-	mgr.OnSchedule = func(workspaceName, sessionName, task string, delaySecs int, provider, model string) {
-		apiServer.ScheduleTimerTask(workspaceName, sessionName, task, delaySecs, provider, model)
+func NewDaemon(headless bool, cfg ...DaemonConfig) *Daemon {
+	var c DaemonConfig
+	if len(cfg) > 0 {
+		c = cfg[0]
 	}
-	mgr.OnBackgroundExit = func(workspaceName, sessionName, task string, provider, model string) {
-		apiServer.ScheduleTimerTask(workspaceName, sessionName, task, 0, provider, model)
+
+	if c.Manager == nil {
+		c.Manager = orchestrator.NewMultiAgentManager()
+	}
+	if c.IPCServer == nil {
+		c.IPCServer = NewIPCServer(c.Manager)
+	}
+	if c.APIServer == nil {
+		c.APIServer = NewAPIServer(c.Manager, c.IPCServer.router)
+	}
+	if c.GRPCServer == nil {
+		c.GRPCServer = NewGRPCServer(c.Manager)
+	}
+	if c.Notifier == nil && !headless {
+		c.Notifier = NewDesktopNotifier()
+	}
+
+	c.Manager.OnSchedule = func(workspaceName, sessionName, task string, delaySecs int, provider, model string) {
+		c.APIServer.ScheduleTimerTask(workspaceName, sessionName, task, delaySecs, provider, model)
+	}
+	c.Manager.OnBackgroundExit = func(workspaceName, sessionName, task string, provider, model string) {
+		c.APIServer.ScheduleTimerTask(workspaceName, sessionName, task, 0, provider, model)
 	}
 
 	return &Daemon{
-		manager:    mgr,
-		ipc:        ipcServer,
-		apiServer:  apiServer,
-		grpcServer: NewGRPCServer(mgr, ipcServer.router),
-		notifier:   NewDesktopNotifier("crom-agente"),
+		manager:    c.Manager,
+		ipc:        c.IPCServer,
+		apiServer:  c.APIServer,
+		grpcServer: c.GRPCServer,
+		notifier:   c.Notifier,
 		headless:   headless,
 		quit:       make(chan struct{}),
 		trayQuit:   make(chan struct{}),
@@ -66,7 +91,6 @@ func NewDaemon(headless bool) *Daemon {
 		GRPCPort:   9091,
 	}
 }
-
 func (d *Daemon) setupLogging() error {
 	dir, err := config.GlobalDir()
 	if err != nil {
