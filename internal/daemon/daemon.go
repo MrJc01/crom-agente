@@ -65,10 +65,10 @@ func NewDaemon(headless bool, cfg ...DaemonConfig) *Daemon {
 		c.APIServer = NewAPIServer(c.Manager, c.IPCServer.router)
 	}
 	if c.GRPCServer == nil {
-		c.GRPCServer = NewGRPCServer(c.Manager)
+		c.GRPCServer = NewGRPCServer(c.Manager, c.IPCServer.router)
 	}
 	if c.Notifier == nil && !headless {
-		c.Notifier = NewDesktopNotifier()
+		c.Notifier = NewDesktopNotifier("crom-agente")
 	}
 
 	c.Manager.OnSchedule = func(workspaceName, sessionName, task string, delaySecs int, provider, model string) {

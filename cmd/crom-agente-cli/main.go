@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/crom/crom-agente/internal/cli-tui"
+	"github.com/crom/crom-agente/pkg/cli-tui"
 	"github.com/spf13/cobra"
 )
 
