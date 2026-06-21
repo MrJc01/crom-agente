@@ -4,8 +4,22 @@ import (
 	"fmt"
 )
 
+
+// WrapProvider encapsulates an existing provider with standard enterprise decorators like Retry
+func WrapProvider(p Provider) Provider {
+	return NewRetryProvider(p, 3)
+}
+
 // NewProvider fabrica um LLM Provider com base no nome, modelo e função para obter variáveis de ambiente
 func NewProvider(providerName, model string, getEnv func(string) string) (Provider, error) {
+	p, err := buildBaseProvider(providerName, model, getEnv)
+	if err != nil {
+		return nil, err
+	}
+	return WrapProvider(p), nil
+}
+
+func buildBaseProvider(providerName, model string, getEnv func(string) string) (Provider, error) {
 	switch providerName {
 	case "openai":
 		apiKey := getEnv("OPENAI_API_KEY")
