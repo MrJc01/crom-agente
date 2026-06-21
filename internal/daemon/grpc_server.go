@@ -13,6 +13,7 @@ import (
 	"github.com/crom/crom-agente/internal/orchestrator"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
@@ -24,6 +25,7 @@ type GRPCServer struct {
 	activeHandlers map[string]*daemonAPIEventHandler
 	mu             sync.Mutex
 	SessionToken   string
+	certManager    *CertManager
 }
 
 func NewGRPCServer(manager *orchestrator.MultiAgentManager, router *AgentEventsRouter) *GRPCServer {
@@ -41,7 +43,18 @@ func (s *GRPCServer) Start(port int) error {
 		return fmt.Errorf("falha ao ligar gRPC Server na porta %d: %w", port, err)
 	}
 
-	s.server = grpc.NewServer()
+	cm, err := NewCertManager()
+	if err != nil {
+		return fmt.Errorf("falha ao inicializar CertManager para mTLS: %w", err)
+	}
+	s.certManager = cm
+
+	tlsConfig, err := s.certManager.GetServerTLSConfig()
+	if err != nil {
+		return fmt.Errorf("falha ao obter TLS Config: %w", err)
+	}
+
+	s.server = grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsConfig)))
 	pb.RegisterAgentServiceServer(s.server, s)
 
 	go func() {
