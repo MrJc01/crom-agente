@@ -380,8 +380,9 @@ func (s *APIServer) handleFile(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost {
 		var req struct {
-			Path    string `json:"path"`
-			Content string `json:"content"`
+			Path     string `json:"path"`
+			Content  string `json:"content"`
+			Encoding string `json:"encoding"` // "base64" or "" (plain)
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -399,7 +400,19 @@ func (s *APIServer) handleFile(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := os.WriteFile(req.Path, []byte(req.Content), 0644); err != nil {
+		var data []byte
+		if req.Encoding == "base64" {
+			var err error
+			data, err = base64.StdEncoding.DecodeString(req.Content)
+			if err != nil {
+				http.Error(w, "conteudo base64 invalido: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+		} else {
+			data = []byte(req.Content)
+		}
+
+		if err := os.WriteFile(req.Path, data, 0644); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
