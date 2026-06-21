@@ -62,7 +62,8 @@ func (t *RunTestsTool) Execute(ctx context.Context, args json.RawMessage) (Resul
 	}
 
 	// Executa em PTY
-	c := exec.CommandContext(ctx, "bash", "-c", cmdStr)
+	cmdName, cmdArgs := WrapCommandWithCgroup(cmdStr, 2048, 80) // 2GB memory e 80% cpu para testes
+	c := exec.CommandContext(ctx, cmdName, cmdArgs...)
 	c.Dir = t.workspaceRoot
 
 	f, err := pty.Start(c)

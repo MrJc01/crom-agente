@@ -254,7 +254,8 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 		// Wrapper de timeout estrito de 1 hora (Item 31)
 		bgCtx, bgCancel := context.WithTimeout(context.Background(), 1*time.Hour)
 		// Aplica nice para limitar consumo de CPU da session PTY (Item 34)
-		c := exec.CommandContext(bgCtx, "nice", "-n", "15", "bash", "-c", command)
+		cmdName, cmdArgs := WrapCommandWithCgroup(command, 1024, 50)
+		c := exec.CommandContext(bgCtx, cmdName, cmdArgs...)
 		c.Dir = t.workspaceRoot
 		c.SysProcAttr = &syscall.SysProcAttr{
 			Setpgid: true, // Executa em um grupo de processos separado para isolar sinais do processo pai
@@ -388,7 +389,8 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 	activeProcMu.Unlock()
 
 	// Executa em bash -c (modo foreground) com limite de CPU via nice (Item 34)
-	c := exec.CommandContext(ctx, "nice", "-n", "15", "bash", "-c", command)
+	cmdName, cmdArgs := WrapCommandWithCgroup(command, 1024, 50)
+	c := exec.CommandContext(ctx, cmdName, cmdArgs...)
 	c.Dir = t.workspaceRoot
 
 	if t.jailDir != "" {
