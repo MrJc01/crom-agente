@@ -40,7 +40,7 @@ func (m *MockProvider) SendMessages(ctx context.Context, messages []Message, opt
 	m.CallLog = append(m.CallLog, msgCopy)
 
 	if m.callIndex >= len(m.responses) {
-		return nil, fmt.Errorf("mock provider: sem respostas restantes (chamada #%d)", m.callIndex+1)
+		m.callIndex = len(m.responses) - 1
 	}
 
 	resp := m.responses[m.callIndex]
