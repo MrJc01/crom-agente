@@ -244,23 +244,31 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 	}
 
 	if input.Background {
-		bgCtx := context.Background()
+		// Wrapper de timeout estrito de 1 hora (Item 31)
+		bgCtx, bgCancel := context.WithTimeout(context.Background(), 1*time.Hour)
 		c := exec.CommandContext(bgCtx, "bash", "-c", command)
 		c.Dir = t.workspaceRoot
 		c.SysProcAttr = &syscall.SysProcAttr{
 			Setpgid: true, // Executa em um grupo de processos separado para isolar sinais do processo pai
 		}
 
+		// Garante que o cancel do context será chamado se algo der errado na inicialização
+		// ou armazenamos no BackgroundProcess para ele limpar depois
+
+
 		stdout, err := c.StdoutPipe()
 		if err != nil {
+			bgCancel()
 			return Result{Success: false, Error: fmt.Sprintf("erro ao iniciar pipe de stdout: %s", err.Error())}, nil
 		}
 		stderr, err := c.StderrPipe()
 		if err != nil {
+			bgCancel()
 			return Result{Success: false, Error: fmt.Sprintf("erro ao iniciar pipe de stderr: %s", err.Error())}, nil
 		}
 
 		if err := c.Start(); err != nil {
+			bgCancel()
 			return Result{Success: false, Error: fmt.Sprintf("erro ao iniciar comando em background: %s", err.Error())}, nil
 		}
 
@@ -325,6 +333,7 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 		go func() {
 			wg.Wait()
 			_ = c.Wait()
+			bgCancel() // Limpa o timer de 1 hora
 
 			backgroundProcsMu.Lock()
 			delete(backgroundProcs, bgID)
