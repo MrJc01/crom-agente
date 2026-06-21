@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/orchestrator"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 type Daemon struct {
@@ -71,15 +73,32 @@ func (d *Daemon) setupLogging() error {
 	_ = os.MkdirAll(dir, 0755)
 
 	logPath := filepath.Join(dir, "daemon.log")
-	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return fmt.Errorf("falha ao abrir arquivo de log: %w", err)
+
+	// Logger rotativo usando lumberjack
+	lumberjackLogger := &lumberjack.Logger{
+		Filename:   logPath,
+		MaxSize:    10, // megabytes
+		MaxBackups: 3,
+		MaxAge:     28, // days
+		Compress:   true,
 	}
 
-	d.logFile = f
-	// Multiplexa logs para stdout e para o arquivo
-	multiWriter := io.MultiWriter(os.Stdout, f)
+	// Multiplexa saída para stdout (terminal) e arquivo (lumberjack)
+	multiWriter := io.MultiWriter(os.Stdout, lumberjackLogger)
+
+	// Configura o handler do slog
+	handler := slog.NewTextHandler(multiWriter, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
+
+	// Redireciona log padrão (log.Printf) para o multiWriter pra não perder compatibilidade com libs legadas
 	log.SetOutput(multiWriter)
+	
+	// Salva referência do lumberjack para Close() manual se precisar (a interface do io.WriteCloser)
+	d.logFile = nil // Não precisamos mais do *os.File cru
+
 	return nil
 }
 

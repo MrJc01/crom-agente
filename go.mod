@@ -8,14 +8,18 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/gen2brain/beeep v0.11.2
 	github.com/getlantern/systray v1.2.2
+	github.com/go-rod/rod v0.116.2
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/lib/pq v1.12.3
 	github.com/robfig/cron/v3 v3.0.1
+	github.com/sergi/go-diff v1.4.0
 	github.com/spf13/cobra v1.10.2
 	go.mongodb.org/mongo-driver v1.17.9
 	golang.org/x/net v0.51.0
 	golang.org/x/term v0.40.0
+	google.golang.org/grpc v1.81.1
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	modernc.org/sqlite v1.52.0
 )
 
@@ -35,7 +39,6 @@ require (
 	github.com/getlantern/hidden v0.0.0-20190325191715-f02dbb02be55 // indirect
 	github.com/getlantern/ops v0.0.0-20190325191751-d70cb0d6f85f // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
-	github.com/go-rod/rod v0.116.2 // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
@@ -59,7 +62,6 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sergeymakinen/go-bmp v1.0.0 // indirect
 	github.com/sergeymakinen/go-ico v1.0.0-beta.0 // indirect
-	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/tadvi/systray v0.0.0-20190226123456-11a2b8fa57af // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
@@ -78,7 +80,6 @@ require (
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171 // indirect
-	google.golang.org/grpc v1.81.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	modernc.org/libc v1.72.3 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
