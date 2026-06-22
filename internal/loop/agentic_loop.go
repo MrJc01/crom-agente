@@ -154,7 +154,15 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 	}
 
 	// Primeira iteração da sessão: injetar regras locais, stack e instruções de planejamento
-	if len(messages) <= 2 && workspaceDir != "" {
+	hasAgenticIdentity := false
+	for _, m := range messages {
+		if m.Role == "system" && strings.Contains(m.Content, "[SYSTEM AGENTIC IDENTITY]") {
+			hasAgenticIdentity = true
+			break
+		}
+	}
+
+	if !hasAgenticIdentity && workspaceDir != "" {
 		if al.promptManager != nil {
 			for _, p := range al.promptManager.GetAllEnabled() {
 				messages = append(messages, llm.Message{
@@ -410,6 +418,24 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 
 
 			// Se não há chamadas de ferramentas, a tarefa foi concluída ou o agente respondeu textualmente ao usuário.
+			// Porém, se ainda houver tarefas pendentes ou em progresso no plano, avisa o agente e continua a iteração.
+			if al.stateManager != nil {
+				plan := al.stateManager.GetPlan()
+				if len(plan) > 0 && HasPendingTasks(plan) {
+					warning := GeneratePendingTasksWarning(plan)
+					al.handler.OnMessage("system", "⚠️ Plano de trabalho com tarefas pendentes. Solicitando continuação.")
+					messages = append(messages, llm.Message{
+						Role:    "system",
+						Content: warning,
+					})
+					saveMsgs(messages)
+					if al.stateManager != nil {
+						_ = al.stateManager.SaveIterationLog(i+1, iterLog)
+					}
+					continue
+				}
+			}
+
 			// Finaliza o loop ReAct normalmente.
 			if al.stateManager != nil {
 				_ = al.stateManager.SetStatus("idle")
