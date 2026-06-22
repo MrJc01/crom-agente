@@ -29,19 +29,28 @@ type TerminalSession struct {
 	closed    bool
 }
 
-func NewTerminalSession(id string) (*TerminalSession, error) {
+func NewTerminalSession(id string, dir string) (*TerminalSession, error) {
 	cmd := exec.Command("bash")
-	homeDir, _ := os.UserHomeDir()
-	if homeDir != "" {
-		cmd.Dir = homeDir
+	if dir != "" {
+		cmd.Dir = dir
+	} else {
+		homeDir, _ := os.UserHomeDir()
+		if homeDir != "" {
+			cmd.Dir = homeDir
+		}
 	}
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 
 	f, err := pty.Start(cmd)
 	if err != nil {
 		cmd = exec.Command("sh")
-		if homeDir != "" {
-			cmd.Dir = homeDir
+		if dir != "" {
+			cmd.Dir = dir
+		} else {
+			homeDir, _ := os.UserHomeDir()
+			if homeDir != "" {
+				cmd.Dir = homeDir
+			}
 		}
 		cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 		f, err = pty.Start(cmd)
@@ -134,12 +143,13 @@ func (s *APIServer) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 		_ = conn.WriteMessage(websocket.TextMessage, []byte("\r\nErro: Terminal ID obrigatorio\r\n"))
 		return
 	}
+	dir := r.URL.Query().Get("dir")
 
 	s.terminalSessionsMu.Lock()
 	session, exists := s.terminalSessions[termID]
 	if !exists || session.closed {
 		var err error
-		session, err = NewTerminalSession(termID)
+		session, err = NewTerminalSession(termID, dir)
 		if err != nil {
 			s.terminalSessionsMu.Unlock()
 			_ = conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\r\nErro ao criar sessao de terminal: %v\r\n", err)))
