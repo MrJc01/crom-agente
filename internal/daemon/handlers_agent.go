@@ -318,6 +318,62 @@ func (s *APIServer) handleFiles(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(result)
 }
 
+func (s *APIServer) handleProjectFiles(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if !s.authorize(w, r) {
+		return
+	}
+
+	dirPath := r.URL.Query().Get("path")
+	if dirPath == "" {
+		http.Error(w, "caminho obrigatorio", http.StatusBadRequest)
+		return
+	}
+
+	type FileItem struct {
+		Name string `json:"name"`
+		Path string `json:"path"`
+	}
+
+	var files []FileItem
+
+	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			name := info.Name()
+			if name == "node_modules" || name == ".git" || name == "target" || name == "dist" || name == ".results" || name == ".home" || name == ".cargo" || name == "venv" || name == ".gemini" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		rel, err := filepath.Rel(dirPath, path)
+		if err == nil {
+			files = append(files, FileItem{
+				Name: rel,
+				Path: path,
+			})
+		}
+		return nil
+	})
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(files)
+}
+
 func (s *APIServer) handleFile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")

@@ -260,3 +260,75 @@ func (s *APIServer) handleTerminalClose(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"success":true}`))
 }
+
+func (s *APIServer) handleTerminalBuffer(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if !s.authorize(w, r) {
+		return
+	}
+
+	termID := r.URL.Query().Get("id")
+	if termID == "" {
+		http.Error(w, "id obrigatorio", http.StatusBadRequest)
+		return
+	}
+
+	s.terminalSessionsMu.Lock()
+	session, exists := s.terminalSessions[termID]
+	var buffer []byte
+	if exists && !session.closed {
+		session.mu.Lock()
+		buffer = make([]byte, len(session.buffer))
+		copy(buffer, session.buffer)
+		session.mu.Unlock()
+	}
+	s.terminalSessionsMu.Unlock()
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(buffer)
+}
+
+func (s *APIServer) handleTerminalInfo(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if !s.authorize(w, r) {
+		return
+	}
+
+	termID := r.URL.Query().Get("id")
+	if termID == "" {
+		http.Error(w, "id obrigatorio", http.StatusBadRequest)
+		return
+	}
+
+	s.terminalSessionsMu.Lock()
+	session, exists := s.terminalSessions[termID]
+	pid := 0
+	cmdName := "bash"
+	if exists && !session.closed {
+		if session.Cmd != nil && session.Cmd.Process != nil {
+			pid = session.Cmd.Process.Pid
+		}
+	}
+	s.terminalSessionsMu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":   termID,
+		"pid":  pid,
+		"name": cmdName,
+	})
+}
