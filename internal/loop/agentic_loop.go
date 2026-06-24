@@ -25,7 +25,7 @@ type EventHandler interface {
 // noopHandler é um handler vazio usado quando nenhum handler é fornecido
 type noopHandler struct{}
 
-func (n noopHandler) OnStatusChange(string)  {}
+func (n noopHandler) OnStatusChange(string)    {}
 func (n noopHandler) OnMessage(string, string) {}
 func (n noopHandler) OnEvent(AgentEvent)       {}
 
@@ -39,7 +39,7 @@ type AgenticLoop struct {
 	permissionManager interface {
 		Authorize(ctx context.Context, action, target string) (bool, error)
 	}
-	promptManager     *config.PromptManager
+	promptManager *config.PromptManager
 }
 
 func (al *AgenticLoop) SetPermissionManager(pm interface {
@@ -47,7 +47,6 @@ func (al *AgenticLoop) SetPermissionManager(pm interface {
 }) {
 	al.permissionManager = pm
 }
-
 
 // New cria uma nova instância do AgenticLoop
 func New(provider llm.Provider, sm *state.StateManager, handler EventHandler, cfg ...*config.ResolvedConfig) *AgenticLoop {
@@ -258,10 +257,10 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 
 		// Detectar loops repetitivos
 		if detectRepetitiveLoop(messages) {
-			al.handler.OnMessage("system", "⚠️ Loop repetitivo detectado. Injetando correção.")
+			al.handler.OnMessage("system", " Loop repetitivo detectado. Injetando correção.")
 			messages = append(messages, llm.Message{
 				Role:    "system",
-				Content: "⚠️ [REPETITIVE_LOOP_WARNING] Você está repetindo ações anteriores. Mude sua estratégia imediatamente.",
+				Content: " [REPETITIVE_LOOP_WARNING] Você está repetindo ações anteriores. Mude sua estratégia imediatamente.",
 			})
 			saveMsgs(messages)
 		}
@@ -385,7 +384,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 					Timestamp: time.Now(),
 					Event:     "finished",
 					Iteration: i + 1,
-					Data: map[string]interface{}{"reason": "consecutive_failures", "total_iterations": i + 1},
+					Data:      map[string]interface{}{"reason": "consecutive_failures", "total_iterations": i + 1},
 				})
 				if al.stateManager != nil {
 					_ = al.stateManager.SaveIterationLog(i+1, iterLog)
@@ -407,7 +406,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 					Timestamp: time.Now(),
 					Event:     "finished",
 					Iteration: i + 1,
-					Data: map[string]interface{}{"reason": "suspended_timer", "total_iterations": i + 1},
+					Data:      map[string]interface{}{"reason": "suspended_timer", "total_iterations": i + 1},
 				})
 				al.handler.OnStatusChange("idle")
 				if al.stateManager != nil {
@@ -416,14 +415,13 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				return nil
 			}
 
-
 			// Se não há chamadas de ferramentas, a tarefa foi concluída ou o agente respondeu textualmente ao usuário.
 			// Porém, se ainda houver tarefas pendentes ou em progresso no plano, avisa o agente e continua a iteração.
 			if al.stateManager != nil {
 				plan := al.stateManager.GetPlan()
 				if len(plan) > 0 && HasPendingTasks(plan) {
 					warning := GeneratePendingTasksWarning(plan)
-					al.handler.OnMessage("system", "⚠️ Plano de trabalho com tarefas pendentes. Solicitando continuação.")
+					al.handler.OnMessage("system", "Plano de trabalho com tarefas pendentes. Solicitando continuação.")
 					messages = append(messages, llm.Message{
 						Role:    "system",
 						Content: warning,
@@ -445,7 +443,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				Timestamp: time.Now(),
 				Event:     "finished",
 				Iteration: i + 1,
-				Data: map[string]interface{}{"reason": "completed", "total_iterations": i + 1},
+				Data:      map[string]interface{}{"reason": "completed", "total_iterations": i + 1},
 			})
 			al.handler.OnStatusChange("finished")
 			if al.stateManager != nil {
@@ -493,10 +491,10 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			if !exists {
 				errMsg := fmt.Sprintf("Ferramenta '%s' não encontrada.", toolID)
 				iterLog.ToolsCalled = append(iterLog.ToolsCalled, state.ToolTrace{
-					ToolName:   toolID,
-					Args:       tc.Function.Arguments,
-					Success:    false,
-					Output:     errMsg,
+					ToolName: toolID,
+					Args:     tc.Function.Arguments,
+					Success:  false,
+					Output:   errMsg,
 				})
 				al.handler.OnMessage("system", errMsg)
 				al.handler.OnEvent(AgentEvent{
@@ -600,10 +598,10 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				if authErr != nil || !approved {
 					errMsg := fmt.Sprintf("Ação '%s' rejeitada pelo usuário ou pelas políticas de segurança.", toolID)
 					iterLog.ToolsCalled = append(iterLog.ToolsCalled, state.ToolTrace{
-						ToolName:   toolID,
-						Args:       tc.Function.Arguments,
-						Success:    false,
-						Output:     errMsg,
+						ToolName: toolID,
+						Args:     tc.Function.Arguments,
+						Success:  false,
+						Output:   errMsg,
 					})
 					al.handler.OnMessage("system", errMsg)
 					al.handler.OnEvent(AgentEvent{
@@ -622,7 +620,6 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 					continue
 				}
 			}
-
 
 			// Executar com timeout
 			toolStartTime := time.Now()
@@ -763,7 +760,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 					Timestamp: time.Now(),
 					Event:     "finished",
 					Iteration: i + 1,
-					Data: map[string]interface{}{"reason": "consecutive_failures", "total_iterations": i + 1},
+					Data:      map[string]interface{}{"reason": "consecutive_failures", "total_iterations": i + 1},
 				})
 				return fmt.Errorf("abortando: %d falhas consecutivas", al.config.MaxConsecutiveFail)
 			}
@@ -777,7 +774,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		Timestamp: time.Now(),
 		Event:     "finished",
 		Iteration: al.config.MaxIterations,
-		Data: map[string]interface{}{"reason": "max_iterations", "total_iterations": al.config.MaxIterations},
+		Data:      map[string]interface{}{"reason": "max_iterations", "total_iterations": al.config.MaxIterations},
 	})
 	al.handler.OnStatusChange("idle")
 	return fmt.Errorf("limite de %d iterações atingido", al.config.MaxIterations)
@@ -791,7 +788,7 @@ func (al *AgenticLoop) buildRequestOptions(intent string) llm.RequestOptions {
 
 	defs := make([]llm.ToolDefinition, 0, len(al.tools))
 	intentLower := strings.ToLower(intent)
-	
+
 	for _, t := range al.tools {
 		// Tool Pruning Rudimentar: se temos muitas ferramentas, podemos podar ferramentas super específicas
 		// se a intenção atual claramente não envolve seus domínios (ex: mcp)
@@ -964,6 +961,3 @@ func (al *AgenticLoop) OptimizePrompt(ctx context.Context, rawPrompt string) (st
 
 	return optimized, nil
 }
-
-
-
