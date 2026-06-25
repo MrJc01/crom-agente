@@ -135,7 +135,7 @@ func DefaultGlobalConfig() *GlobalConfig {
 	return &GlobalConfig{
 		DefaultProvider:                  "openai",
 		DefaultModel:                     "gpt-4o",
-		MaxIterationsDefault:             15,
+		MaxIterationsDefault:             0,
 		MaxConsecutiveFailDefault:        3,
 		MaxTokensPerTaskDefault:          100000,
 		ToolTimeoutSecondsDefault:        30,

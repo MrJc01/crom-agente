@@ -319,16 +319,19 @@ func TestAgentEvent_ConsecutiveFailuresEmitsRetry(t *testing.T) {
 	}
 
 	// Deve ter emitido o evento error indicando cancelamento de contexto
-	cancelErrEvt := findEvent(handler.Events, "error")
+	var cancelErrEvt *loop.AgentEvent
+	for idx := range handler.Events {
+		if handler.Events[idx].Event == "error" {
+			if agentErr, ok := handler.Events[idx].Data["error"].(loop.AgentError); ok {
+				if agentErr.Code == loop.ErrContextCanceled {
+					cancelErrEvt = &handler.Events[idx]
+					break
+				}
+			}
+		}
+	}
 	if cancelErrEvt == nil {
-		t.Fatal("evento 'error' não encontrado após cancelamento")
-	}
-	agentErr, ok := cancelErrEvt.Data["error"].(loop.AgentError)
-	if !ok {
-		t.Fatalf("esperado AgentError, obteve %T", cancelErrEvt.Data["error"])
-	}
-	if agentErr.Code != loop.ErrContextCanceled {
-		t.Fatalf("esperado code=%s, obteve %s", loop.ErrContextCanceled, agentErr.Code)
+		t.Fatal("evento 'error' com código ERR_CONTEXT_CANCELED não encontrado")
 	}
 }
 

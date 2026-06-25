@@ -157,7 +157,18 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 	lastIterFailed := false
 	lastToolWasValidation := false
 
-	for i := 0; i < al.config.MaxIterations; i++ {
+	for i := 0; ; i++ {
+		if al.config.MaxIterations > 0 && i >= al.config.MaxIterations {
+			al.handler.OnMessage("system", "Limite de iterações atingido.")
+			al.handler.OnEvent(loop.AgentEvent{
+				Timestamp: time.Now(),
+				Event:     "finished",
+				Iteration: al.config.MaxIterations,
+				Data:      map[string]interface{}{"reason": "max_iterations", "total_iterations": al.config.MaxIterations},
+			})
+			al.handler.OnStatusChange("idle")
+			return fmt.Errorf("limite de %d iterações atingido", al.config.MaxIterations)
+		}
 		askUserCalled := false
 		iterLog := state.IterationLog{
 			Iteration: i + 1,
@@ -880,15 +891,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		}
 	}
 
-	al.handler.OnMessage("system", "Limite de iterações atingido.")
-	al.handler.OnEvent(loop.AgentEvent{
-		Timestamp: time.Now(),
-		Event:     "finished",
-		Iteration: al.config.MaxIterations,
-		Data:      map[string]interface{}{"reason": "max_iterations", "total_iterations": al.config.MaxIterations},
-	})
-	al.handler.OnStatusChange("idle")
-	return fmt.Errorf("limite de %d iterações atingido", al.config.MaxIterations)
+	return nil
 }
 
 // truncateStr trunca uma string

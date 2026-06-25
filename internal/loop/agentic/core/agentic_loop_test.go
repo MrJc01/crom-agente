@@ -199,19 +199,44 @@ func TestAgenticLoop_EmptyResponseAutoCorrection(t *testing.T) {
 		providers.MockEmptyResponse(),
 		// 2ª: resposta vazia novamente
 		providers.MockEmptyResponse(),
-		// 3ª: resposta vazia (3ª falha consecutiva → abort)
+		// 3ª: resposta vazia (3ª falha consecutiva → retry com cancelamento)
 		providers.MockEmptyResponse(),
 	)
 	sm := state.NewStateManager(t.TempDir())
 
-	al := New(provider, sm, nil)
-	err := al.Execute(context.Background(), "Faça algo")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	handler := &cancelOnRetryHandler{
+		cancelFunc: cancel,
+	}
+
+	al := New(provider, sm, handler)
+	al.failureRetryDelay = 1 * time.Millisecond
+	err := al.Execute(ctx, "Faça algo")
 
 	if err == nil {
-		t.Fatal("esperado erro por falhas consecutivas, obteve nil")
+		t.Fatal("esperado erro por cancelamento de contexto, obteve nil")
 	}
-	if !strings.Contains(err.Error(), "falhas consecutivas") {
+	if err != context.Canceled && !strings.Contains(err.Error(), "canceled") && !strings.Contains(err.Error(), "cancelado") {
 		t.Fatalf("erro inesperado: %v", err)
+	}
+
+	// Deve ter emitido o evento retry
+	hasRetry := false
+	for _, ev := range handler.Events {
+		if ev.Event == "retry" {
+			hasRetry = true
+			if ev.Data["reason"] != "consecutive_failures" {
+				t.Fatalf("esperado reason=consecutive_failures, obteve %v", ev.Data["reason"])
+			}
+			if ev.Data["error_type"] != "empty_llm_response" {
+				t.Fatalf("esperado error_type=empty_llm_response, obteve %v", ev.Data["error_type"])
+			}
+		}
+	}
+	if !hasRetry {
+		t.Fatal("esperado evento 'retry' no handler")
 	}
 }
 

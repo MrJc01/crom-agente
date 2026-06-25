@@ -14,8 +14,8 @@ func TestDefaultGlobalConfig(t *testing.T) {
 	if cfg.DefaultProvider != "openai" {
 		t.Fatalf("esperado provider 'openai', obteve '%s'", cfg.DefaultProvider)
 	}
-	if cfg.MaxIterationsDefault != 15 {
-		t.Fatalf("esperado 15 iterações, obteve %d", cfg.MaxIterationsDefault)
+	if cfg.MaxIterationsDefault != 0 {
+		t.Fatalf("esperado 0 iterações (ilimitado), obteve %d", cfg.MaxIterationsDefault)
 	}
 	if cfg.LogLevel != "info" {
 		t.Fatalf("esperado log level 'info', obteve '%s'", cfg.LogLevel)
@@ -242,8 +242,8 @@ func TestResolve_GlobalOnlyDefaults(t *testing.T) {
 	if resolved.Provider != "openai" {
 		t.Fatalf("esperado 'openai', obteve '%s'", resolved.Provider)
 	}
-	if resolved.MaxIterations != 15 {
-		t.Fatalf("esperado 15, obteve %d", resolved.MaxIterations)
+	if resolved.MaxIterations != 0 {
+		t.Fatalf("esperado 0, obteve %d", resolved.MaxIterations)
 	}
 	if resolved.PermissionMode != "scoped" {
 		t.Fatalf("esperado 'scoped', obteve '%s'", resolved.PermissionMode)

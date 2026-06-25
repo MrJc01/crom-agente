@@ -67,7 +67,7 @@ func New(provider llm.Provider, sm *state.StateManager, handler EventHandler, cf
 	} else {
 		// Defaults hardcoded para backward compatibility
 		resolvedCfg = &config.ResolvedConfig{
-			MaxIterations:                15,
+			MaxIterations:                0,
 			MaxConsecutiveFail:           3,
 			ToolTimeoutSeconds:           30,
 			MaxMessageHistory:            40,
