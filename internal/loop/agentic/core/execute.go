@@ -461,7 +461,33 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				return nil
 			}
 
-
+			// Se o plano não estiver vazio e houver tarefas pendentes/em andamento,
+			// avisa o agente para continuar executando até terminar.
+			hasPendingTasks := false
+			if al.stateManager != nil {
+				plan := al.stateManager.GetPlan()
+				for _, item := range plan {
+					if item.Status == "pending" || item.Status == "in_progress" {
+						hasPendingTasks = true
+						break
+					}
+				}
+				if hasPendingTasks {
+					warning := loop.GeneratePendingTasksWarning(plan)
+					al.handler.OnMessage("system", "Aviso de tarefas pendentes no plano. Solicitando continuação.")
+					messages = append(messages, llm.Message{
+						Role:    "system",
+						Content: warning,
+					})
+					saveMsgs(messages)
+					lastIterFailed = false
+					lastToolWasValidation = false
+					if al.stateManager != nil {
+						_ = al.stateManager.SaveIterationLog(i+1, iterLog)
+					}
+					continue
+				}
+			}
 
 			// Finaliza o loop ReAct normalmente.
 			if al.stateManager != nil {
