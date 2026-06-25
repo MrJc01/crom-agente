@@ -21,11 +21,11 @@ func TestGeminiProvider_SendMessages(t *testing.T) {
 			t.Errorf("Expected POST request, got %s", r.Method)
 		}
 		if r.URL.Path != "/v1beta/chat/completions" {
-			// This test uses the real hardcoded URL inside SendMessages, 
+			// This test uses the real hardcoded URL inside SendMessages,
 			// so the test needs to mock http.DefaultTransport or we skip network tests.
 			// Given that SendMessages has hardcoded URLs, we will just test the struct init.
 		}
-		
+
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{
 			"choices": [{
@@ -44,13 +44,13 @@ func TestGeminiProvider_SendMessages(t *testing.T) {
 	defer mockServer.Close()
 
 	provider := NewGeminiProvider("fake-key", "gemini-1.5-pro")
-	
+
 	// Fast-fail the context so we don't actually hit Google if it tries to
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	
+
 	_, err := provider.SendMessages(ctx, []Message{{Role: "user", Content: "Hello"}}, RequestOptions{})
-	
+
 	// We expect a context canceled error because it tries to hit the real Google API
 	if err == nil {
 		t.Errorf("Expected error due to canceled context, got nil")
@@ -60,12 +60,12 @@ func TestGeminiProvider_SendMessages(t *testing.T) {
 func TestParseGeminiMultimodalContent(t *testing.T) {
 	text := "Some text\nimage:base64:iVBORw0KGgo=\nMore text"
 	result := parseGeminiMultimodalContent(text)
-	
+
 	arr, ok := result.([]interface{})
 	if !ok {
 		t.Fatalf("Expected []interface{}, got %T", result)
 	}
-	
+
 	if len(arr) != 3 {
 		t.Errorf("Expected 3 parts, got %d", len(arr))
 	}

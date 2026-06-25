@@ -107,7 +107,6 @@ func (p *GeminiProvider) SendMessages(ctx context.Context, messages []Message, o
 		}
 	}
 
-
 	type geminiRequest struct {
 		Model      string              `json:"model"`
 		Messages   []geminiChatMessage `json:"messages"`

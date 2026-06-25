@@ -14,6 +14,7 @@ import (
 	"github.com/crom/crom-agente/internal/daemon"
 	"github.com/crom/crom-agente/internal/llm"
 	"github.com/crom/crom-agente/internal/loop"
+	"github.com/crom/crom-agente/internal/loop/agentic/core"
 	"github.com/crom/crom-agente/internal/orchestrator"
 	"github.com/crom/crom-agente/internal/permission"
 	"github.com/crom/crom-agente/internal/state"
@@ -350,7 +351,7 @@ var runCmd = &cobra.Command{
 
 		// 9. Executar loop ReAct
 		handler := &cliEventHandler{out: cmd.OutOrStdout()}
-		al := loop.New(provider, sm, handler, resolved)
+		al := core.New(provider, sm, handler, resolved)
 
 		// Registrar ferramentas nativas
 		al.RegisterTool(tools.NewScheduleTimerTool(workspacePath, nil))
@@ -385,7 +386,6 @@ var runCmd = &cobra.Command{
 		al.RegisterTool(tools.NewProxyTool(workspacePath, resolved.WorkspaceJail))
 		al.RegisterTool(tools.NewRunTestsTool(workspacePath))
 
-
 		al.RegisterTool(tools.NewStackTranslatorTool(workspacePath, resolved.WorkspaceJail))
 		al.RegisterTool(tools.NewDocGeneratorTool(workspacePath, resolved.WorkspaceJail))
 		al.RegisterTool(tools.NewCodeExplainerTool(workspacePath, resolved.WorkspaceJail))
@@ -402,8 +402,6 @@ var runCmd = &cobra.Command{
 		}
 
 		al.SetPermissionManager(pm)
-
-
 
 		cmd.Printf("⚡ crom-agente :: Iniciando execução com provedor %q (modelo: %q)\n", resolved.Provider, resolved.Model)
 		cmd.Printf("⚡ Tarefa: %q\n", task)

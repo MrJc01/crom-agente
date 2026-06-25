@@ -353,7 +353,7 @@ func TestTerminalCommandTool_StreamingAndInterrupt(t *testing.T) {
 	// 2. Testar interrupção (Ctrl+C)
 	// Disparamos um sleep longo em background em uma goroutine
 	longArgs := json.RawMessage(`{"command": "sleep 10"}`)
-	
+
 	errChan := make(chan error, 1)
 	resChan := make(chan Result, 1)
 
@@ -403,7 +403,7 @@ func TestRunTestsTool(t *testing.T) {
 
 	// 2. Simula Go project
 	_ = os.WriteFile(filepath.Join(ws, "go.mod"), []byte("module test"), 0644)
-	
+
 	// Executa com comando customizado leve que sempre passa
 	argsCustom := json.RawMessage(`{"command": "echo 'tests passed'"}`)
 	res, err = tool.Execute(context.Background(), argsCustom)
@@ -510,7 +510,7 @@ func TestTerminalCommandTool_AutoBackgroundOnTimeout(t *testing.T) {
 
 	// Inicia um comando de sleep longo que bloquearia em foreground
 	argsRun := json.RawMessage(`{"command": "sleep 10"}`)
-	
+
 	start := time.Now()
 	res, err := tool.Execute(context.Background(), argsRun)
 	duration := time.Since(start)
@@ -550,4 +550,3 @@ func TestTerminalCommandTool_AutoBackgroundOnTimeout(t *testing.T) {
 		t.Fatalf("falha ao matar processo background no teste: %v, %+v", err, resKill)
 	}
 }
-

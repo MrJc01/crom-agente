@@ -60,12 +60,12 @@ func (sb *SafeBuffer) String() string {
 
 // BackgroundProcess representa um processo sendo executado em segundo plano
 type BackgroundProcess struct {
-	ID        string       `json:"id"`
-	Command   string       `json:"command"`
-	Cmd       *exec.Cmd    `json:"-"`
-	PTY       *os.File     `json:"-"`
-	StartedAt time.Time    `json:"started_at"`
-	Logs      *SafeBuffer  `json:"-"`
+	ID        string      `json:"id"`
+	Command   string      `json:"command"`
+	Cmd       *exec.Cmd   `json:"-"`
+	PTY       *os.File    `json:"-"`
+	StartedAt time.Time   `json:"started_at"`
+	Logs      *SafeBuffer `json:"-"`
 }
 
 var (
@@ -267,7 +267,6 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 
 		// Garante que o cancel do context será chamado se algo der errado na inicialização
 		// ou armazenamos no BackgroundProcess para ele limpar depois
-
 
 		stdout, err := c.StdoutPipe()
 		if err != nil {

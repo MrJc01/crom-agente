@@ -39,6 +39,7 @@ type Daemon struct {
 	GRPCPort     int
 	sessionToken string
 }
+
 // DaemonConfig define dependências para DI (Item 22)
 type DaemonConfig struct {
 	Manager    *orchestrator.MultiAgentManager
@@ -121,7 +122,7 @@ func (d *Daemon) setupLogging() error {
 
 	// Redireciona log padrão (log.Printf) para o multiWriter pra não perder compatibilidade com libs legadas
 	log.SetOutput(multiWriter)
-	
+
 	// Salva referência do lumberjack para Close() manual se precisar (a interface do io.WriteCloser)
 	d.logFile = nil // Não precisamos mais do *os.File cru
 

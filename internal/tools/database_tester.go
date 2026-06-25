@@ -12,9 +12,9 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
-	_ "modernc.org/sqlite"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	_ "modernc.org/sqlite"
 )
 
 // DatabaseTesterTool testa credenciais e conexões com bancos populares (Postgres, MySQL, SQLite, MongoDB)

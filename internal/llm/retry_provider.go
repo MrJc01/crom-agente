@@ -40,19 +40,19 @@ func (r *RetryProvider) SendMessages(ctx context.Context, messages []Message, op
 
 		// Erros irrecuperáveis que não devem tentar novamente
 		errStr := strings.ToLower(err.Error())
-		if strings.Contains(errStr, "invalid api key") || 
-		   strings.Contains(errStr, "unauthorized") ||
-		   strings.Contains(errStr, "context canceled") {
+		if strings.Contains(errStr, "invalid api key") ||
+			strings.Contains(errStr, "unauthorized") ||
+			strings.Contains(errStr, "context canceled") {
 			return nil, err
 		}
 
 		lastErr = err
-		slog.Warn("Falha na chamada LLM, tentando novamente...", 
-			"provider", r.Name(), 
-			"tentativa", i+1, 
-			"max_tentativas", r.maxRetries, 
+		slog.Warn("Falha na chamada LLM, tentando novamente...",
+			"provider", r.Name(),
+			"tentativa", i+1,
+			"max_tentativas", r.maxRetries,
 			"erro", err)
-		
+
 		// Aguarda o backoff ou o cancelamento do context
 		select {
 		case <-ctx.Done():

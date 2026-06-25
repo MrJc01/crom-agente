@@ -106,7 +106,7 @@ func (b *BrowserTool) getPage() (*rod.Page, error) {
 		l.Set("no-sandbox")
 		l.Set("disable-setuid-sandbox")
 		l.Set("disable-dev-shm-usage")
-		
+
 		// Procura navegador no PATH padrão (Chrome, Chromium, Brave, Edge)
 		if path, found := launcher.LookPath(); found {
 			l.Bin(path)
@@ -216,7 +216,7 @@ func (b *BrowserTool) Execute(ctx context.Context, args json.RawMessage) (Result
 		if err != nil {
 			return Result{Success: false, Error: fmt.Sprintf("falha ao clicar no elemento %q: %v", params.Selector, err)}, nil
 		}
-		
+
 		// Aguarda um pequeno momento para renderização e transições
 		time.Sleep(500 * time.Millisecond)
 		newURL := ""
@@ -270,7 +270,7 @@ func (b *BrowserTool) Execute(ctx context.Context, args json.RawMessage) (Result
 		if err != nil {
 			return Result{Success: false, Error: fmt.Sprintf("falha ao digitar no elemento %q: %v", params.Selector, err)}, nil
 		}
-		
+
 		// Aguarda um pequeno momento para renderização e transições
 		time.Sleep(500 * time.Millisecond)
 		newURL := ""

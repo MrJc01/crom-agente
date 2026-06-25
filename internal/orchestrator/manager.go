@@ -14,6 +14,7 @@ import (
 	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/llm"
 	"github.com/crom/crom-agente/internal/loop"
+	"github.com/crom/crom-agente/internal/loop/agentic/core"
 	"github.com/crom/crom-agente/internal/permission"
 	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/tools"
@@ -30,7 +31,7 @@ type RunningAgent struct {
 	WorkspaceName string
 	Task          string
 	Cancel        context.CancelFunc
-	Loop          *loop.AgenticLoop
+	Loop          *core.AgenticLoop
 	Ctx           context.Context
 }
 
@@ -40,7 +41,7 @@ type MultiAgentManager struct {
 	runningAgents    map[string]*RunningAgent // chave: workspace name
 	activeBrowsers   map[string]*tools.BrowserTool
 	activeSubagents  map[string]*tools.BrowserSubagentTool
-	MCPManager       *MCPManager              // gerenciador de servidores MCP globais
+	MCPManager       *MCPManager // gerenciador de servidores MCP globais
 	OnSchedule       func(workspaceName, sessionName, task string, delaySecs int, provider, model string)
 	OnBackgroundExit func(workspaceName, sessionName, task string, provider, model string)
 }
@@ -157,7 +158,7 @@ func (m *MultiAgentManager) RemoveWorkspace(name string) error {
 }
 
 // StartAgent inicia a execução de um loop ReAct em background para um determinado workspace e sessão
-func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessionName, task string, handler loop.EventHandler) error {
+func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessionName, task string, handler core.EventHandler) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -295,7 +296,7 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 	pm := permission.NewPermissionManager(target.Path, resolved.PermissionMode, askFunc)
 
 	// 8. Cria AgenticLoop
-	al := loop.New(provider, sm, handler, resolved)
+	al := core.New(provider, sm, handler, resolved)
 
 	// Registrar ferramentas nativas e gerenciador de permissões
 	al.RegisterTool(tools.NewScheduleTimerTool(target.Path, func(task string, durationSeconds int) {
@@ -383,7 +384,6 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 	al.RegisterTool(tools.NewProxyTool(target.Path, resolved.WorkspaceJail))
 	al.RegisterTool(tools.NewRunTestsTool(target.Path))
 
-
 	al.RegisterTool(tools.NewStackTranslatorTool(target.Path, resolved.WorkspaceJail))
 	al.RegisterTool(tools.NewDocGeneratorTool(target.Path, resolved.WorkspaceJail))
 	al.RegisterTool(tools.NewCodeExplainerTool(target.Path, resolved.WorkspaceJail))
@@ -414,8 +414,6 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 	}
 
 	al.SetPermissionManager(pm)
-
-
 
 	agent := &RunningAgent{
 		WorkspaceName: wsName,
@@ -570,5 +568,3 @@ func (m *MultiAgentManager) GetBrowserPageContent(workspaceKey string) (string, 
 
 	return "", "", fmt.Errorf("nenhum navegador ativo encontrado para o workspace %s", workspaceKey)
 }
-
-

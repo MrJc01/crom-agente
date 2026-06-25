@@ -10,7 +10,7 @@ func BenchmarkTryParseToolCode(b *testing.B) {
 	content := "Algum texto introdutório do LLM.\n/tool_code\n```python\n# Comentário\nread_file.execute(path=\"src/main.go\")\nwrite_file.execute(\n	path=\"src/test.go\",\n	content=\"\"\"func Test() {}\"\"\",\n	overwrite=True\n)\n```\nE um pouco de texto final.\n"
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		res := tryParseToolCode(content)
+		res := TryParseToolCode(content)
 		benchmarkOutput = res
 	}
 }
@@ -32,7 +32,7 @@ func BenchmarkPyExprToJSON(b *testing.B) {
 		`["a", "b", 123]`,
 		`{"key": "value", "num": 42}`,
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for _, expr := range exprs {

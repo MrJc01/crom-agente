@@ -35,7 +35,7 @@ func generateSolidPNG(r, g, b uint8) []byte {
 
 func init() {
 	iconIdleBytes = generateSolidPNG(0, 200, 0)      // verde
-	iconRunningBytes = generateSolidPNG(0, 122, 255)  // azul
+	iconRunningBytes = generateSolidPNG(0, 122, 255) // azul
 	iconErrorBytes = generateSolidPNG(255, 59, 48)   // vermelho
 }
 
@@ -58,7 +58,6 @@ func NewTrayManager() TrayManager {
 		quitChan: make(chan struct{}),
 	}
 }
-
 
 func (t *realTrayManager) SetOnStopAgents(f func()) {
 	t.mu.Lock()

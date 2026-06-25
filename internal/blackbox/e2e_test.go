@@ -44,10 +44,10 @@ func TestE2EBlackbox_Version(t *testing.T) {
 
 func TestE2EBlackbox_DaemonStatus(t *testing.T) {
 	tempHome := t.TempDir()
-	
+
 	cmd := exec.Command(binPath, "daemon", "status")
 	cmd.Env = append(os.Environ(), "HOME="+tempHome)
-	
+
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("erro ao executar daemon status: %v. Saida: %s", err, string(out))
@@ -61,10 +61,10 @@ func TestE2EBlackbox_DaemonStatus(t *testing.T) {
 
 func TestE2EBlackbox_ConfigResolved(t *testing.T) {
 	tempHome := t.TempDir()
-	
+
 	cmd := exec.Command(binPath, "config", "resolved")
 	cmd.Env = append(os.Environ(), "HOME="+tempHome)
-	
+
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("erro ao executar config resolved: %v. Saida: %s", err, string(out))

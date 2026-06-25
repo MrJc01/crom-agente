@@ -42,8 +42,8 @@ func NewPromptManager(workspaceDir string) *PromptManager {
 		globalPath:    filepath.Join(home, ".crom", "prompts.json"),
 		workspacePath: filepath.Join(workspaceDir, ".crom", "prompts.json"),
 		config: PromptsConfig{
-			Version:   "1.0",
-			Prompts:   make(map[string]PromptTemplate),
+			Version: "1.0",
+			Prompts: make(map[string]PromptTemplate),
 			Overrides: make(map[string]struct {
 				Content string `json:"content"`
 			}),
@@ -58,13 +58,15 @@ func (pm *PromptManager) loadDefaults() {
 	if err := json.Unmarshal(defaultPromptsJSON, &pm.config); err != nil {
 		// Log erro de fallback
 	}
-	
+
 	// Garantir que os mapas existem mesmo se o JSON estiver vazio
 	if pm.config.Prompts == nil {
 		pm.config.Prompts = make(map[string]PromptTemplate)
 	}
 	if pm.config.Overrides == nil {
-		pm.config.Overrides = make(map[string]struct{ Content string `json:"content"` })
+		pm.config.Overrides = make(map[string]struct {
+			Content string `json:"content"`
+		})
 	}
 }
 
@@ -122,7 +124,7 @@ func (pm *PromptManager) GetAllEnabled() []PromptTemplate {
 			enabled = append(enabled, p)
 		}
 	}
-	
+
 	// Add any custom prompts
 	for k, p := range pm.config.Prompts {
 		found := false

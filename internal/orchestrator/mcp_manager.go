@@ -22,7 +22,7 @@ import (
 // MCPServerHandle representa um servidor MCP ativo (subprocesso ou SSE remoto)
 type MCPServerHandle struct {
 	Config  config.MCPServerConfig
-	Client  mcp.MCPCaller  // pode ser *mcp.MCPClient (subprocesso) ou *mcp.MCPClientSSE (remoto)
+	Client  mcp.MCPCaller // pode ser *mcp.MCPClient (subprocesso) ou *mcp.MCPClientSSE (remoto)
 	Tools   []*mcp.MCPToolWrapper
 	sseConn io.ReadCloser // para servidores SSE remotos
 }

@@ -13,12 +13,12 @@ type Attachment struct {
 // Message representa uma mensagem no histórico de conversação do agente
 type Message struct {
 	ID           string       `json:"id,omitempty"`
-	Role         string       `json:"role"`                  // "system", "user", "assistant", "tool"
+	Role         string       `json:"role"` // "system", "user", "assistant", "tool"
 	Content      string       `json:"content,omitempty"`
 	Timestamp    string       `json:"timestamp,omitempty"`
 	ToolCalls    []ToolCall   `json:"tool_calls,omitempty"`
 	ToolCallID   string       `json:"tool_call_id,omitempty"`
-	Name         string       `json:"name,omitempty"`         // Nome da ferramenta (quando role=tool)
+	Name         string       `json:"name,omitempty"` // Nome da ferramenta (quando role=tool)
 	Attachments  []Attachment `json:"attachments,omitempty"`
 	ToolName     string       `json:"toolName,omitempty"`
 	ToolArgs     interface{}  `json:"toolArgs,omitempty"`

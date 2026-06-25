@@ -204,7 +204,7 @@ func (s *APIServer) handleRun(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	handler := &daemonAPIEventHandler{
 		workspaceName: req.Workspace,
-		router:         s.router,
+		router:        s.router,
 		permRespChan:  make(chan permissionResult, 1),
 	}
 	handler.onFinished = func() {
@@ -567,7 +567,7 @@ func (s *APIServer) triggerScheduledTask(t ScheduledTask) {
 	s.mu.Lock()
 	handler := &daemonAPIEventHandler{
 		workspaceName: t.Workspace,
-		router:         s.router,
+		router:        s.router,
 		permRespChan:  make(chan permissionResult, 1),
 		autoApprove:   true,
 	}
@@ -817,14 +817,14 @@ func (s *APIServer) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 	uptimeSeconds := int(time.Since(daemonStartTime).Seconds())
 
 	response := map[string]interface{}{
-		"uptime":       uptimeSeconds,
-		"go_version":   runtime.Version(),
+		"uptime":        uptimeSeconds,
+		"go_version":    runtime.Version(),
 		"num_goroutine": runtime.NumGoroutine(),
-		"alloc_mb":     float64(m.Alloc) / 1024 / 1024,
-		"sys_mb":       float64(m.Sys) / 1024 / 1024,
+		"alloc_mb":      float64(m.Alloc) / 1024 / 1024,
+		"sys_mb":        float64(m.Sys) / 1024 / 1024,
 		"active_agents": activeAgents,
-		"os":           runtime.GOOS,
-		"arch":         runtime.GOARCH,
+		"os":            runtime.GOOS,
+		"arch":          runtime.GOARCH,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1123,8 +1123,8 @@ func (s *APIServer) handleRecordStart(w http.ResponseWriter, r *http.Request) {
 		_ = os.Remove("/tmp/crom_screen_recording.webm")
 
 		// Build gst-launch command with optional source targeting
-		source := r.URL.Query().Get("source")     // "all", "monitor", "window"
-		windowId := r.URL.Query().Get("windowId") // X11 window id hex
+		source := r.URL.Query().Get("source")        // "all", "monitor", "window"
+		windowId := r.URL.Query().Get("windowId")    // X11 window id hex
 		monitorGeom := r.URL.Query().Get("geometry") // e.g. "1366x768+1360+0"
 
 		var gstArgs []string
@@ -1613,5 +1613,3 @@ func cleanHTMLIntegrity(html string) string {
 	html = crossoriginRegex.ReplaceAllString(html, "")
 	return html
 }
-
-

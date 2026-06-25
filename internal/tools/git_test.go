@@ -165,7 +165,7 @@ minha alteracao local
 alteracao da branch remota
 >>>>>>> remote-branch
 outra linha`
-	
+
 	conflictFile := filepath.Join(dir, "conflito.go")
 	_ = os.WriteFile(conflictFile, []byte(conflictContent), 0644)
 

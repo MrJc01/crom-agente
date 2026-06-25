@@ -11,7 +11,7 @@ func RenderMarkdown(content string, width int) string {
 	// Cria um renderizador Glamour com tema dark/light automático
 	r, err := glamour.NewTermRenderer(
 		glamour.WithAutoStyle(),
-		glamour.WithWordWrap(width - 4),
+		glamour.WithWordWrap(width-4),
 	)
 	if err != nil {
 		// Fallback caso falhe

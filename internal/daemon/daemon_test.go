@@ -390,7 +390,7 @@ func TestAPIServer_TokenAuthentication(t *testing.T) {
 	}
 
 	// Token incorreto
-	req, _ := http.NewRequest("GET", apiURL + "/status", nil)
+	req, _ := http.NewRequest("GET", apiURL+"/status", nil)
 	req.Header.Set("Authorization", "Bearer incorreto")
 	resp, err = http.DefaultClient.Do(req)
 	if err == nil {
@@ -401,7 +401,7 @@ func TestAPIServer_TokenAuthentication(t *testing.T) {
 	}
 
 	// Token correto
-	req, _ = http.NewRequest("GET", apiURL + "/status", nil)
+	req, _ = http.NewRequest("GET", apiURL+"/status", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
@@ -582,4 +582,3 @@ func TestAPIServer_MultipleWebSocketsConcurrency(t *testing.T) {
 	d.Stop()
 	<-startErrChan
 }
-

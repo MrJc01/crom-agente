@@ -197,7 +197,7 @@ func (s *APIServer) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 	session.mu.Lock()
 	delete(session.listeners, listener)
 	session.mu.Unlock()
-	
+
 	listener.once.Do(func() {
 		close(outChan)
 	})

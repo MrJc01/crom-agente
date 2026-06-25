@@ -199,14 +199,14 @@ func TestSaveAndLoadWorkspaceConfig(t *testing.T) {
 	dir := t.TempDir()
 	maxIter := 30
 	cfg := &WorkspaceConfig{
-		WorkspaceName:  "meu-projeto",
-		Provider:       "gemini",
-		Model:          "gemini-pro",
-		MaxIterations:  &maxIter,
-		PermissionMode: "total_access",
-		WorkspaceJail:  false,
-		AutoVerify:     true,
-		AllowedTools:   []string{"read_file", "write_file"},
+		WorkspaceName:   "meu-projeto",
+		Provider:        "gemini",
+		Model:           "gemini-pro",
+		MaxIterations:   &maxIter,
+		PermissionMode:  "total_access",
+		WorkspaceJail:   false,
+		AutoVerify:      true,
+		AllowedTools:    []string{"read_file", "write_file"},
 		BlockedCommands: []string{"rm -rf /"},
 	}
 

@@ -12,7 +12,7 @@ import (
 
 	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/llm"
-	"github.com/crom/crom-agente/internal/loop"
+	"github.com/crom/crom-agente/internal/loop/agentic/core"
 	"github.com/crom/crom-agente/internal/permission"
 	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/tools"
@@ -31,7 +31,7 @@ type Options struct {
 type TUIModel struct {
 	options      Options
 	stateManager *state.StateManager
-	agentLoop    *loop.AgenticLoop
+	agentLoop    *core.AgenticLoop
 	attachments  map[string]string // Nome do arquivo -> Conteúdo
 	shouldExit   bool
 	spinner      *InlineSpinner
@@ -184,7 +184,7 @@ func Start(opts Options) error {
 
 	// 8. Inicializa o loop ReAct
 	handler := &tuiEventHandler{spinner: model.spinner}
-	al := loop.New(provider, sm, handler, resolved)
+	al := core.New(provider, sm, handler, resolved)
 
 	// Registrar as ferramentas padrão
 	al.RegisterTool(tools.NewScheduleTimerTool(opts.WorkspacePath, nil))
@@ -197,14 +197,14 @@ func Start(opts Options) error {
 		model.spinner.Stop()
 		fmt.Printf("\n\033[33m⚠️  [HITL] crom-agente solicita permissão para a ação [%s] no alvo: %q\033[0m\n", action, target)
 		fmt.Print("👉 Pressione \033[1;32m[a]\033[0m para aprovar uma vez, \033[1;36m[s]\033[0m para sempre permitir, \033[1;31m[r]\033[0m para rejeitar: ")
-		
+
 		response, err := model.reader.ReadString('\n')
 		if err != nil {
 			model.spinner.Start("Processando")
 			return false, false
 		}
 		response = strings.TrimSpace(strings.ToLower(response))
-		
+
 		approved := false
 		remember := false
 		if response == "s" {
@@ -213,7 +213,7 @@ func Start(opts Options) error {
 		} else if response == "a" {
 			approved = true
 		}
-		
+
 		model.spinner.Start("Processando")
 		return approved, remember
 	}

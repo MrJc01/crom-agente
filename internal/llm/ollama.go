@@ -68,7 +68,6 @@ func (p *OllamaProvider) SendMessages(ctx context.Context, messages []Message, o
 			content = "[Imagem: Captura de tela processada]"
 		}
 
-
 		if isDeepSeek {
 			if m.Role == "assistant" && len(m.ToolCalls) > 0 {
 				var calls []string

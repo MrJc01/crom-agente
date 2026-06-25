@@ -26,8 +26,10 @@ func NewStackTranslatorTool(workspaceRoot string, jail bool) *StackTranslatorToo
 	}
 }
 
-func (t *StackTranslatorTool) ID() string          { return "stack_translator" }
-func (t *StackTranslatorTool) Description() string  { return "Traduz estruturas de dados de uma linguagem para outra (ex: Go struct -> TypeScript interface, JSON Schema)." }
+func (t *StackTranslatorTool) ID() string { return "stack_translator" }
+func (t *StackTranslatorTool) Description() string {
+	return "Traduz estruturas de dados de uma linguagem para outra (ex: Go struct -> TypeScript interface, JSON Schema)."
+}
 func (t *StackTranslatorTool) RequiresApproval() bool { return false }
 
 func (t *StackTranslatorTool) ParametersSchema() json.RawMessage {

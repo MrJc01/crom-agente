@@ -6,14 +6,14 @@ import "time"
 // Todos os consumidores (CLI, Daemon API, SDK) recebem esta struct serializada em JSON.
 type AgentEvent struct {
 	Timestamp time.Time              `json:"timestamp"`
-	Event     string                 `json:"event"`               // "thinking", "tool_call", "tool_result", "message", "error", "finished"
+	Event     string                 `json:"event"` // "thinking", "tool_call", "tool_result", "message", "error", "finished"
 	Iteration int                    `json:"iteration,omitempty"`
 	Data      map[string]interface{} `json:"data,omitempty"`
 }
 
 // AgentError é um erro tipado emitido pelo agente para tratamento programático.
 type AgentError struct {
-	Code    string                 `json:"code"`              // Ex: "ERR_LLM_RATE_LIMIT"
+	Code    string                 `json:"code"` // Ex: "ERR_LLM_RATE_LIMIT"
 	Message string                 `json:"message"`
 	Details map[string]interface{} `json:"details,omitempty"`
 }

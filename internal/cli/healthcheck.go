@@ -16,7 +16,7 @@ var healthcheckCmd = &cobra.Command{
 	Short: "Verifica a saude dos componentes do sistema (Daemon, IPC, Rede)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cmd.Println("🩺 Iniciando diagnostico de saude (Healthcheck)...")
-		
+
 		allOk := true
 
 		// 1. Checa IPC / Daemon
@@ -71,7 +71,7 @@ var healthcheckCmd = &cobra.Command{
 			cmd.Println("✨ Sistema saudavel e operacional!")
 			return nil
 		}
-		
+
 		cmd.Println("⚠️ O sistema apresenta falhas. Verifique os logs e dependencias.")
 		os.Exit(1)
 		return nil

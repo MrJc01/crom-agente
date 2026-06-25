@@ -25,7 +25,7 @@ func TestValidatePath_NormalizationAndWindows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("erro ao validar caminho com barras invertidas: %v", err)
 	}
-	
+
 	if !strings.HasPrefix(resWin, ws) {
 		t.Errorf("caminho retornado %q deveria estar sob o workspace %q", resWin, ws)
 	}

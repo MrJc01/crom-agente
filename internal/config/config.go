@@ -101,7 +101,6 @@ type ResolvedConfig struct {
 	DisablePromptOptimization bool
 }
 
-
 // CLIFlags contém flags passados via linha de comando (prioridade máxima)
 type CLIFlags struct {
 	Provider                  string
@@ -285,7 +284,7 @@ func LoadWorkspaceConfig(workspacePath string) (*WorkspaceConfig, error) {
 		if os.IsNotExist(err) {
 			name := filepath.Base(workspacePath)
 			cfg := DefaultWorkspaceConfig(name)
-			
+
 			// Tenta ler o global config para preencher o provider e model iniciais
 			if gDir, gErr := GlobalDir(); gErr == nil {
 				if gCfg, gCfgErr := LoadGlobalConfig(gDir); gCfgErr == nil && gCfg != nil {
@@ -293,7 +292,7 @@ func LoadWorkspaceConfig(workspacePath string) (*WorkspaceConfig, error) {
 					cfg.Model = gCfg.DefaultModel
 				}
 			}
-			
+
 			if saveErr := SaveWorkspaceConfig(workspacePath, cfg); saveErr != nil {
 				return nil, fmt.Errorf("erro ao criar config workspace padrão: %w", saveErr)
 			}
@@ -386,7 +385,6 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 			resolved.DisablePromptOptimization = *workspace.DisablePromptOptimization
 		}
 	}
-
 
 	// Camada 3: CLI Flags (prioridade máxima)
 	if flags.Provider != "" {

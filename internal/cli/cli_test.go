@@ -244,4 +244,3 @@ func TestCLI_Session(t *testing.T) {
 		t.Fatalf("sessao-teste não deveria estar listada após exclusão: %q", listOut2)
 	}
 }
-

@@ -24,9 +24,11 @@ func NewCodeExplainerTool(workspaceRoot string, jail bool) *CodeExplainerTool {
 	}
 }
 
-func (t *CodeExplainerTool) ID() string             { return "code_explainer" }
-func (t *CodeExplainerTool) Description() string     { return "Analisa a AST de um arquivo Go e gera uma descrição Markdown detalhada de seu funcionamento." }
-func (t *CodeExplainerTool) RequiresApproval() bool  { return false }
+func (t *CodeExplainerTool) ID() string { return "code_explainer" }
+func (t *CodeExplainerTool) Description() string {
+	return "Analisa a AST de um arquivo Go e gera uma descrição Markdown detalhada de seu funcionamento."
+}
+func (t *CodeExplainerTool) RequiresApproval() bool { return false }
 
 func (t *CodeExplainerTool) ParametersSchema() json.RawMessage {
 	return json.RawMessage(`{

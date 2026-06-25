@@ -21,7 +21,7 @@ print(browser_subagent.execute(
 	capture_final_screenshot=False
 ))`
 
-	calls := tryParseToolCode(content)
+	calls := TryParseToolCode(content)
 	if len(calls) != 1 {
 		t.Fatalf("esperava 1 tool call, obteve %d", len(calls))
 	}
@@ -73,7 +73,7 @@ print(browser_subagent.execute(
 
 func TestTryParseToolCode_NoToolCode(t *testing.T) {
 	content := "Apenas conversando amigavelmente sem bloco de código."
-	calls := tryParseToolCode(content)
+	calls := TryParseToolCode(content)
 	if len(calls) != 0 {
 		t.Errorf("esperava 0 chamadas para conteúdo sem /tool_code, obteve %d", len(calls))
 	}
@@ -82,7 +82,7 @@ func TestTryParseToolCode_NoToolCode(t *testing.T) {
 func TestTryParseToolCode_InvalidSyntax(t *testing.T) {
 	content := `/tool_code
 browser_subagent.execute(invalid_python_code...`
-	calls := tryParseToolCode(content)
+	calls := TryParseToolCode(content)
 	if len(calls) != 0 {
 		t.Errorf("esperava 0 chamadas para código Python inválido, obteve %d", len(calls))
 	}

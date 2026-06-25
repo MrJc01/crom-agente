@@ -33,7 +33,7 @@ func NewCertManager() (*CertManager, error) {
 		return nil, err
 	}
 	certsDir := filepath.Join(home, ".crom", "certs")
-	
+
 	err = os.MkdirAll(certsDir, 0700)
 	if err != nil {
 		return nil, err

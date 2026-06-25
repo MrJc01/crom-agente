@@ -26,7 +26,7 @@ func (t *testEventHandler) OnStatusChange(status string) {
 	}
 }
 
-func (t *testEventHandler) OnMessage(string, string) {}
+func (t *testEventHandler) OnMessage(string, string)      {}
 func (t *testEventHandler) OnEvent(event loop.AgentEvent) {}
 
 func TestMultiAgentManager_AddWorkspace(t *testing.T) {
@@ -151,7 +151,7 @@ func TestMultiAgentManager_EnvOverride(t *testing.T) {
 
 	// 3. Simula a logica do manager
 	env, _ := config.LoadEnvVars(wsDir)
-	
+
 	// Carrega de .crom/
 	if localCromEnv, err := config.LoadEnvVars(filepath.Join(wsDir, ".crom")); err == nil {
 		for k, v := range localCromEnv.All() {

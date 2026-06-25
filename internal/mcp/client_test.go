@@ -195,4 +195,3 @@ func TestMCPClientSSE_E2E(t *testing.T) {
 		t.Fatalf("unexpected response: %s", val)
 	}
 }
-

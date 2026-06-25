@@ -4,7 +4,6 @@ import (
 	"fmt"
 )
 
-
 // WrapProvider encapsulates an existing provider with standard enterprise decorators like Retry
 func WrapProvider(p Provider) Provider {
 	return NewRetryProvider(p, 3)

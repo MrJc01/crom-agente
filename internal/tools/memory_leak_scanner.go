@@ -29,9 +29,11 @@ func NewMemoryLeakScannerTool(workspaceRoot string, jail bool) *MemoryLeakScanne
 	}
 }
 
-func (t *MemoryLeakScannerTool) ID() string             { return "memory_leak_scanner" }
-func (t *MemoryLeakScannerTool) Description() string     { return "Analisa código Go para padrões de vazamento de memória (goroutines órfãs, channels não fechados) e opcionalmente coleta perfil de runtime." }
-func (t *MemoryLeakScannerTool) RequiresApproval() bool  { return true }
+func (t *MemoryLeakScannerTool) ID() string { return "memory_leak_scanner" }
+func (t *MemoryLeakScannerTool) Description() string {
+	return "Analisa código Go para padrões de vazamento de memória (goroutines órfãs, channels não fechados) e opcionalmente coleta perfil de runtime."
+}
+func (t *MemoryLeakScannerTool) RequiresApproval() bool { return true }
 
 func (t *MemoryLeakScannerTool) ParametersSchema() json.RawMessage {
 	return json.RawMessage(`{

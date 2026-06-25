@@ -138,7 +138,7 @@ func (s *APIServer) handleWS(w http.ResponseWriter, r *http.Request) {
 				s.mu.Lock()
 				handler := &daemonAPIEventHandler{
 					workspaceName: msg.Workspace,
-					router:         s.router,
+					router:        s.router,
 					permRespChan:  make(chan permissionResult, 1),
 					autoApprove:   msg.AutoApprove,
 				}

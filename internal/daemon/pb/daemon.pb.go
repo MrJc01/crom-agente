@@ -11,43 +11,43 @@ type StartAgentRequest struct {
 	Session   string `protobuf:"bytes,3,opt,name=session,proto3" json:"session,omitempty"`
 }
 
-func (x *StartAgentRequest) Reset() { *x = StartAgentRequest{} }
+func (x *StartAgentRequest) Reset()         { *x = StartAgentRequest{} }
 func (x *StartAgentRequest) String() string { return "" }
-func (x *StartAgentRequest) ProtoMessage() {}
+func (x *StartAgentRequest) ProtoMessage()  {}
 
 type StartAgentResponse struct {
 	Success bool   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
 	Error   string `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
 }
 
-func (x *StartAgentResponse) Reset() { *x = StartAgentResponse{} }
+func (x *StartAgentResponse) Reset()         { *x = StartAgentResponse{} }
 func (x *StartAgentResponse) String() string { return "" }
-func (x *StartAgentResponse) ProtoMessage() {}
+func (x *StartAgentResponse) ProtoMessage()  {}
 
 type StopAgentRequest struct {
 	Workspace string `protobuf:"bytes,1,opt,name=workspace,proto3" json:"workspace,omitempty"`
 }
 
-func (x *StopAgentRequest) Reset() { *x = StopAgentRequest{} }
+func (x *StopAgentRequest) Reset()         { *x = StopAgentRequest{} }
 func (x *StopAgentRequest) String() string { return "" }
-func (x *StopAgentRequest) ProtoMessage() {}
+func (x *StopAgentRequest) ProtoMessage()  {}
 
 type StopAgentResponse struct {
 	Success bool   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
 	Error   string `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
 }
 
-func (x *StopAgentResponse) Reset() { *x = StopAgentResponse{} }
+func (x *StopAgentResponse) Reset()         { *x = StopAgentResponse{} }
 func (x *StopAgentResponse) String() string { return "" }
-func (x *StopAgentResponse) ProtoMessage() {}
+func (x *StopAgentResponse) ProtoMessage()  {}
 
 type StreamEventsRequest struct {
 	Workspace string `protobuf:"bytes,1,opt,name=workspace,proto3" json:"workspace,omitempty"`
 }
 
-func (x *StreamEventsRequest) Reset() { *x = StreamEventsRequest{} }
+func (x *StreamEventsRequest) Reset()         { *x = StreamEventsRequest{} }
 func (x *StreamEventsRequest) String() string { return "" }
-func (x *StreamEventsRequest) ProtoMessage() {}
+func (x *StreamEventsRequest) ProtoMessage()  {}
 
 type AgentEvent struct {
 	Type    string `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
@@ -58,9 +58,9 @@ type AgentEvent struct {
 	Error   string `protobuf:"bytes,6,opt,name=error,proto3" json:"error,omitempty"`
 }
 
-func (x *AgentEvent) Reset() { *x = AgentEvent{} }
+func (x *AgentEvent) Reset()         { *x = AgentEvent{} }
 func (x *AgentEvent) String() string { return "" }
-func (x *AgentEvent) ProtoMessage() {}
+func (x *AgentEvent) ProtoMessage()  {}
 
 type RespondPermissionRequest struct {
 	Workspace string `protobuf:"bytes,1,opt,name=workspace,proto3" json:"workspace,omitempty"`
@@ -68,18 +68,18 @@ type RespondPermissionRequest struct {
 	Remember  bool   `protobuf:"varint,3,opt,name=remember,proto3" json:"remember,omitempty"`
 }
 
-func (x *RespondPermissionRequest) Reset() { *x = RespondPermissionRequest{} }
+func (x *RespondPermissionRequest) Reset()         { *x = RespondPermissionRequest{} }
 func (x *RespondPermissionRequest) String() string { return "" }
-func (x *RespondPermissionRequest) ProtoMessage() {}
+func (x *RespondPermissionRequest) ProtoMessage()  {}
 
 type RespondPermissionResponse struct {
 	Success bool   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
 	Error   string `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
 }
 
-func (x *RespondPermissionResponse) Reset() { *x = RespondPermissionResponse{} }
+func (x *RespondPermissionResponse) Reset()         { *x = RespondPermissionResponse{} }
 func (x *RespondPermissionResponse) String() string { return "" }
-func (x *RespondPermissionResponse) ProtoMessage() {}
+func (x *RespondPermissionResponse) ProtoMessage()  {}
 
 type AgentServiceServer interface {
 	StartAgent(context.Context, *StartAgentRequest) (*StartAgentResponse, error)

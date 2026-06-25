@@ -25,9 +25,11 @@ func NewDocGeneratorTool(workspaceRoot string, jail bool) *DocGeneratorTool {
 	}
 }
 
-func (t *DocGeneratorTool) ID() string             { return "doc_generator" }
-func (t *DocGeneratorTool) Description() string     { return "Analisa funções sem documentação em um arquivo Go e gera comentários GoDoc estruturados baseados no corpo da função." }
-func (t *DocGeneratorTool) RequiresApproval() bool  { return true }
+func (t *DocGeneratorTool) ID() string { return "doc_generator" }
+func (t *DocGeneratorTool) Description() string {
+	return "Analisa funções sem documentação em um arquivo Go e gera comentários GoDoc estruturados baseados no corpo da função."
+}
+func (t *DocGeneratorTool) RequiresApproval() bool { return true }
 
 func (t *DocGeneratorTool) ParametersSchema() json.RawMessage {
 	return json.RawMessage(`{

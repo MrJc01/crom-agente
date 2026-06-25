@@ -203,10 +203,10 @@ func walkHTML(n *html.Node, sb *strings.Builder, inPre bool) {
 			if text != "" {
 				currentStr := sb.String()
 				// Só insere espaço se o caractere anterior não for um delimitador de bloco ou espaço
-				if len(currentStr) > 0 && 
-					!strings.HasSuffix(currentStr, " ") && 
-					!strings.HasSuffix(currentStr, "\n") && 
-					!strings.HasSuffix(currentStr, "# ") && 
+				if len(currentStr) > 0 &&
+					!strings.HasSuffix(currentStr, " ") &&
+					!strings.HasSuffix(currentStr, "\n") &&
+					!strings.HasSuffix(currentStr, "# ") &&
 					!strings.HasSuffix(currentStr, "- ") &&
 					!strings.HasSuffix(currentStr, "`") {
 					sb.WriteString(" ")

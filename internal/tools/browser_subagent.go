@@ -145,10 +145,10 @@ type subagentParams struct {
 
 // StepResult representa o resultado de uma etapa da execução
 type StepResult struct {
-	Step        int    `json:"step"`
-	Action      string `json:"action"`
-	Success     bool   `json:"success"`
-	Message     string `json:"message"`
+	Step          int    `json:"step"`
+	Action        string `json:"action"`
+	Success       bool   `json:"success"`
+	Message       string `json:"message"`
 	ScreenshotB64 string `json:"screenshot_b64,omitempty"` // presente apenas em etapas de screenshot
 }
 
@@ -501,4 +501,3 @@ func (b *BrowserSubagentTool) GetCurrentPageContent() (string, string, error) {
 
 	return html, info.URL, nil
 }
-

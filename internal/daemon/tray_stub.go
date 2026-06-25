@@ -24,7 +24,7 @@ func (s *stubTrayManager) Run(onReady func(), onExit func()) {
 	onExit()
 }
 
-func (s *stubTrayManager) SetStatus(status string)            {}
+func (s *stubTrayManager) SetStatus(status string)             {}
 func (s *stubTrayManager) UpdateRunningAgents(agents []string) {}
 func (s *stubTrayManager) SetOnStopAgents(f func())            {}
 func (s *stubTrayManager) SetOnOpenWorkspace(f func())         {}

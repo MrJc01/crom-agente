@@ -240,4 +240,3 @@ func TestBrowserSubagentTool_E2E(t *testing.T) {
 		t.Errorf("dados de retorno devem começar com prefixo de imagem base64, obtido: %s", res.Data)
 	}
 }
-

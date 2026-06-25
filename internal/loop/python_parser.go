@@ -10,8 +10,8 @@ import (
 	"github.com/crom/crom-agente/internal/llm"
 )
 
-// tryParseToolCode intercepta blocos Python do tipo `/tool_code` e os converte em chamadas estruturadas de ferramentas.
-func tryParseToolCode(content string) []llm.ToolCall {
+// TryParseToolCode intercepta blocos Python do tipo `/tool_code` e os converte em chamadas estruturadas de ferramentas.
+func TryParseToolCode(content string) []llm.ToolCall {
 	var toolCalls []llm.ToolCall
 
 	// Verifica se o conteúdo contém uma seção `/tool_code`
@@ -108,7 +108,7 @@ func tryParseToolCode(content string) []llm.ToolCall {
 					},
 				})
 			} else {
-				log.Printf("[tryParseToolCode] Erro ao parsear argumentos Python: %v", err)
+				log.Printf("[TryParseToolCode] Erro ao parsear argumentos Python: %v", err)
 			}
 
 			searchStr = searchStr[argsEnd+1:]

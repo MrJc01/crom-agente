@@ -26,9 +26,11 @@ func NewMockGeneratorTool(workspaceRoot string, jail bool) *MockGeneratorTool {
 	}
 }
 
-func (t *MockGeneratorTool) ID() string             { return "mock_generator" }
-func (t *MockGeneratorTool) Description() string     { return "Gera structs mock para interfaces Go e payloads JSON mock baseados em structs ou schemas encontrados." }
-func (t *MockGeneratorTool) RequiresApproval() bool  { return true }
+func (t *MockGeneratorTool) ID() string { return "mock_generator" }
+func (t *MockGeneratorTool) Description() string {
+	return "Gera structs mock para interfaces Go e payloads JSON mock baseados em structs ou schemas encontrados."
+}
+func (t *MockGeneratorTool) RequiresApproval() bool { return true }
 
 func (t *MockGeneratorTool) ParametersSchema() json.RawMessage {
 	return json.RawMessage(`{

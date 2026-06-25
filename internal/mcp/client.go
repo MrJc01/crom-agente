@@ -297,7 +297,6 @@ func (w *MCPToolWrapper) RequiresApproval() bool {
 	return true
 }
 
-
 // Execute roda a chamada remota da ferramenta
 func (w *MCPToolWrapper) Execute(ctx context.Context, args json.RawMessage) (tools.Result, error) {
 	out, err := w.client.CallTool(ctx, w.tool.Name, args)
@@ -426,4 +425,3 @@ func (c *MCPClientSSE) CallTool(ctx context.Context, name string, args json.RawM
 
 // Close fecha o cliente SSE (sem-op pois não há conexão persistente)
 func (c *MCPClientSSE) Close() {}
-

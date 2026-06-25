@@ -148,9 +148,9 @@ func (t *GitConflictTool) analyzeConflicts(ctx context.Context, path string) (Re
 	}
 
 	data, _ := json.MarshalIndent(map[string]interface{}{
-		"file":       path,
-		"total":      len(blocks),
-		"conflicts":  blocks,
+		"file":      path,
+		"total":     len(blocks),
+		"conflicts": blocks,
 	}, "", "  ")
 	return Result{Success: true, Data: string(data)}, nil
 }

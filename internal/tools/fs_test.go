@@ -11,7 +11,7 @@ import (
 
 func TestFS_SandboxViolation(t *testing.T) {
 	ws := t.TempDir()
-	
+
 	outsideFile := filepath.Join(filepath.Dir(ws), "outside_secret.txt")
 	os.WriteFile(outsideFile, []byte("secret"), 0644)
 	defer os.Remove(outsideFile)

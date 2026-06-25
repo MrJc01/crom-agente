@@ -182,7 +182,7 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []Message, o
 	var req *http.Request
 	var bodyBytes []byte
 	maxRetries := 3
-	
+
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		var err error
 		req, err = http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
@@ -222,11 +222,11 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []Message, o
 			}
 			break // sai do loop e processa o erro
 		}
-		
+
 		// Se deu certo ou é um erro de cliente (400, 401, 404), quebra o loop
 		break
 	}
-	
+
 	if resp != nil && resp.Body != nil {
 		defer resp.Body.Close()
 	}
@@ -241,7 +241,7 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []Message, o
 
 		if isVisionError {
 			log.Printf("[OpenAIProvider] Detectado erro de compatibilidade de visão (%d). Fazendo fallback para texto puro com Layer 2...", resp.StatusCode)
-			
+
 			// Remove payloads nativos de visão, retendo a descrição textual da imagem já injetada
 			for idx := range reqMessages {
 				reqMessages[idx].Content = StripMultimodalPayloads(reqMessages[idx].Content)

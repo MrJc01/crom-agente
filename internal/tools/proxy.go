@@ -14,14 +14,14 @@ import (
 
 // ActiveProxy representa um proxy TCP ativo rodando em background
 type ActiveProxy struct {
-	ID            string             `json:"id"`
-	LocalAddr     string             `json:"local_addr"`
-	TargetAddr    string             `json:"target_addr"`
-	LogPath       string             `json:"log_path"`
-	Listener      net.Listener       `json:"-"`
-	Cancel        context.CancelFunc `json:"-"`
-	Connections   int                `json:"connections"`
-	mu            sync.Mutex
+	ID          string             `json:"id"`
+	LocalAddr   string             `json:"local_addr"`
+	TargetAddr  string             `json:"target_addr"`
+	LogPath     string             `json:"log_path"`
+	Listener    net.Listener       `json:"-"`
+	Cancel      context.CancelFunc `json:"-"`
+	Connections int                `json:"connections"`
+	mu          sync.Mutex
 }
 
 var (

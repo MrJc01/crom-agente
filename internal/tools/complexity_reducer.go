@@ -25,9 +25,11 @@ func NewComplexityReducerTool(workspaceRoot string, jail bool) *ComplexityReduce
 	}
 }
 
-func (t *ComplexityReducerTool) ID() string             { return "complexity_reducer" }
-func (t *ComplexityReducerTool) Description() string     { return "Calcula a complexidade ciclomática de funções Go e sinaliza aquelas que excedem o limiar configurável (default: 15)." }
-func (t *ComplexityReducerTool) RequiresApproval() bool  { return false }
+func (t *ComplexityReducerTool) ID() string { return "complexity_reducer" }
+func (t *ComplexityReducerTool) Description() string {
+	return "Calcula a complexidade ciclomática de funções Go e sinaliza aquelas que excedem o limiar configurável (default: 15)."
+}
+func (t *ComplexityReducerTool) RequiresApproval() bool { return false }
 
 func (t *ComplexityReducerTool) ParametersSchema() json.RawMessage {
 	return json.RawMessage(`{

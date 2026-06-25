@@ -43,7 +43,7 @@ func TestOllamaProvider_SendMessages_SanitizesDeepSeek(t *testing.T) {
 	history := []Message{
 		{Role: "user", Content: "Rode a tarefa"},
 		{
-			Role: "assistant",
+			Role:    "assistant",
 			Content: "Vou rodar.",
 			ToolCalls: []ToolCall{
 				{

@@ -87,10 +87,10 @@ func NewSessionStateManager(storagePath, sessionName string) *StateManager {
 	return &StateManager{
 		filePath: filepath.Join(storagePath, "sessions", sessionName, "session.json"),
 		state: &AgentState{
-			ID:           sessionName,
-			Name:         "Sessão", // Default
-			UltimoStatus: "idle",
-			Status:       "idle",
+			ID:              sessionName,
+			Name:            "Sessão", // Default
+			UltimoStatus:    "idle",
+			Status:          "idle",
 			ArquivosFocados: []string{},
 			LogsRelevantes:  []string{},
 			Timestamp:       time.Now(),
@@ -101,7 +101,7 @@ func NewSessionStateManager(storagePath, sessionName string) *StateManager {
 // newDefaultState retorna um estado inicial limpo
 func newDefaultState() *AgentState {
 	return &AgentState{
-		UltimoStatus:   "idle",
+		UltimoStatus:    "idle",
 		ArquivosFocados: []string{},
 		LogsRelevantes:  []string{},
 		Timestamp:       time.Now(),
