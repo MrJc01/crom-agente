@@ -40,6 +40,10 @@ func (p *OllamaProvider) SupportsSystemPrompt() bool {
 	return true
 }
 
+func (p *OllamaProvider) Capabilities() llm.ModelCapabilities {
+	return llm.GetCapabilities(p.model)
+}
+
 func (p *OllamaProvider) SendMessages(ctx context.Context, messages []llm.Message, opts llm.RequestOptions) (*llm.Response, error) {
 	url := p.endpoint + "/api/chat"
 

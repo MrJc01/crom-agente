@@ -85,7 +85,12 @@ type AgentState struct {
 	Messages          []llm.Message     `json:"messages,omitempty"`
 	Plan              []TaskItem        `json:"plan,omitempty"`
 	BrowserURL        string            `json:"browser_url,omitempty"`
-	SubagentsContext  map[string]string `json:"subagents_context,omitempty"`
+	SubagentsContext        map[string]string `json:"subagents_context,omitempty"`
+	FilesCreated            int               `json:"files_created"`
+	FilesValidated          int               `json:"files_validated"`
+	ToolCallsEmitted        int               `json:"tool_calls_emitted"`
+	ToolCallsFromTextParse  int               `json:"tool_calls_from_text_parse"`
+	CircuitBreakerTriggered bool              `json:"circuit_breaker_triggered"`
 }
 
 // StateManager gerencia a leitura, escrita e acesso concorrente ao estado do agente
@@ -423,5 +428,45 @@ func (sm *StateManager) UpdateSummaryForAgent(name, summary string) error {
 	sm.state.SubagentsContext[name] = summary
 	sm.mu.Unlock()
 	return sm.SaveState()
+}
+
+// RecordFileCreated incrementa a contagem de arquivos criados/editados.
+func (sm *StateManager) RecordFileCreated() error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.state.FilesCreated++
+	return sm.saveStateLocked()
+}
+
+// RecordFileValidated incrementa a contagem de validações de arquivo.
+func (sm *StateManager) RecordFileValidated() error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.state.FilesValidated++
+	return sm.saveStateLocked()
+}
+
+// RecordToolCallEmitted incrementa a contagem de chamadas de ferramentas emitidas.
+func (sm *StateManager) RecordToolCallEmitted() error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.state.ToolCallsEmitted++
+	return sm.saveStateLocked()
+}
+
+// RecordToolCallsFromTextParse incrementa a contagem de chamadas de ferramenta extraídas via parser textual.
+func (sm *StateManager) RecordToolCallsFromTextParse(count int) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.state.ToolCallsFromTextParse += count
+	return sm.saveStateLocked()
+}
+
+// SetCircuitBreakerTriggered define que o circuit breaker foi disparado.
+func (sm *StateManager) SetCircuitBreakerTriggered(triggered bool) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.state.CircuitBreakerTriggered = triggered
+	return sm.saveStateLocked()
 }
 

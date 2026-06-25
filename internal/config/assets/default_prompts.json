@@ -86,6 +86,11 @@
       "enabled": true,
       "content": "Use 'diff_replace' para realizar edições cirúrgicas e localizadas em partes específicas de um arquivo de texto. É mais rápido, consome menos recursos e é preferível em vez de reescrever todo o arquivo."
     },
+    "text_only_mode": {
+      "id": "SYSTEM_TEXT_ONLY_MODE",
+      "enabled": true,
+      "content": "[SYSTEM TEXT-ONLY MODE]\nATENÇÃO: O modelo/provedor atual NÃO suporta chamadas de função (tool use) nativas. Você DEVE gerar suas ações de ferramenta diretamente no corpo do texto usando o formato abaixo para que o sistema as intercepte e execute automaticamente.\n\n**Para criar ou escrever um arquivo**, use um bloco de código markdown precedido por uma linha indicando o caminho:\n\nFILE: caminho/do/arquivo.ext\n```linguagem\n# Conteúdo do arquivo aqui\n```\n\nExemplo concreto:\n\nFILE: src/main.py\n```python\nprint('Hello World')\n```\n\nAlternativamente, coloque o caminho como comentário na primeira linha do bloco:\n```python\n# FILE: src/main.py\nprint('Hello World')\n```\n\nIMPORTANTE:\n- NÃO tente emitir chamadas de função JSON tradicionais — elas serão ignoradas.\n- Sempre indique o caminho do arquivo de forma explícita.\n- Use extensões de arquivo corretas para que o sistema identifique a linguagem.\n- Você pode gerar múltiplos blocos de arquivo em uma única resposta.\n- Continue respondendo em linguagem natural entre os blocos de código para explicar seu raciocínio.\n- Se precisar executar comandos de terminal, descreva-os de forma explícita para que o usuário os execute manualmente.\""
+    },
     "optimizer_system_prompt": {
       "id": "OPTIMIZER_SYSTEM_PROMPT",
       "enabled": true,

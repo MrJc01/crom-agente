@@ -359,3 +359,143 @@ func parsePythonString(s string) (string, error) {
 	}
 	return sb.String(), nil
 }
+
+// TryParseMarkdownToolCalls tenta extrair chamadas de ferramentas de blocos de código markdown.
+func TryParseMarkdownToolCalls(content string) []llm.ToolCall {
+	var toolCalls []llm.ToolCall
+
+	// Encontra blocos de código markdown
+	lines := strings.Split(content, "\n")
+
+	inBlock := false
+	var blockLines []string
+	var detectedPath string
+
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		trimmed := strings.TrimSpace(line)
+
+		if strings.HasPrefix(trimmed, "```") {
+			if !inBlock {
+				inBlock = true
+				blockLines = nil
+				detectedPath = ""
+
+				// Tenta detectar o arquivo procurando na linha imediatamente anterior
+				if i > 0 {
+					prevLine := strings.TrimSpace(lines[i-1])
+					detectedPath = parseFilePathFromText(prevLine)
+				}
+			} else {
+				inBlock = false
+				// Processa o bloco finalizado
+				if len(blockLines) > 0 {
+					// Verifica se o caminho está na primeira linha do bloco como comentário
+					firstLine := strings.TrimSpace(blockLines[0])
+					pathInFirstLine := parseFilePathFromComment(firstLine)
+					if pathInFirstLine != "" {
+						detectedPath = pathInFirstLine
+						blockLines = blockLines[1:] // remove a linha de comentário do path
+					}
+
+					if detectedPath != "" {
+						fileContent := strings.Join(blockLines, "\n")
+						// Cria argumentos JSON para a ferramenta write_file
+						argsMap := map[string]string{
+							"path":    detectedPath,
+							"content": fileContent,
+						}
+						argsBytes, err := json.Marshal(argsMap)
+						if err == nil {
+							toolCalls = append(toolCalls, llm.ToolCall{
+								ID:   fmt.Sprintf("mdcall_%d_%d", time.Now().UnixNano(), len(toolCalls)),
+								Type: "function",
+								Function: llm.FunctionCall{
+									Name:      "write_file",
+									Arguments: string(argsBytes),
+								},
+							})
+						}
+					}
+				}
+			}
+			continue
+		}
+
+		if inBlock {
+			blockLines = append(blockLines, line)
+		}
+	}
+
+	return toolCalls
+}
+
+func parseFilePathFromComment(line string) string {
+	// Remove prefixes comuns de comentários
+	line = strings.TrimPrefix(line, "#")
+	line = strings.TrimPrefix(line, "//")
+	line = strings.TrimPrefix(line, "/*")
+	line = strings.TrimSuffix(line, "*/")
+	line = strings.TrimPrefix(line, "<!--")
+	line = strings.TrimSuffix(line, "-->")
+	line = strings.TrimSpace(line)
+
+	// Padrões como "FILE: caminho", "File: caminho", "caminho"
+	lower := strings.ToLower(line)
+	if strings.HasPrefix(lower, "file:") {
+		return strings.TrimSpace(line[5:])
+	}
+	if strings.HasPrefix(lower, "caminho:") {
+		return strings.TrimSpace(line[8:])
+	}
+	if strings.HasPrefix(lower, "path:") {
+		return strings.TrimSpace(line[5:])
+	}
+
+	// Se tiver extensão de arquivo comum, assume que é o caminho do arquivo
+	if hasCommonExtension(line) {
+		return line
+	}
+	return ""
+}
+
+func parseFilePathFromText(line string) string {
+	lower := strings.ToLower(line)
+	// Remove caracteres especiais no final como ":" ou "."
+	line = strings.TrimRight(line, ":. \t\r\n")
+
+	// Se o texto contém "file:" ou "arquivo:" ou "path:"
+	if idx := strings.Index(lower, "file:"); idx != -1 {
+		return strings.TrimSpace(line[idx+5:])
+	}
+	if idx := strings.Index(lower, "arquivo:"); idx != -1 {
+		return strings.TrimSpace(line[idx+8:])
+	}
+	if idx := strings.Index(lower, "path:"); idx != -1 {
+		return strings.TrimSpace(line[idx+5:])
+	}
+
+	// Tenta extrair a última palavra se for um caminho com extensão
+	words := strings.Fields(line)
+	if len(words) > 0 {
+		lastWord := words[len(words)-1]
+		lastWord = strings.Trim(lastWord, "\"`'*")
+		if hasCommonExtension(lastWord) {
+			return lastWord
+		}
+	}
+	return ""
+}
+
+func hasCommonExtension(s string) bool {
+	exts := []string{
+		".go", ".py", ".js", ".ts", ".html", ".css", ".json", ".php", ".txt", ".sh", ".md", ".yml", ".yaml", ".sql", ".ini",
+	}
+	s = strings.ToLower(s)
+	for _, ext := range exts {
+		if strings.HasSuffix(s, ext) {
+			return true
+		}
+	}
+	return false
+}

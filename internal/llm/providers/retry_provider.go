@@ -34,6 +34,10 @@ func (r *RetryProvider) SupportsSystemPrompt() bool {
 	return r.underlying.SupportsSystemPrompt()
 }
 
+func (r *RetryProvider) Capabilities() llm.ModelCapabilities {
+	return r.underlying.Capabilities()
+}
+
 func (r *RetryProvider) SendMessages(ctx context.Context, messages []llm.Message, opts llm.RequestOptions) (*llm.Response, error) {
 	var lastErr error
 	backoff := 2 * time.Second

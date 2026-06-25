@@ -345,6 +345,22 @@ graph TD
 - **Detecção de Loops Repetitivos**: Uma pilha interna armazena resumos dos estados anteriores. Se o agente tentar realizar a mesma ação repetidamente com os mesmos parâmetros sem obter sucesso, o orquestrador injeta uma instrução imperativa exigindo mudança de estratégia.
 - **Auto-Correção Nativa**: Se o LLM tentar gerar código diretamente na mensagem de texto (leaking) em vez de chamar as ferramentas formais (`write_file`, etc.), o orquestrador bloqueia e re-solicita a chamada formatada.
 
+### 4.2. Tabela de Capacidades de Modelos (`Capabilities`)
+O motor mantêm uma estrutura thread-safe (`internal/llm/capabilities.go`) para cache de capacidades conhecidas de modelos populares (ex: `llama-3.2-3b`, `gpt-4o`).
+*   **Detecção Dinâmica**: Se um modelo não consta na tabela, o provedor tenta a chamada de ferramenta nativa. Se houver falha de parâmetros ou suporte a ferramentas (erros 400/404), a capacidade de tool-use é automaticamente marcada como desativada no cache.
+*   **Otimização**: Quando o suporte a ferramentas está desativado no cache, o orquestrador desativa os schemas de ferramentas do payload de requisição e limpa as instruções de tool calls do prompt.
+
+### 4.3. Modo Adaptativo Text-Only (Markdown-to-Tool Parser)
+Para modelos que não suportam ferramentas nativas, o loop ReAct é chaveado para `TextOnlyMode`. 
+*   **Injeção de Prompts**: Prompts adaptativos específicos instruem o modelo a cuspir o código fonte ou as operações no corpo do texto em blocos Markdown com anotações de arquivo (ex: ` ```python\n# FILE: caminho/do/arquivo\n...` ou `FILE: caminho`).
+*   **Text-to-Tool Parser**: A cada iteração, a função `TryParseMarkdownToolCalls` varre o conteúdo textual da resposta, extrai os blocos markdown e os traduz em chamadas de escrita (`write_file`) estruturadas em JSON compatíveis com o motor do agente.
+
+### 4.4. Circuit Breaker de Inatividade
+Para evitar o desperdício excessivo de tokens de contexto em modelos incapazes ou travados em loops vazios de conversa, o agente conta com um Circuit Breaker:
+*   **Frequência de Ações**: Um contador acumula os turnos consecutivos nos quais o modelo não disparou nenhuma chamada de ferramenta legítima (nativa ou via parse de texto).
+*   **Análise de Intenção**: O agente analisa se a tarefa necessita de manipulação de arquivos (usando palavras-chave de escrita em `taskRequiresFiles(intent)`).
+*   **Disparo**: Se o limite consecutivo sem ações (padrão: 3) for atingido e a tarefa exigir escrita/criação, o Circuit Breaker interrompe imediatamente a execução do loop, retornando um erro detalhado para o usuário.
+
 ---
 
 ## 🔀 5. Concorrência e Árvore de Subagentes

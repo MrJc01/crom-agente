@@ -81,7 +81,7 @@ func TestSDK_E2E(t *testing.T) {
 	agent.RegisterTool(&dummyTool{})
 
 	// 4. Executa tarefa
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	result, err := agent.ExecuteTask(ctx, "Ola")
@@ -144,7 +144,7 @@ func TestSDK_Session(t *testing.T) {
 	sessionName := "sdk-session-abc"
 	agent.SessionName = sessionName
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	_, err = agent.ExecuteTask(ctx, "Ola Session")

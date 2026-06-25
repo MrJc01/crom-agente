@@ -95,3 +95,54 @@ func TestSplitTopLevel(t *testing.T) {
 		t.Fatalf("esperava 3 partes, obteve %d: %v", len(parts), parts)
 	}
 }
+
+func TestTryParseMarkdownToolCalls(t *testing.T) {
+	content := "Aqui está o primeiro arquivo, index.html:\n" +
+		"```html\n" +
+		"<html><body>Hello</body></html>\n" +
+		"```\n\n" +
+		"E aqui está o segundo script python:\n" +
+		"```python\n" +
+		"# FILE: scripts/hello.py\n" +
+		"import os\n" +
+		"print(\"hello\")\n" +
+		"```\n"
+
+	calls := TryParseMarkdownToolCalls(content)
+	if len(calls) != 2 {
+		t.Fatalf("esperava 2 chamadas de ferramentas extraídas, obteve %d", len(calls))
+	}
+
+	// 1. Validar index.html
+	call1 := calls[0]
+	if call1.Function.Name != "write_file" {
+		t.Errorf("esperava write_file, obteve %s", call1.Function.Name)
+	}
+	var args1 map[string]string
+	if err := json.Unmarshal([]byte(call1.Function.Arguments), &args1); err != nil {
+		t.Fatalf("erro ao desestuturar argumentos 1: %v", err)
+	}
+	if args1["path"] != "index.html" {
+		t.Errorf("esperava index.html, obteve %s", args1["path"])
+	}
+	if args1["content"] != "<html><body>Hello</body></html>" {
+		t.Errorf("conteúdo incorreto: %q", args1["content"])
+	}
+
+	// 2. Validar scripts/hello.py
+	call2 := calls[1]
+	if call2.Function.Name != "write_file" {
+		t.Errorf("esperava write_file, obteve %s", call2.Function.Name)
+	}
+	var args2 map[string]string
+	if err := json.Unmarshal([]byte(call2.Function.Arguments), &args2); err != nil {
+		t.Fatalf("erro ao desestuturar argumentos 2: %v", err)
+	}
+	if args2["path"] != "scripts/hello.py" {
+		t.Errorf("esperava scripts/hello.py, obteve %s", args2["path"])
+	}
+	expectedPyContent := "import os\nprint(\"hello\")"
+	if args2["content"] != expectedPyContent {
+		t.Errorf("conteúdo incorreto: %q", args2["content"])
+	}
+}

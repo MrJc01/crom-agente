@@ -83,12 +83,21 @@ var stateCmd = &cobra.Command{
 		cmd.Println("═══════════════════════════════════════")
 		cmd.Println("  crom-agente :: Estado Atual")
 		cmd.Println("═══════════════════════════════════════")
-		cmd.Printf("  Status:     %s\n", s.UltimoStatus)
-		cmd.Printf("  Tarefa:     %s\n", s.TarefaEmAndamento)
-		cmd.Printf("  Tokens:     %d\n", s.TokensGastos)
-		cmd.Printf("  Turnos:     %d\n", s.TotalTurnos)
-		cmd.Printf("  Diretório:  %s\n", s.DiretorioAtual)
-		cmd.Printf("  Timestamp:  %s\n", s.Timestamp.Format("2006-01-02 15:04:05"))
+		cmd.Printf("  Status:             %s\n", s.UltimoStatus)
+		cmd.Printf("  Tarefa:             %s\n", s.TarefaEmAndamento)
+		cmd.Printf("  Tokens:             %d\n", s.TokensGastos)
+		cmd.Printf("  Turnos:             %d\n", s.TotalTurnos)
+		cmd.Printf("  Arquivos Criados:   %d\n", s.FilesCreated)
+		cmd.Printf("  Arquivos Validados: %d\n", s.FilesValidated)
+		cmd.Printf("  Tools Chamadas:     %d\n", s.ToolCallsEmitted)
+		cmd.Printf("  Tools Parsed:       %d\n", s.ToolCallsFromTextParse)
+		cbStatus := "Não"
+		if s.CircuitBreakerTriggered {
+			cbStatus = "\033[1;31mSim (Disparado)\033[0m"
+		}
+		cmd.Printf("  Circuit Breaker:    %s\n", cbStatus)
+		cmd.Printf("  Diretório:          %s\n", s.DiretorioAtual)
+		cmd.Printf("  Timestamp:          %s\n", s.Timestamp.Format("2006-01-02 15:04:05"))
 		cmd.Println("═══════════════════════════════════════")
 
 		if len(s.LogsRelevantes) > 0 {

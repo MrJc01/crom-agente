@@ -20,6 +20,7 @@ type MockProvider struct {
 	callIndex           int
 	CallLog             [][]llm.Message // Registra todas as chamadas recebidas para inspeção nos testes
 	DisableSystemPrompt bool            // Para simular a falta de suporte a System Prompt nos testes
+	MockCapabilities    *llm.ModelCapabilities
 }
 
 // NewMockProvider cria um provider mock com respostas pré-programadas
@@ -59,6 +60,19 @@ func (m *MockProvider) Name() string {
 // SupportsSystemPrompt retorna se o mock suporta System Prompt (baseado no campo DisableSystemPrompt)
 func (m *MockProvider) SupportsSystemPrompt() bool {
 	return !m.DisableSystemPrompt
+}
+
+// Capabilities retorna as capacidades mockadas ou capacidades padrão
+func (m *MockProvider) Capabilities() llm.ModelCapabilities {
+	if m.MockCapabilities != nil {
+		return *m.MockCapabilities
+	}
+	return llm.ModelCapabilities{
+		ToolUse:          true,
+		Vision:           true,
+		MaxContext:       128000,
+		StreamingSupport: true,
+	}
 }
 
 // TotalCalls retorna o número total de chamadas feitas ao provider

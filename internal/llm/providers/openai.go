@@ -9,9 +9,15 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/crom/crom-agente/internal/llm"
+)
+
+var (
+	capabilitiesMu sync.RWMutex
+	toolUseCache   = make(map[string]bool)
 )
 
 type OpenAIProvider struct {
@@ -37,6 +43,17 @@ func (p *OpenAIProvider) Name() string {
 
 func (p *OpenAIProvider) SupportsSystemPrompt() bool {
 	return true
+}
+
+func (p *OpenAIProvider) Capabilities() llm.ModelCapabilities {
+	caps := llm.GetCapabilities(p.model)
+	capabilitiesMu.RLock()
+	supported, cached := toolUseCache[p.URL+"|"+p.model]
+	capabilitiesMu.RUnlock()
+	if cached && !supported {
+		caps.ToolUse = false
+	}
+	return caps
 }
 
 type openAIChatMessage struct {
@@ -139,6 +156,18 @@ func parseMultimodalContent(text string) interface{} {
 func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []llm.Message, opts llm.RequestOptions) (*llm.Response, error) {
 	url := p.URL
 
+	// Verify cached tool use support
+	capabilitiesMu.RLock()
+	supported, cached := toolUseCache[p.URL+"|"+p.model]
+	capabilitiesMu.RUnlock()
+
+	var isToolUseDisabled bool
+	if cached && !supported {
+		isToolUseDisabled = true
+		opts.Tools = nil
+		opts.ToolChoice = ""
+	}
+
 	// Layer 2: Extrai o contexto escrito da mídia antes do envio
 	injectedMessages := llm.ExtractAndInjectMediaContext(ctx, messages, p.Name(), p.apiKey, p.URL)
 
@@ -157,6 +186,10 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []llm.Messag
 		}
 	}
 
+	if isToolUseDisabled {
+		reqMessages = sanitizeMessagesForTextOnly(reqMessages)
+	}
+
 	type openAIRequest struct {
 		Model      string               `json:"model"`
 		Messages   []openAIChatMessage  `json:"messages"`
@@ -169,7 +202,7 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []llm.Messag
 		Messages: reqMessages,
 	}
 
-	if len(opts.Tools) > 0 {
+	if len(opts.Tools) > 0 && !isToolUseDisabled {
 		reqBody.Tools = opts.Tools
 		if opts.ToolChoice != "" {
 			reqBody.ToolChoice = opts.ToolChoice
@@ -256,6 +289,11 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []llm.Messag
 
 			// Se também falhar devido a suporte de ferramentas, remove-as
 			if len(opts.Tools) > 0 && (strings.Contains(bodyStr, "tool") || strings.Contains(bodyStr, "parameter")) {
+				capabilitiesMu.Lock()
+				toolUseCache[p.URL+"|"+p.model] = false
+				capabilitiesMu.Unlock()
+				isToolUseDisabled = true
+
 				reqBody.Tools = nil
 				reqBody.ToolChoice = nil
 				reqBody.Messages = sanitizeMessagesForTextOnly(reqMessages)
@@ -288,6 +326,11 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []llm.Messag
 				return nil, fmt.Errorf("openai: retry de visão failed (%d): %s", respRetry.StatusCode, string(bodyBytes))
 			}
 		} else if len(opts.Tools) > 0 && (strings.Contains(bodyStr, "tool") || strings.Contains(bodyStr, "support") || strings.Contains(bodyStr, "parameter")) {
+			capabilitiesMu.Lock()
+			toolUseCache[p.URL+"|"+p.model] = false
+			capabilitiesMu.Unlock()
+			isToolUseDisabled = true
+
 			reqBody.Tools = nil
 			reqBody.ToolChoice = nil
 			reqBody.Messages = sanitizeMessagesForTextOnly(reqMessages)
@@ -322,6 +365,13 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []llm.Messag
 		}
 	}
 
+	// Cache successful tool use capability
+	if len(opts.Tools) > 0 && !isToolUseDisabled {
+		capabilitiesMu.Lock()
+		toolUseCache[p.URL+"|"+p.model] = true
+		capabilitiesMu.Unlock()
+	}
+
 	type openAIResponse struct {
 		Choices []struct {
 			Message llm.Message `json:"message"`
@@ -339,7 +389,8 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []llm.Messag
 	}
 
 	return &llm.Response{
-		Message: apiResp.Choices[0].Message,
-		Usage:   apiResp.Usage,
+		Message:         apiResp.Choices[0].Message,
+		Usage:           apiResp.Usage,
+		ToolUseDisabled: isToolUseDisabled,
 	}, nil
 }

@@ -26,6 +26,11 @@ func (n noopHandler) OnStatusChange(string)    {}
 func (n noopHandler) OnMessage(string, string) {}
 func (n noopHandler) OnEvent(loop.AgentEvent)  {}
 
+type fastPathCacheEntry struct {
+	response  string
+	expiresAt time.Time
+}
+
 // AgenticLoop é o motor de execução do agente seguindo o padrão ReAct
 type AgenticLoop struct {
 	provider          llm.Provider
@@ -40,6 +45,9 @@ type AgenticLoop struct {
 	mu                  sync.Mutex
 	pendingUserMessages []string
 	failureRetryDelay   time.Duration
+	textOnlyMode        bool
+	fastPathCache       map[string]fastPathCacheEntry
+	fastPathCacheMu     sync.Mutex
 }
 
 // QueueUserMessage adiciona uma mensagem do usuário na fila de injeção em tempo real
@@ -98,6 +106,7 @@ func New(provider llm.Provider, sm *state.StateManager, handler EventHandler, cf
 		config:            resolvedCfg,
 		promptManager:     pm,
 		failureRetryDelay: delay,
+		fastPathCache:     make(map[string]fastPathCacheEntry),
 	}
 }
 

@@ -82,4 +82,62 @@ E acesse a URL indicada (geralmente `http://localhost:1420`).
    - Um modal interativo abrirá listando os seus monitores físicos disponíveis (detectados via `xrandr`) e todas as janelas que você tem abertas no seu sistema operacional (detectadas via `wmctrl`).
    - Escolha o que deseja gravar. O backend usará a ferramenta `gst-launch-1.0` nativa para gravar apenas o item escolhido.
 3. Se estiver rodando no **Navegador**:
-   - O app utilizará o picker nativo do próprio navegador (WebRTC `getDisplayMedia`) para que você escolha a aba ou tela.
+    - O app utilizará o picker nativo do próprio navegador (WebRTC `getDisplayMedia`) para que você escolha a aba ou tela.
+
+---
+
+## 🧪 4. Simulações e Testes de Modelo
+
+Para avaliar e comparar a capacidade de diferentes LLMs (por exemplo, modelos leves de 3B parâmetros versus modelos maiores de 8B parâmetros) em executar fluxos ReAct complexos ou rápidos, o repositório inclui uma infraestrutura completa de simulação.
+
+### A. Executando as Simulações (`run_simulations.py`)
+
+O script `simulations/run_simulations.py` executa até 10 tarefas simuladas no agente e gera relatórios de desempenho.
+
+Você pode configurar o tempo limite, o provedor e rodar múltiplos modelos simultaneamente para obter um relatório comparativo:
+
+```bash
+# Rodar simulações com o modelo padrão usando OpenRouter
+python3 simulations/run_simulations.py --model meta-llama/llama-3.1-8b-instruct
+
+# Configurar um limite de tempo customizado por simulação (ex: 150 segundos)
+python3 simulations/run_simulations.py --timeout 150
+
+# Executar testes comparativos entre dois ou mais modelos
+python3 simulations/run_simulations.py --model meta-llama/llama-3.2-3b-instruct,meta-llama/llama-3.1-8b-instruct
+```
+
+**Principais Parâmetros:**
+* `--model`: Lista de modelos (separada por vírgula) para executar.
+* `--provider`: Provedor a ser utilizado (padrão: `openrouter`).
+* `--timeout`: Tempo limite em segundos para cada simulação (por padrão, é de 180s para tarefas mais complexas e 120s para as demais).
+* `--max-iterations`: Limite máximo de iterações do loop ReAct (padrão: 0/ilimitado).
+
+### B. Relatórios Gerados
+
+Ao final da execução, os seguintes arquivos são criados no diretório `simulations/`:
+1. `simulations_summary_<model>.json`: Dados de telemetria brutos estruturados.
+2. `simulations_report_<model>.md`: Relatório Markdown detalhando o status, turnos e tempo de cada simulação do modelo.
+3. `simulations_comparative_report.md`: Tabela lado a lado comparando taxa de sucesso, tempo médio e turnos por simulação (gerado apenas ao passar múltiplos modelos no `--model`).
+
+### C. Verificação Físico-Funcional (`verify_simulations.py`)
+
+Para certificar que os arquivos e scripts criados pelas simulações estão corretos (ex: se o script gerado compila, se a tabela do SQLite possui dados reais ou se o HTML foi estruturado corretamente), execute o validador:
+
+```bash
+python3 simulations/verify_simulations.py
+```
+
+O script realiza checagens de sanidade robustas (como impedir arquivos vazios, códigos sem corpo funcional ou discrepâncias estéticas toleráveis) e salva o resultado consolidado em `simulations/verification_summary.json`.
+
+---
+
+## 📳 5. Testando Modelos sem Suporte a Tool Use (Modo Text-Only)
+
+Para testar o comportamento adaptativo do agente em modelos incapazes de utilizar ferramentas nativas (ou quando o provedor retornar erro de Tool Use):
+
+1. **Fallback Automático**: Se o modelo falhar nas chamadas de ferramentas nativas (ex: erro 400/404 na API de chat), o backend ativa automaticamente o modo `TextOnlyMode` e injeta um prompt de instrução adaptativo.
+2. **Parser Aprimorado**: O agente começará a ler o bloco markdown de texto (` ```python ` ou `FILE: caminho`) produzido pelo modelo e a traduzi-lo para chamadas estruturadas de escrita.
+3. **Simulação Manual de Falha**:
+   - É possível configurar modelos na tabela de capacidades no arquivo `internal/llm/capabilities.go` para forçar o campo `ToolUse: false`.
+   - Alternativamente, use a flag de configuração correspondente para desabilitar chamadas de ferramentas nativas no provedor de testes.

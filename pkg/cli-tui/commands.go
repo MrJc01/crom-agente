@@ -86,7 +86,15 @@ func HandleSlashCommand(input string, model *TUIModel) (string, bool) {
 
 	case "/cost":
 		s := model.stateManager.GetState()
-		return fmt.Sprintf("Tokens gastos nesta sessão: \033[1;36m%d\033[0m | Turnos totais: \033[1;36m%d\033[0m", s.TokensGastos, s.TotalTurnos), true
+		cbStr := "Não"
+		if s.CircuitBreakerTriggered {
+			cbStr = "\033[1;31mSim (Disparado)\033[0m"
+		}
+		return fmt.Sprintf("Tokens gastos nesta sessão: \033[1;36m%d\033[0m | Turnos totais: \033[1;36m%d\033[0m\n"+
+			"Arquivos criados: \033[1;36m%d\033[0m | Arquivos validados: \033[1;36m%d\033[0m\n"+
+			"Chamadas de ferramentas emitidas: \033[1;36m%d\033[0m (das quais extraídas por parser: \033[1;36m%d\033[0m)\n"+
+			"Circuit Breaker disparado: %s",
+			s.TokensGastos, s.TotalTurnos, s.FilesCreated, s.FilesValidated, s.ToolCallsEmitted, s.ToolCallsFromTextParse, cbStr), true
 
 	case "/btw":
 		if len(args) == 0 {

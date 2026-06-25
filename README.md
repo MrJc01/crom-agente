@@ -35,6 +35,12 @@ O agente resolve as configurações utilizando uma precedência rígida:
 ### 🔁 Ciclo ReAct Cognitivo e Auto-Correção
 O agente roda o ciclo cognitivo **ReAct (Reasoning and Acting)**. O loop nativo previne loops repetitivos infinitos analisando o hash das ações recentes, possui mecanismos de auto-correção caso a LLM vaze blocos de código fora do formato esperado, e executa uma **fase de auto-verificação** acionando lints e testes automáticos (como `go vet` ou `npm test`) antes de considerar a tarefa finalizada.
 
+### 🛡️ Suporte Adaptativo a Modelos Leves (Text-Only Mode) & Circuit Breaker
+Para maximizar a compatibilidade com modelos de menor escala (como o Llama 3.2 3B) ou sem suporte a Tool Calls nativas:
+*   **Detecção de Capacidades**: O agente gerencia um cache estático e dinâmico de capacidades de modelos (`internal/llm/capabilities.go`).
+*   **Parser Textual Avançado (Markdown-to-Tool)**: Em modo *Text-Only*, o loop traduz automaticamente blocos markdown (ex: ` ```python` ou marcações do tipo `FILE: caminho`) em chamadas de ferramenta estruturadas de escrita.
+*   **Circuit Breaker**: Evita desperdício de tokens disparando automaticamente e abortando a execução se o modelo gerar sucessivas respostas vazias ou sem ações produtivas em tarefas que exigem manipulação de arquivos.
+
 ### 🔒 Segurança de Sandbox e Modos de Permissão (HITL)
 Cada workspace define o nível de confiança dado ao agente:
 *   **Acesso Total (`total_access`)**: Executa qualquer comando ou escrita de arquivo autonomamente.

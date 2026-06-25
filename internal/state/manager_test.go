@@ -303,4 +303,51 @@ func TestStructuredStatusesAndCognitiveModes(t *testing.T) {
 	}
 }
 
+func TestStateManager_Metrics(t *testing.T) {
+	dir := t.TempDir()
+	sm := NewStateManager(dir)
+	if err := sm.LoadState(); err != nil {
+		t.Fatalf("LoadState falhou: %v", err)
+	}
+
+	if err := sm.RecordFileCreated(); err != nil {
+		t.Fatalf("RecordFileCreated falhou: %v", err)
+	}
+	if err := sm.RecordFileValidated(); err != nil {
+		t.Fatalf("RecordFileValidated falhou: %v", err)
+	}
+	if err := sm.RecordToolCallEmitted(); err != nil {
+		t.Fatalf("RecordToolCallEmitted falhou: %v", err)
+	}
+	if err := sm.RecordToolCallsFromTextParse(3); err != nil {
+		t.Fatalf("RecordToolCallsFromTextParse falhou: %v", err)
+	}
+	if err := sm.SetCircuitBreakerTriggered(true); err != nil {
+		t.Fatalf("SetCircuitBreakerTriggered falhou: %v", err)
+	}
+
+	// Novo manager para validar a persistência em disco
+	sm2 := NewStateManager(dir)
+	if err := sm2.LoadState(); err != nil {
+		t.Fatalf("LoadState falhou: %v", err)
+	}
+
+	s := sm2.GetState()
+	if s.FilesCreated != 1 {
+		t.Errorf("esperava FilesCreated=1, obteve %d", s.FilesCreated)
+	}
+	if s.FilesValidated != 1 {
+		t.Errorf("esperava FilesValidated=1, obteve %d", s.FilesValidated)
+	}
+	if s.ToolCallsEmitted != 1 {
+		t.Errorf("esperava ToolCallsEmitted=1, obteve %d", s.ToolCallsEmitted)
+	}
+	if s.ToolCallsFromTextParse != 3 {
+		t.Errorf("esperava ToolCallsFromTextParse=3, obteve %d", s.ToolCallsFromTextParse)
+	}
+	if !s.CircuitBreakerTriggered {
+		t.Errorf("esperava CircuitBreakerTriggered=true, obteve %v", s.CircuitBreakerTriggered)
+	}
+}
+
 

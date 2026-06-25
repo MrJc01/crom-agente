@@ -22,6 +22,7 @@ import (
 
 // Execute roda o loop ReAct completo para a tarefa dada
 func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
+	al.textOnlyMode = false
 	al.handler.OnStatusChange("thinking")
 	if al.stateManager != nil {
 		_ = al.stateManager.SetActiveTask(intent)
@@ -151,6 +152,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		saveMsgs(messages)
 	}
 
+	consecutiveNoToolCallTurns := 0
 	consecutiveFailures := 0
 	consecutiveRetryCount := 0
 	timerScheduled := false
@@ -285,6 +287,29 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			}
 		}
 
+		// Injetar diretrizes do modo text-only de forma dinâmica se ativado
+		if al.textOnlyMode {
+			var textOnlyPromptContent string
+			if al.promptManager != nil {
+				if textOnlyPrompt, ok := al.promptManager.GetPrompt("text_only_mode"); ok && textOnlyPrompt.Enabled {
+					textOnlyPromptContent = textOnlyPrompt.Content
+				}
+			}
+			if textOnlyPromptContent == "" {
+				textOnlyPromptContent = "[SYSTEM] ATENÇÃO: O modelo/provedor atual não suporta chamadas de função (tool use) nativas. Você deve gerar chamadas de ferramentas no corpo do texto em formato markdown/XML para que sejam parseadas e executadas. Por exemplo, para criar/escrever um arquivo, escreva o seguinte bloco no texto:\n\n```python\n# FILE: caminho/do/arquivo\n# Seu código aqui\n```\nNão tente fazer chamadas de função JSON tradicionais."
+			}
+
+			if !copied {
+				runMessages = make([]llm.Message, len(messages))
+				copy(runMessages, messages)
+				copied = true
+			}
+			runMessages = append(runMessages, llm.Message{
+				Role:    "system",
+				Content: textOnlyPromptContent,
+			})
+		}
+
 		// Chamar o LLM
 		compactedMsgs := prompting.CompactMessages(ctx, al.provider, al.config.MaxMessageHistory, al.handler, runMessages)
 		finalMsgs := FormatMessagesForModel(compactedMsgs, al.provider)
@@ -316,6 +341,13 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			return fmt.Errorf("falha na chamada ao LLM: %w", err)
 		}
 
+		if resp.ToolUseDisabled {
+			if !al.textOnlyMode {
+				al.textOnlyMode = true
+				al.handler.OnMessage("system", i18n.Get("system.text_only_mode_activated"))
+			}
+		}
+
 		// Registrar tokens
 		if al.stateManager != nil && resp.Usage.TotalTokens > 0 {
 			_ = al.stateManager.RecordTokens(resp.Usage.TotalTokens)
@@ -333,6 +365,60 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		// Interceptar chamadas de ferramentas alucinadas no formato Python /tool_code
 		if pyToolCalls := loop.TryParseToolCode(msg.Content); len(pyToolCalls) > 0 {
 			msg.ToolCalls = append(msg.ToolCalls, pyToolCalls...)
+			if al.stateManager != nil {
+				_ = al.stateManager.RecordToolCallsFromTextParse(len(pyToolCalls))
+			}
+		}
+
+		// Interceptar chamadas de ferramentas em formato de bloco de código markdown (modo text-only)
+		if al.textOnlyMode {
+			if markdownToolCalls := loop.TryParseMarkdownToolCalls(msg.Content); len(markdownToolCalls) > 0 {
+				msg.ToolCalls = append(msg.ToolCalls, markdownToolCalls...)
+				if al.stateManager != nil {
+					_ = al.stateManager.RecordToolCallsFromTextParse(len(markdownToolCalls))
+				}
+			}
+		}
+
+		// Circuit Breaker logic
+		if len(msg.ToolCalls) > 0 {
+			consecutiveNoToolCallTurns = 0
+			if al.stateManager != nil {
+				for range msg.ToolCalls {
+					_ = al.stateManager.RecordToolCallEmitted()
+				}
+			}
+		} else {
+			consecutiveNoToolCallTurns++
+		}
+
+		threshold := 3
+		if al.config != nil && al.config.MaxConsecutiveFail > 0 {
+			threshold = al.config.MaxConsecutiveFail
+		}
+
+		if consecutiveNoToolCallTurns >= threshold && taskRequiresFiles(intent) {
+			if al.stateManager != nil {
+				_ = al.stateManager.SetCircuitBreakerTriggered(true)
+			}
+			al.handler.OnMessage("system", fmt.Sprintf("⚠️ [CIRCUIT_BREAKER] Abortando execução: O modelo executou %d turnos sem chamadas de ferramentas em uma tarefa que requer criação/edição de arquivos.", consecutiveNoToolCallTurns))
+			al.handler.OnEvent(loop.AgentEvent{
+				Timestamp: time.Now(),
+				Event:     "error",
+				Iteration: i + 1,
+				Data: map[string]interface{}{
+					"error": loop.AgentError{
+						Code:    loop.ErrToolExecution,
+						Message: fmt.Sprintf("circuit breaker triggered: model is unable to use tools after %d turns", consecutiveNoToolCallTurns),
+						Details: map[string]interface{}{"consecutive_no_tool_calls": consecutiveNoToolCallTurns},
+					},
+				},
+			})
+			al.handler.OnStatusChange("idle")
+			if al.stateManager != nil {
+				_ = al.stateManager.SaveIterationLog(i+1, iterLog)
+			}
+			return fmt.Errorf("abortando: o modelo executou %d turnos sem ações em tarefa que requer arquivos", consecutiveNoToolCallTurns)
 		}
 
 		messages = append(messages, msg)
@@ -776,6 +862,62 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			}
 
 			if result.Success {
+				// Validação pós-criação/edição de arquivos (Fase 7)
+				if toolID == "write_file" || toolID == "diff_replace" {
+					var argsPath struct {
+						Path string `json:"path"`
+					}
+					if err := json.Unmarshal([]byte(rawArgs), &argsPath); err == nil && argsPath.Path != "" {
+						filePath := argsPath.Path
+						if !filepath.IsAbs(filePath) && workspaceDir != "" {
+							filePath = filepath.Join(workspaceDir, filePath)
+						}
+
+						if al.stateManager != nil {
+							_ = al.stateManager.RecordFileValidated()
+						}
+						valid, errMsg := loop.ValidateCreatedFile(filePath, "")
+						if !valid {
+							feedbackMsg := fmt.Sprintf("⚠️ [VALIDATION_ERROR]: O arquivo %s contém erros de sintaxe/compilação:\n%s\nPor favor, corrija os erros identificados.", argsPath.Path, errMsg)
+
+							iterLog.ToolsCalled = append(iterLog.ToolsCalled, state.ToolTrace{
+								ToolName:   toolID,
+								Args:       rawArgs,
+								Success:    false,
+								Output:     feedbackMsg,
+								DurationMs: toolDuration,
+							})
+
+							messages = append(messages, llm.Message{
+								Role:       "tool",
+								ToolCallID: tc.ID,
+								Name:       toolID,
+								Content:    feedbackMsg,
+							})
+
+							al.handler.OnMessage("system", fmt.Sprintf("Validação falhou para %s: %s", argsPath.Path, errMsg))
+
+							al.handler.OnEvent(loop.AgentEvent{
+								Timestamp: time.Now(),
+								Event:     "tool_result",
+								Iteration: i + 1,
+								Data: map[string]interface{}{
+									"tool_call_id": tc.ID,
+									"tool":         toolID,
+									"success":      false,
+									"error":        feedbackMsg,
+								},
+							})
+
+							iterationHasFailure = true
+							continue
+						}
+						if al.stateManager != nil {
+							_ = al.stateManager.RecordFileCreated()
+						}
+					}
+				}
+
 				if isAgent {
 					var agentRes struct {
 						Output         string `json:"output"`
@@ -952,8 +1094,6 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			lastToolWasValidation = isValidationAction(lastTc.Function.Name, lastTc.Function.Arguments)
 		}
 	}
-
-	return nil
 }
 
 // truncateStr trunca uma string
@@ -1026,6 +1166,8 @@ func isSimpleIntent(intent string) bool {
 	clean = strings.TrimRight(clean, ".!?")
 	greetings := []string{
 		"oi", "olá", "ola", "bom dia", "boa tarde", "boa noite", "hello", "hi", "test", "teste",
+		"hey", "opa", "tudo bem", "tudo bem?", "como vai?", "tchau", "bye", "flw",
+		"good morning", "good afternoon", "good evening",
 	}
 	for _, g := range greetings {
 		if clean == g {
@@ -1034,6 +1176,7 @@ func isSimpleIntent(intent string) bool {
 	}
 	replies := []string{
 		"sim", "não", "nao", "yes", "no", "ok", "confirmar", "confirma", "cancelar", "cancela", "fechar", "rejeitar", "aprovar", "aprovado", "rejeitado", "obrigado", "obrigada", "valeu", "thanks",
+		"start", "stop", "iniciar", "parar", "status", "ready", "pronto", "go",
 	}
 	for _, r := range replies {
 		if clean == r {
@@ -1044,6 +1187,21 @@ func isSimpleIntent(intent string) bool {
 }
 
 func (al *AgenticLoop) generateSimpleResponse(ctx context.Context, intent string) (string, error) {
+	clean := strings.TrimSpace(strings.ToLower(intent))
+
+	// 10.3. Verificar cache local com TTL
+	al.fastPathCacheMu.Lock()
+	entry, found := al.fastPathCache[clean]
+	al.fastPathCacheMu.Unlock()
+
+	if found && time.Now().Before(entry.expiresAt) {
+		return entry.response, nil
+	}
+
+	// 10.4. Definir timeout curto específico de 5 segundos
+	fastCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
 	prompt := []llm.Message{
 		{
 			Role:    "system",
@@ -1054,14 +1212,25 @@ func (al *AgenticLoop) generateSimpleResponse(ctx context.Context, intent string
 			Content: intent,
 		},
 	}
-	resp, err := al.provider.SendMessages(ctx, prompt, llm.RequestOptions{})
+	resp, err := al.provider.SendMessages(fastCtx, prompt, llm.RequestOptions{})
 	if err != nil {
 		return "", err
 	}
 	if al.stateManager != nil {
 		_ = al.stateManager.RecordTokens(resp.Usage.TotalTokens)
 	}
-	return resp.Message.Content, nil
+
+	resContent := resp.Message.Content
+
+	// Salvar no cache com TTL de 5 minutos
+	al.fastPathCacheMu.Lock()
+	al.fastPathCache[clean] = fastPathCacheEntry{
+		response:  resContent,
+		expiresAt: time.Now().Add(5 * time.Minute),
+	}
+	al.fastPathCacheMu.Unlock()
+
+	return resContent, nil
 }
 
 func detectHallucinatedToolCalls(content string, toolsMap map[string]tools.Tool) []string {
@@ -1069,10 +1238,19 @@ func detectHallucinatedToolCalls(content string, toolsMap map[string]tools.Tool)
 		return nil
 	}
 
+	// Remover blocos de código para evitar falsos positivos em comentários legítimos
+	cleanedContent := stripCodeBlocks(content)
+
 	var found []string
-	// Detecta menções no formato tool_name( ou tool_name { ou tool_name: {
+	seen := make(map[string]bool)
+
 	for name := range toolsMap {
-		patterns := []string{
+		if seen[name] {
+			continue
+		}
+
+		// Padrões diretos (legado)
+		directPatterns := []string{
 			name + "(",
 			name + " {",
 			name + ": {",
@@ -1080,12 +1258,112 @@ func detectHallucinatedToolCalls(content string, toolsMap map[string]tools.Tool)
 			"tool: " + name,
 			"call: " + name,
 		}
-		for _, pat := range patterns {
-			if strings.Contains(content, pat) {
+		for _, pat := range directPatterns {
+			if strings.Contains(cleanedContent, pat) {
 				found = append(found, name)
+				seen[name] = true
+				break
+			}
+		}
+		if seen[name] {
+			continue
+		}
+
+		// Padrões narrativos (modelos 3B/8B frequentemente emitem esses formatos)
+		lowerContent := strings.ToLower(cleanedContent)
+		lowerName := strings.ToLower(name)
+		narrativePatterns := []string{
+			"[chamando " + lowerName + "]",
+			"[chamando ferramenta " + lowerName + "]",
+			"[calling " + lowerName + "]",
+			"[calling tool " + lowerName + "]",
+			"executar " + lowerName,
+			"execute " + lowerName,
+			"usar ferramenta " + lowerName,
+			"using tool " + lowerName,
+			"invocar " + lowerName,
+			"invoke " + lowerName,
+			"chamar " + lowerName,
+			"vou usar " + lowerName,
+			"vou chamar " + lowerName,
+			"i'll call " + lowerName,
+			"i will call " + lowerName,
+			"running " + lowerName,
+			"executando " + lowerName,
+		}
+		for _, pat := range narrativePatterns {
+			if strings.Contains(lowerContent, pat) {
+				found = append(found, name)
+				seen[name] = true
+				break
+			}
+		}
+		if seen[name] {
+			continue
+		}
+
+		// Padrão de JSON inline não-estruturado: {"tool": "name", ...} ou {"name": "tool_name", ...}
+		jsonPatterns := []string{
+			`"tool": "` + name + `"`,
+			`"name": "` + name + `"`,
+			`"function": "` + name + `"`,
+			`"tool_name": "` + name + `"`,
+			`"action": "` + name + `"`,
+		}
+		for _, pat := range jsonPatterns {
+			if strings.Contains(cleanedContent, pat) {
+				found = append(found, name)
+				seen[name] = true
 				break
 			}
 		}
 	}
 	return found
+}
+
+// stripCodeBlocks remove blocos de código markdown e /tool_code do conteúdo para que
+// menções a ferramentas dentro de código legítimo não sejam tratadas como alucinações.
+func stripCodeBlocks(content string) string {
+	lines := strings.Split(content, "\n")
+	var result []string
+	inBlock := false
+	inToolCode := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Detectar blocos /tool_code
+		if trimmed == "/tool_code" {
+			inToolCode = !inToolCode
+			continue
+		}
+		if inToolCode {
+			continue
+		}
+
+		// Detectar blocos de código markdown
+		if strings.HasPrefix(trimmed, "```") {
+			inBlock = !inBlock
+			continue
+		}
+		if inBlock {
+			continue
+		}
+
+		result = append(result, line)
+	}
+	return strings.Join(result, "\n")
+}
+
+func taskRequiresFiles(intent string) bool {
+	lower := strings.ToLower(intent)
+	keywords := []string{
+		"crie", "salve", "escreva", "código", "arquivo", "create", "write", "save", "code", "file", "organize", "generat", "gerar",
+	}
+	for _, kw := range keywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
 }

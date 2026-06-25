@@ -61,8 +61,9 @@ type Usage struct {
 
 // Response representa a resposta completa de uma chamada ao LLM
 type Response struct {
-	Message Message `json:"message"`
-	Usage   Usage   `json:"usage"`
+	Message         Message `json:"message"`
+	Usage           Usage   `json:"usage"`
+	ToolUseDisabled bool    `json:"tool_use_disabled,omitempty"`
 }
 
 // RequestOptions contém opções para a chamada ao LLM
@@ -82,4 +83,7 @@ type Provider interface {
 
 	// SupportsSystemPrompt indica se o provedor/modelo suporta mensagens com role "system"
 	SupportsSystemPrompt() bool
+
+	// Capabilities retorna as capacidades do modelo associado ao provider
+	Capabilities() ModelCapabilities
 }

@@ -35,6 +35,10 @@ func (p *GeminiProvider) SupportsSystemPrompt() bool {
 	return true
 }
 
+func (p *GeminiProvider) Capabilities() llm.ModelCapabilities {
+	return llm.GetCapabilities(p.model)
+}
+
 func parseGeminiMultimodalContent(text string) interface{} {
 	if !strings.Contains(text, "image:base64:") {
 		return text

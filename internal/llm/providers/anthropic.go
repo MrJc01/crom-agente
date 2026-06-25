@@ -34,6 +34,10 @@ func (p *AnthropicProvider) SupportsSystemPrompt() bool {
 	return true
 }
 
+func (p *AnthropicProvider) Capabilities() llm.ModelCapabilities {
+	return llm.GetCapabilities(p.model)
+}
+
 // Structs para API Anthropic Messages
 
 type anthropicContent struct {

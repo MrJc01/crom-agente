@@ -123,7 +123,49 @@ def get_session_stats(workspace_dir):
                     print(f"Error reading session file: {e}")
     return {}
 
-def run_simulation(sim, env, provider, model, max_iterations):
+import urllib.request
+import urllib.error
+
+def check_preflight(provider, env):
+    print("\n==================================================")
+    print("Realizando verificações pré-run (Preflight Checks)")
+    print("==================================================")
+    
+    # 1. Check API Key
+    key_name = None
+    if provider == "openrouter":
+        key_name = "OPENROUTER_API_KEY"
+    elif provider == "openai":
+        key_name = "OPENAI_API_KEY"
+    elif provider == "gemini":
+        key_name = "GEMINI_API_KEY"
+    elif provider == "anthropic":
+        key_name = "ANTHROPIC_API_KEY"
+
+    if key_name:
+        if key_name not in env or not env[key_name].strip():
+            print(f"❌ ERRO: A variável de ambiente '{key_name}' não está definida ou está vazia.", file=sys.stderr)
+            return False
+        print(f"✓ Variável de ambiente '{key_name}' encontrada.")
+
+    # 2. Check Network Connection/Reachability
+    test_url = "https://openrouter.ai/api/v1/models" if provider == "openrouter" else "https://www.google.com"
+    print(f"Testando conectividade de rede com {test_url}...")
+    try:
+        req = urllib.request.Request(
+            test_url,
+            headers={"User-Agent": "Cromia-Simulation-Preflight"}
+        )
+        with urllib.request.urlopen(req, timeout=5) as response:
+            if response.status == 200:
+                print("✓ Conectividade de rede estabelecida com sucesso.")
+                return True
+    except Exception as e:
+        print(f"❌ ERRO: Falha ao conectar com o provedor/internet ({test_url}): {e}", file=sys.stderr)
+        return False
+    return True
+
+def run_simulation(sim, env, provider, model, max_iterations, timeout=None):
     sim_dir = SIMS_DIR / sim["dir"]
     
     # Clean workspace folder if it exists
@@ -131,10 +173,14 @@ def run_simulation(sim, env, provider, model, max_iterations):
         shutil.rmtree(sim_dir)
     sim_dir.mkdir(parents=True, exist_ok=True)
     
+    # Determina o timeout específico da simulação
+    actual_timeout = timeout if timeout is not None else (180 if sim["id"] >= 8 else 120)
+    
     print(f"\n==================================================")
     print(f"Iniciando Simulação {sim['id']}: {sim['name']}")
     print(f"Workspace: {sim_dir}")
     print(f"Prompt: {sim['prompt']}")
+    print(f"Timeout: {actual_timeout}s")
     print(f"==================================================")
     
     cmd = [
@@ -148,18 +194,20 @@ def run_simulation(sim, env, provider, model, max_iterations):
     ]
     
     start_time = time.time()
+    return_code = -1
     try:
-        res = subprocess.run(cmd, env=env, cwd=str(sim_dir), capture_output=True, text=True, timeout=120)
+        res = subprocess.run(cmd, env=env, cwd=str(sim_dir), capture_output=True, text=True, timeout=actual_timeout)
         elapsed = time.time() - start_time
         success = res.returncode == 0
+        return_code = res.returncode
         output = res.stdout + "\n" + res.stderr
     except subprocess.TimeoutExpired as te:
         elapsed = time.time() - start_time
         success = False
-        output = f"TIMEOUT EXPIRED: {te}\nSTDOUT: {te.stdout}\nSTDERR: {te.stderr}"
+        output = f"TIMEOUT EXPIRED: {te}\nSTDOUT: {te.stdout or ''}\nSTDERR: {te.stderr or ''}"
     
     print(f"Tempo decorrido: {elapsed:.2f}s")
-    print(f"Código de retorno: {res.returncode if 'res' in locals() else 'timeout'}")
+    print(f"Código de retorno: {return_code if return_code != -1 else 'timeout'}")
     
     stats = get_session_stats(sim_dir)
     
@@ -180,70 +228,123 @@ def run_simulation(sim, env, provider, model, max_iterations):
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Executa as 10 simulações de templates de projeto.")
-    parser.add_argument("--model", type=str, default="meta-llama/llama-3.1-8b-instruct", help="Modelo de LLM a usar")
+    parser.add_argument("--model", type=str, default="meta-llama/llama-3.1-8b-instruct", help="Modelo de LLM a usar (separe por vírgula para rodar múltiplos)")
     parser.add_argument("--provider", type=str, default="openrouter", help="Provedor de LLM")
     parser.add_argument("--max-iterations", type=int, default=0, help="Limite máximo de iterações (0 = ilimitado)")
+    parser.add_argument("--timeout", type=int, default=None, help="Tempo limite customizado (em segundos) para cada simulação")
     args = parser.parse_args()
 
     SIMS_DIR.mkdir(parents=True, exist_ok=True)
     env = load_env_vars()
     env["CROM_PERMISSION_MODE"] = "total_access"
     
-    results = []
-    for sim in SIMULATIONS:
-        res = run_simulation(sim, env, args.provider, args.model, args.max_iterations)
-        results.append(res)
-        time.sleep(2)
-        
-    summary_file = SIMS_DIR / "simulations_summary.json"
-    with open(summary_file, "w") as f:
-        json.dump(results, f, indent=2)
-        
-    report_file = SIMS_DIR / "simulations_report.md"
-    md = []
-    md.append(f"# Relatório de Simulações do crom-agente via {args.provider.capitalize()}")
-    md.append(f"\nData de execução: {time.strftime('%Y-%m-%d %H:%M:%S')}")
-    md.append(f"Modelo utilizado: `{args.model}` via {args.provider} (leve / econômico)")
-    md.append("\n## Tabela de Resultados das Simulações")
-    md.append("\n| ID | Nome da Simulação | Status Final | Modo Cognitivo | Turnos | Tokens Gasto | Tempo (s) | Sucesso |")
-    md.append("|---|---|---|---|---|---|---|---|")
+    # Executar verificações pré-run
+    if not check_preflight(args.provider, env):
+        print("\n❌ ERRO: Verificações pré-run falharam. Abortando execução.", file=sys.stderr)
+        sys.exit(1)
     
-    total_tokens = 0
-    total_time = 0.0
-    successful_runs = 0
+    models = [m.strip() for m in args.model.split(",") if m.strip()]
+    all_model_results = {}
     
-    for r in results:
-        succ_emoji = "✅" if r["success"] else "❌"
-        md.append(f"| {r['id']} | {r['name']} | `{r['status']}` | `{r['cognitive_mode']}` | {r['total_turns']} | {r['tokens_spent']} | {r['elapsed_seconds']:.2f}s | {succ_emoji} |")
-        total_tokens += r["tokens_spent"]
-        total_time += r["elapsed_seconds"]
-        if r["success"]:
-            successful_runs += 1
+    for idx, model in enumerate(models):
+        print(f"\n==================================================")
+        print(f"INICIANDO SIMULAÇÕES PARA O MODELO: {model} ({idx+1}/{len(models)})")
+        print(f"==================================================")
+        
+        results = []
+        for sim in SIMULATIONS:
+            res = run_simulation(sim, env, args.provider, model, args.max_iterations, args.timeout)
+            results.append(res)
+            time.sleep(2)
             
-    price_per_1m = 0.055 if "8b" in args.model.lower() or "9b" in args.model.lower() else 0.075
-    md.append(f"\n### Métricas Consolidadas")
-    md.append(f"- **Simulações Executadas**: {len(results)}")
-    md.append(f"- **Taxa de Sucesso**: {successful_runs}/{len(results)} ({successful_runs/len(results)*100:.1f}%)")
-    md.append(f"- **Total de Tokens Consumidos**: {total_tokens}")
-    md.append(f"- **Custo Estimado**: ${(total_tokens / 1000000) * price_per_1m:.6f} USD (baseado em ${price_per_1m} por 1M tokens de {args.model})")
-    md.append(f"- **Tempo Total de Execução**: {total_time:.2f} segundos")
-    md.append(f"- **Média de Tempo por Simulação**: {total_time/len(results):.2f} segundos")
-    
-    md.append("\n## Análise dos Resultados e Comportamento por Fase")
-    md.append("\n### 1. Interceptação Rápida (Fast Path - Simulações 1 e 2)")
-    md.append("- As simulações 1 e 2 testaram a interceptação de intenções simples. O agente respondeu instantaneamente em sub-segundos, registrando 0 turnos de ReAct loop e consumo mínimo de tokens (chamada direta de prompt sem ferramentas).")
-    md.append("\n### 2. Tarefas Básicas e Médias (Simulações 3, 4, 5, 6 e 7)")
-    md.append("- O agente gerou código, arquivos de texto e portfólios HTML com precisão. As transições cognitivas de `planning` -> `executing` -> `finished` funcionaram de acordo com o planejado.")
-    md.append("\n### 3. Tarefas Avançadas e Validação (Simulações 8 e 9)")
-    md.append("- Na simulação 8 (Go Server), o agente utilizou compilação Go em seu plano de ação, o que acionou dinamicamente a transição para o modo `verifying`. Na simulação 9 (File Organizer), arquivos de teste foram gerados para validar a execução física do script de organização.")
-    md.append("\n### 4. Template Complexo Yii2 MVC (Simulação 10)")
-    md.append("- A simulação 10 estruturou corretamente o esqueleto Yii2 MVC conectado a um banco SQLite, gerando a configuração de DB, Model de Item e o Controller correspondente, respeitando o padrão arquitetural clássico do Yii2.")
-    
-    with open(report_file, "w") as f:
-        f.write("\n".join(md))
+        model_safe = model.replace("/", "_").replace(":", "_")
+        summary_file = SIMS_DIR / f"simulations_summary_{model_safe}.json"
+        with open(summary_file, "w") as f:
+            json.dump(results, f, indent=2)
+            
+        report_file = SIMS_DIR / f"simulations_report_{model_safe}.md"
+        md = []
+        md.append(f"# Relatório de Simulações do crom-agente via {args.provider.capitalize()}")
+        md.append(f"\nData de execução: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        md.append(f"Modelo utilizado: `{model}` via {args.provider}")
+        md.append("\n## Tabela de Resultados das Simulações")
+        md.append("\n| ID | Nome da Simulação | Status Final | Modo Cognitivo | Turnos | Tokens Gasto | Tempo (s) | Sucesso |")
+        md.append("|---|---|---|---|---|---|---|---|")
         
-    print(f"\nSimulações concluídas com sucesso!")
-    print(f"Relatório gravado em: {report_file}")
+        total_tokens = 0
+        total_time = 0.0
+        successful_runs = 0
+        
+        for r in results:
+            succ_emoji = "✅" if r["success"] else "❌"
+            md.append(f"| {r['id']} | {r['name']} | `{r['status']}` | `{r['cognitive_mode']}` | {r['total_turns']} | {r['tokens_spent']} | {r['elapsed_seconds']:.2f}s | {succ_emoji} |")
+            total_tokens += r["tokens_spent"]
+            total_time += r["elapsed_seconds"]
+            if r["success"]:
+                successful_runs += 1
+                
+        price_per_1m = 0.055 if "8b" in model.lower() or "9b" in model.lower() else 0.075
+        md.append(f"\n### Métricas Consolidadas")
+        md.append(f"- **Simulações Executadas**: {len(results)}")
+        md.append(f"- **Taxa de Sucesso**: {successful_runs}/{len(results)} ({successful_runs/len(results)*100:.1f}%)")
+        md.append(f"- **Total de Tokens Consumidos**: {total_tokens}")
+        md.append(f"- **Custo Estimado**: ${(total_tokens / 1000000) * price_per_1m:.6f} USD (baseado em ${price_per_1m} por 1M tokens)")
+        md.append(f"- **Tempo Total de Execução**: {total_time:.2f} segundos")
+        md.append(f"- **Média de Tempo por Simulação**: {total_time/len(results):.2f} segundos")
+        
+        with open(report_file, "w") as f:
+            f.write("\n".join(md))
+            
+        print(f"\n✓ Relatório para o modelo {model} gravado em: {report_file}")
+        all_model_results[model] = results
+
+    # Gerar relatório comparativo automático se houver múltiplos modelos
+    if len(models) > 1:
+        comp_report_file = SIMS_DIR / "simulations_comparative_report.md"
+        comp_md = []
+        comp_md.append("# Relatório Comparativo de Modelos (Simulações)")
+        comp_md.append(f"\nData de execução: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        comp_md.append(f"Provedor: `{args.provider}`\n")
+        
+        # Tabela resumo comparativa geral
+        comp_md.append("## Resumo Geral dos Modelos\n")
+        comp_md.append("| Modelo | Taxa de Sucesso | Tokens Totais | Tempo Total (s) | Média por Simulação (s) |")
+        comp_md.append("|---|---|---|---|---|")
+        for model in models:
+            m_res = all_model_results[model]
+            succ = sum(1 for r in m_res if r["success"])
+            tok = sum(r["tokens_spent"] for r in m_res)
+            t_total = sum(r["elapsed_seconds"] for r in m_res)
+            comp_md.append(f"| `{model}` | {succ}/{len(m_res)} ({succ/len(m_res)*100:.1f}%) | {tok} | {t_total:.2f}s | {t_total/len(m_res):.2f}s |")
+            
+        # Detalhe por simulação
+        comp_md.append("\n## Detalhamento Lado-a-Lado por Simulação\n")
+        
+        # Cabeçalho dinâmico para os modelos
+        header_cols = ["ID", "Nome da Simulação"]
+        sub_header = ["---|---"]
+        for m in models:
+            m_short = m.split("/")[-1]
+            header_cols.extend([f"[{m_short}] Sucesso", f"[{m_short}] Turnos", f"[{m_short}] Tempo"])
+            sub_header.extend(["---|---|---"])
+        
+        comp_md.append("| " + " | ".join(header_cols) + " |")
+        comp_md.append("| " + " | ".join(sub_header) + " |")
+        
+        for idx in range(len(SIMULATIONS)):
+            sim = SIMULATIONS[idx]
+            row = [str(sim["id"]), sim["name"]]
+            for model in models:
+                res_sim = all_model_results[model][idx]
+                succ_emoji = "✅" if res_sim["success"] else "❌"
+                row.extend([succ_emoji, str(res_sim["total_turns"]), f"{res_sim['elapsed_seconds']:.1f}s"])
+            comp_md.append("| " + " | ".join(row) + " |")
+            
+        with open(comp_report_file, "w") as f:
+            f.write("\n".join(comp_md))
+        print(f"\n==================================================")
+        print(f"✓ Relatório Comparativo de Modelos gravado em: {comp_report_file}")
+        print(f"==================================================")
 
 if __name__ == "__main__":
     main()

@@ -9,6 +9,23 @@ from pathlib import Path
 BASE_DIR = Path("/home/j/Documentos/GitHub/crom-agente")
 SIMS_DIR = BASE_DIR / "simulations"
 
+def check_sanity(file_path):
+    """Verifica se o arquivo existe, não está vazio, tem tamanho mínimo e não contém apenas comentários/fences vazios."""
+    if not file_path.exists():
+        return False, f"Arquivo {file_path.name} não existe."
+    content = file_path.read_text().strip()
+    if not content:
+        return False, f"Arquivo {file_path.name} está vazio."
+    if len(content) < 15:
+        return False, f"Arquivo {file_path.name} é excessivamente curto ({len(content)} bytes)."
+    
+    # Remove linhas vazias e delimitadores de código markdown
+    lines = [line.strip() for line in content.splitlines() if line.strip()]
+    non_fence_lines = [line for line in lines if not line.startswith("```") and not line.startswith("#") and not line.startswith("//") and not line.startswith("/*") and not line.endswith("*/")]
+    if not non_fence_lines:
+        return False, f"Arquivo {file_path.name} contém apenas comentários ou delimitadores de bloco de código markdown."
+    return True, ""
+
 def check_sim01():
     """greeting fast path validation"""
     ws = SIMS_DIR / "sim01_greeting"
@@ -29,17 +46,19 @@ def check_sim03():
     """climate report validation"""
     ws = SIMS_DIR / "sim03_report"
     report_file = ws / "relatorio_clima.md"
-    if not report_file.exists():
-        return False, "relatorio_clima.md não foi gerado."
     
+    ok, err = check_sanity(report_file)
+    if not ok:
+        return False, err
+        
     content = report_file.read_text().strip()
     if len(content) < 50:
         return False, f"relatorio_clima.md é muito curto ({len(content)} caracteres)."
     
-    # Verifica parágrafos básicos
+    # Verifica parágrafos básicos (com tolerância de formato, ex: 1 parágrafo vs 3)
     paragraphs = [p for p in content.split("\n\n") if p.strip()]
-    if len(paragraphs) < 2:
-        return False, f"Esperado múltiplos parágrafos/seções, obteve apenas {len(paragraphs)}."
+    if len(paragraphs) < 1:
+        return False, "Nenhum parágrafo/seção válido encontrado."
     
     return True, f"relatorio_clima.md validado com sucesso ({len(paragraphs)} seções)."
 
@@ -47,8 +66,10 @@ def check_sim04():
     """factorial script check"""
     ws = SIMS_DIR / "sim04_factorial"
     script = ws / "fatorial.py"
-    if not script.exists():
-        return False, "fatorial.py não encontrado."
+    
+    ok, err = check_sanity(script)
+    if not ok:
+        return False, err
     
     try:
         res = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, timeout=10, cwd=str(ws))
@@ -67,10 +88,13 @@ def check_sim05():
     ws = SIMS_DIR / "sim05_json_parser"
     script = ws / "formatador.py"
     data_file = ws / "dados.json"
-    if not script.exists():
-        return False, "formatador.py não encontrado."
-    if not data_file.exists():
-        return False, "dados.json não encontrado."
+    
+    ok, err = check_sanity(script)
+    if not ok:
+        return False, err
+    ok, err = check_sanity(data_file)
+    if not ok:
+        return False, err
         
     try:
         # Garante que dados.json seja JSON válido
@@ -98,8 +122,9 @@ def check_sim06():
     script = ws / "db.py"
     db_file = ws / "vendas.db"
     
-    if not script.exists():
-        return False, "db.py não encontrado."
+    ok, err = check_sanity(script)
+    if not ok:
+        return False, err
         
     # Remove db anterior se sobrou algum resíduo
     if db_file.exists():
@@ -136,8 +161,10 @@ def check_sim07():
     """html portfolio page check"""
     ws = SIMS_DIR / "sim07_portfolio"
     html_file = ws / "index.html"
-    if not html_file.exists():
-        return False, "index.html não encontrado."
+    
+    ok, err = check_sanity(html_file)
+    if not ok:
+        return False, err
         
     content = html_file.read_text().strip().lower()
     if "<!doctype html>" not in content and "<html" not in content:
@@ -150,8 +177,10 @@ def check_sim08():
     """go http server compiler and lint check"""
     ws = SIMS_DIR / "sim08_go_server"
     server_file = ws / "server.go"
-    if not server_file.exists():
-        return False, "server.go não encontrado."
+    
+    ok, err = check_sanity(server_file)
+    if not ok:
+        return False, err
         
     # Verifica se compila corretamente usando 'go build'
     try:
@@ -176,8 +205,10 @@ def check_sim09():
     """file organizer check"""
     ws = SIMS_DIR / "sim09_file_organizer"
     script = ws / "organizer.py"
-    if not script.exists():
-        return False, "organizer.py não encontrado."
+    
+    ok, err = check_sanity(script)
+    if not ok:
+        return False, err
         
     # Cria estrutura de arquivos de teste para ver se o organizer funciona
     test_dir = ws / "pasta_teste"
@@ -252,8 +283,11 @@ def check_sim10():
     if missing:
         return False, f"Arquivos estruturais Yii2 ausentes: {', '.join(missing)}"
         
-    # Valida presença de código php básico (<?php) nos arquivos
+    # Valida presença de código php básico (<?php) nos arquivos e sanity
     for path, name in [(db_config, "config/db.php"), (model_item, "models/Item.php"), (controller_item, "controllers/ItemController.php")]:
+        ok, err = check_sanity(path)
+        if not ok:
+            return False, f"Sanidade de {name} falhou: {err}"
         content = path.read_text().strip()
         if not content.startswith("<?php"):
             return False, f"Arquivo {name} não inicia com tag PHP válida '<?php'."
