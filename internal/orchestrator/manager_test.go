@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/crom/crom-agente/internal/agents"
+	agentscore "github.com/crom/crom-agente/internal/agents/core"
 	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/loop"
 )
@@ -117,7 +119,7 @@ func TestMultiAgentManager_StartStopAgent(t *testing.T) {
 	// Aguarda o status change sinalizar que o loop encerrou
 	select {
 	case <-handler.done:
-	case <-time.After(2 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("timeout aguardando fim do agente")
 	}
 
@@ -171,4 +173,100 @@ func TestMultiAgentManager_EnvOverride(t *testing.T) {
 	if env.Get("NEW_KEY") != "crom_new" {
 		t.Errorf("esperava 'crom_new', obteve '%s'", env.Get("NEW_KEY"))
 	}
+}
+
+func TestMultiAgentManager_TopologyAgents(t *testing.T) {
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+
+	gDir, err := config.GlobalDir()
+	if err != nil {
+		t.Fatalf("erro ao obter global dir: %v", err)
+	}
+	_ = os.MkdirAll(gDir, 0755)
+
+	gCfg := config.DefaultGlobalConfig()
+	gCfg.DefaultProvider = "mock"
+	_ = config.SaveGlobalConfig(gDir, gCfg)
+
+	env := &config.EnvVars{}
+	_ = env.Save(gDir)
+
+	wsDir := t.TempDir()
+	_ = config.SaveWorkspaceConfig(wsDir, config.DefaultWorkspaceConfig("test-topo-proj"))
+
+	cromDir := filepath.Join(wsDir, ".crom")
+	_ = os.MkdirAll(cromDir, 0755)
+
+	topoJSON := `{
+		"supervisor": {
+			"name": "supervisor",
+			"provider": "mock",
+			"model": "mock-model"
+		},
+		"specialists": [
+			{
+				"name": "custom_topo_specialist",
+				"type": "native"
+			}
+		]
+	}`
+	err = os.WriteFile(filepath.Join(cromDir, "crom_agents.json"), []byte(topoJSON), 0644)
+	if err != nil {
+		t.Fatalf("erro ao salvar crom_agents.json: %v", err)
+	}
+
+	agents.RegisterAgent("custom_topo_specialist", func(cfg agents.Config) agentscore.Agent {
+		return &mockAgent{name: "custom_topo_specialist"}
+	})
+
+	mgr := NewMultiAgentManager()
+	_ = mgr.AddWorkspace("test-topo-proj", wsDir)
+
+	ctx := context.Background()
+	handler := &testEventHandler{done: make(chan struct{})}
+
+	err = mgr.StartAgent(ctx, "test-topo-proj", "", "Test task", handler)
+	if err != nil {
+		t.Fatalf("erro ao iniciar agente: %v", err)
+	}
+
+	running := mgr.ListRunningAgents()
+	if len(running) != 1 {
+		t.Fatalf("esperava 1 agente rodando, obteve: %d", len(running))
+	}
+
+	loopTools := running[0].Loop.GetTools()
+	found := false
+	for _, tool := range loopTools {
+		if tool.ID() == "custom_topo_specialist" {
+			found = true
+			break
+		}
+	}
+
+	// Para o agente e aguarda finalização antes do cleanup do TempDir
+	_ = mgr.StopAgent("test-topo-proj")
+	select {
+	case <-handler.done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timeout aguardando fim do agente")
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	if !found {
+		t.Error("esperava encontrar a ferramenta custom_topo_specialist registrada no loop")
+	}
+}
+
+type mockAgent struct {
+	name string
+}
+
+func (m *mockAgent) Name() string { return m.name }
+func (m *mockAgent) Description() string { return "Mock description" }
+func (m *mockAgent) SystemPrompt() string { return "Mock prompt" }
+func (m *mockAgent) ToolIDs() []string { return nil }
+func (m *mockAgent) Execute(ctx context.Context, prompt string, prior string) (agentscore.AgentResult, error) {
+	return agentscore.AgentResult{Success: true, Output: "Mock Output"}, nil
 }

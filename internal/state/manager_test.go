@@ -228,3 +228,34 @@ func TestSessionStateManagerAndMessages(t *testing.T) {
 		t.Fatalf("segunda mensagem incorreta: %+v", loadedMsgs[1])
 	}
 }
+
+// TestSubagentsContext verifica a persistencia do resumo do historico do subagente
+func TestSubagentsContext(t *testing.T) {
+	dir := t.TempDir()
+	sm := NewStateManager(dir)
+
+	// Inicialmente vazio
+	if res := sm.GetSummaryForAgent("test-agent"); res != "" {
+		t.Fatalf("esperava resumo vazio, obteve '%s'", res)
+	}
+
+	// Atualiza e verifica no mesmo manager
+	if err := sm.UpdateSummaryForAgent("test-agent", "step 1 completed"); err != nil {
+		t.Fatalf("UpdateSummaryForAgent falhou: %v", err)
+	}
+
+	if res := sm.GetSummaryForAgent("test-agent"); res != "step 1 completed" {
+		t.Fatalf("esperava 'step 1 completed', obteve '%s'", res)
+	}
+
+	// Carrega em outro manager para garantir persistencia em disco
+	sm2 := NewStateManager(dir)
+	if err := sm2.LoadState(); err != nil {
+		t.Fatalf("LoadState falhou: %v", err)
+	}
+
+	if res := sm2.GetSummaryForAgent("test-agent"); res != "step 1 completed" {
+		t.Fatalf("esperava 'step 1 completed' após recarregar, obteve '%s'", res)
+	}
+}
+

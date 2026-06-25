@@ -19,7 +19,11 @@
     "thinking": "thinking",
     "user": "user",
     "auto_validation_start": "Executando auto-validação de sintaxe ('go vet')...",
-    "auto_validation_failure": "[AUTO-VALIDATION FAILURE] O linter ('go vet') detectou erros de sintaxe:\n%s\nCorrija estes problemas de código antes de finalizar."
+    "auto_validation_failure": "[AUTO-VALIDATION FAILURE] O linter ('go vet') detectou erros de sintaxe:\n%s\nCorrija estes problemas de código antes de finalizar.",
+    "summarizer_prompt": "Como um agente especialista, resuma de forma concisa e técnica o progresso realizado nesta tarefa, o estado atual do sistema, e o que deve ser feito a seguir. O resumo será usado para guiar a sua próxima invocação nesta mesma sessão.\n\nTAREFA ANTERIOR:\n%s\n\nRESULTADO DA EXECUÇÃO:\n%s\n\nHISTÓRICO ACUMULADO ANTERIOR:\n%s\n\nPor favor, retorne apenas o resumo em no máximo 3 parágrafos objetivos.",
+    "summarizer_role": "Sumarizar contexto do especialista para manter memória. Seja extremamente direto.",
+    "agents_browser_prompt": "Você é o BrowserAgent, um agente especialista em navegação web e automação visual de navegadores. Use as ferramentas de navegação disponíveis para atingir o objetivo com sucesso.",
+    "agents_coder_prompt": "Você é o CoderAgent, um especialista em engenharia de software e codificação limpa. Analise a base de código e aplique alterações cirúrgicas mantendo testes verdes."
   },
   "errors": {
     "optimizer_blank_response": "resposta de otimização em branco",

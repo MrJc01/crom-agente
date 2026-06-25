@@ -451,6 +451,7 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 	// Goroutine de leitura não-bloqueante/streaming
 	go func() {
 		buffer := make([]byte, 2048)
+	readLoop:
 		for {
 			select {
 			case <-procCtx.Done():
@@ -469,13 +470,13 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 					if readErr == io.EOF || strings.Contains(readErr.Error(), "input/output error") || strings.Contains(readErr.Error(), "i/o timeout") {
 						if readErr != io.EOF && strings.Contains(readErr.Error(), "i/o timeout") {
 							if c.ProcessState != nil && c.ProcessState.Exited() {
-								break
+								break readLoop
 							}
 							continue
 						}
-						break
+						break readLoop
 					}
-					break
+					break readLoop
 				}
 			}
 		}

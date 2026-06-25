@@ -1,4 +1,4 @@
-package core
+package core_test
 
 import (
 	"context"
@@ -7,17 +7,15 @@ import (
 	"path/filepath"
 	"testing"
 
+	_ "github.com/crom/crom-agente/internal/agents/specialists/spawn"
 	"github.com/crom/crom-agente/internal/llm/providers"
+	agenticcore "github.com/crom/crom-agente/internal/loop/agentic/core"
 	"github.com/crom/crom-agente/internal/state"
 )
 
 func TestAgenticLoop_SpawnSubagent_Success(t *testing.T) {
 	ws := t.TempDir()
 
-	// Respostas sequenciais para o MockProvider:
-	// 1. Pai chama spawn_subagent
-	// 2. Filho responde com texto concluído (sem tool calls)
-	// 3. Pai responde com texto final concluído
 	provider := providers.NewMockProvider(
 		providers.MockToolCallResponse("spawn_subagent", `{"task": "subtask task"}`, 10),
 		providers.MockTextResponse("filho concluído", 10),
@@ -28,7 +26,7 @@ func TestAgenticLoop_SpawnSubagent_Success(t *testing.T) {
 	sm := state.NewStateManager(filepath.Join(ws, ".crom"))
 	_ = sm.LoadState()
 
-	al := New(provider, sm, nil)
+	al := agenticcore.New(provider, sm, nil)
 	al.RegisterSpawnSubagentTool()
 
 	err := al.Execute(context.Background(), "tarefa pai")
@@ -50,7 +48,6 @@ func TestAgenticLoop_SpawnSubagent_Success(t *testing.T) {
 func TestAgenticLoop_SpawnSubagent_GitRollback(t *testing.T) {
 	ws := t.TempDir()
 
-	// 1. Inicializa repositório Git temporário real
 	cmdInit := exec.Command("git", "init")
 	cmdInit.Dir = ws
 	_ = cmdInit.Run()
@@ -62,7 +59,6 @@ func TestAgenticLoop_SpawnSubagent_GitRollback(t *testing.T) {
 	cmdEmail.Dir = ws
 	_ = cmdEmail.Run()
 
-	// 2. Cria arquivo base
 	initFile := filepath.Join(ws, "main.go")
 	_ = os.WriteFile(initFile, []byte("versao 1"), 0644)
 
@@ -74,10 +70,8 @@ func TestAgenticLoop_SpawnSubagent_GitRollback(t *testing.T) {
 	cmdCommit.Dir = ws
 	_ = cmdCommit.Run()
 
-	// 3. Altera arquivo fisicamente (modificação não comitada)
 	_ = os.WriteFile(initFile, []byte("versao modificada"), 0644)
 
-	// 4. Configura mock LLM para falhar
 	provider := providers.NewMockProvider(
 		providers.MockToolCallResponse("spawn_subagent", `{"task": "subtask falha"}`, 10),
 		providers.MockErrorResponse("simulated LLM error inside subagent"),
@@ -86,13 +80,11 @@ func TestAgenticLoop_SpawnSubagent_GitRollback(t *testing.T) {
 	sm := state.NewStateManager(filepath.Join(ws, ".crom"))
 	_ = sm.LoadState()
 
-	al := New(provider, sm, nil)
+	al := agenticcore.New(provider, sm, nil)
 	al.RegisterSpawnSubagentTool()
 
-	// Executa (deve falhar e disparar rollback)
 	_ = al.Execute(context.Background(), "tarefa pai")
 
-	// 5. Verifica se o git rollback reverteu o arquivo
 	data, err := os.ReadFile(initFile)
 	if err != nil {
 		t.Fatalf("erro ao ler arquivo após rollback: %v", err)

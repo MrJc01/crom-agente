@@ -62,9 +62,10 @@ type AgentState struct {
 	TokensGastos      int           `json:"tokens_gastos"`
 	TotalTurnos       int           `json:"total_turnos"`
 	Timestamp         time.Time     `json:"timestamp"`
-	Messages          []llm.Message `json:"messages,omitempty"`
-	Plan              []TaskItem    `json:"plan,omitempty"`
-	BrowserURL        string        `json:"browser_url,omitempty"`
+	Messages          []llm.Message     `json:"messages,omitempty"`
+	Plan              []TaskItem        `json:"plan,omitempty"`
+	BrowserURL        string            `json:"browser_url,omitempty"`
+	SubagentsContext  map[string]string `json:"subagents_context,omitempty"`
 }
 
 // StateManager gerencia a leitura, escrita e acesso concorrente ao estado do agente
@@ -336,3 +337,28 @@ func (sm *StateManager) SaveIterationLog(iteration int, logData IterationLog) er
 
 	return os.WriteFile(fullPath, data, 0644)
 }
+
+// GetSummaryForAgent recupera o resumo de historico de um subagente especialista
+func (sm *StateManager) GetSummaryForAgent(name string) string {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	if sm.state == nil || sm.state.SubagentsContext == nil {
+		return ""
+	}
+	return sm.state.SubagentsContext[name]
+}
+
+// UpdateSummaryForAgent atualiza o resumo de historico de um subagente e persiste no disco
+func (sm *StateManager) UpdateSummaryForAgent(name, summary string) error {
+	sm.mu.Lock()
+	if sm.state == nil {
+		sm.state = newDefaultState()
+	}
+	if sm.state.SubagentsContext == nil {
+		sm.state.SubagentsContext = make(map[string]string)
+	}
+	sm.state.SubagentsContext[name] = summary
+	sm.mu.Unlock()
+	return sm.SaveState()
+}
+

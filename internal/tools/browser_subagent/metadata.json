@@ -1,5 +1,0 @@
-{
-  "id": "browser_subagent",
-  "name": "Browser Subagent",
-  "description": "Executa uma sequência estruturada de ações no navegador com auto-verificação visual. Cada ação pode ser: 'navigate' (navegar para URL), 'click' (clicar em seletor CSS), 'type' (digitar texto em seletor), 'wait' (aguardar N segundos), 'screenshot' (capturar e verificar resultado). O subagente executa todas as ações em ordem e retorna um relatório estruturado com o resultado de cada etapa, incluindo capturas de tela codificadas em base64 para validação visual."
-}

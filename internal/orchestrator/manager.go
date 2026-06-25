@@ -11,7 +11,13 @@ import (
 
 	"time"
 
+	"github.com/crom/crom-agente/internal/agents"
+	agentscore "github.com/crom/crom-agente/internal/agents/core"
+	browserSpecialist "github.com/crom/crom-agente/internal/agents/specialists/browser"
+	"github.com/crom/crom-agente/internal/agents/specialists/external"
+	_ "github.com/crom/crom-agente/internal/agents/specialists/spawn"
 	"github.com/crom/crom-agente/internal/config"
+	"github.com/crom/crom-agente/internal/config/topology"
 	"github.com/crom/crom-agente/internal/llm/providers"
 	"github.com/crom/crom-agente/internal/loop"
 	"github.com/crom/crom-agente/internal/loop/agentic/core"
@@ -19,7 +25,6 @@ import (
 	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/tools"
 	"github.com/crom/crom-agente/internal/tools/browser"
-	"github.com/crom/crom-agente/internal/tools/browser_subagent"
 	"github.com/crom/crom-agente/internal/tools/registry"
 )
 
@@ -40,22 +45,22 @@ type RunningAgent struct {
 
 // MultiAgentManager coordena a execução simultânea de loops em múltiplos workspaces
 type MultiAgentManager struct {
-	mu               sync.RWMutex
-	runningAgents    map[string]*RunningAgent // chave: workspace name
-	activeBrowsers   map[string]*browser.BrowserTool
-	activeSubagents  map[string]*browser_subagent.BrowserSubagentTool
-	MCPManager       *MCPManager // gerenciador de servidores MCP globais
-	OnSchedule       func(workspaceName, sessionName, task string, delaySecs int, provider, model string)
-	OnBackgroundExit func(workspaceName, sessionName, task string, provider, model string)
+	mu                sync.RWMutex
+	runningAgents     map[string]*RunningAgent // chave: workspace name
+	activeBrowsers    map[string]*browser.BrowserTool
+	activeSpecialists map[string]agentscore.Agent
+	MCPManager        *MCPManager // gerenciador de servidores MCP globais
+	OnSchedule        func(workspaceName, sessionName, task string, delaySecs int, provider, model string)
+	OnBackgroundExit  func(workspaceName, sessionName, task string, provider, model string)
 }
 
 // NewMultiAgentManager cria um novo gerenciador multi-agente
 func NewMultiAgentManager() *MultiAgentManager {
 	return &MultiAgentManager{
-		runningAgents:   make(map[string]*RunningAgent),
-		activeBrowsers:  make(map[string]*browser.BrowserTool),
-		activeSubagents: make(map[string]*browser_subagent.BrowserSubagentTool),
-		MCPManager:      NewMCPManager(),
+		runningAgents:     make(map[string]*RunningAgent),
+		activeBrowsers:    make(map[string]*browser.BrowserTool),
+		activeSpecialists: make(map[string]agentscore.Agent),
+		MCPManager:        NewMCPManager(),
 	}
 }
 
@@ -310,8 +315,8 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 	if m.activeBrowsers == nil {
 		m.activeBrowsers = make(map[string]*browser.BrowserTool)
 	}
-	if m.activeSubagents == nil {
-		m.activeSubagents = make(map[string]*browser_subagent.BrowserSubagentTool)
+	if m.activeSpecialists == nil {
+		m.activeSpecialists = make(map[string]agentscore.Agent)
 	}
 
 	browserTool, ok := m.activeBrowsers[wsName]
@@ -335,27 +340,6 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 		return sm.GetBrowserURL()
 	})
 
-	browserSubagentTool, okSub := m.activeSubagents[wsName]
-	if !okSub {
-		browserSubagentTool = browser_subagent.NewBrowserSubagentTool(target.Path, resolved.BrowserHeadless)
-		m.activeSubagents[wsName] = browserSubagentTool
-	}
-	browserSubagentTool.SetOnNavigate(func(url string) {
-		_ = sm.SetBrowserURL(url)
-		if handler != nil {
-			handler.OnEvent(loop.AgentEvent{
-				Timestamp: time.Now(),
-				Event:     "browser_navigate",
-				Data: map[string]interface{}{
-					"url": url,
-				},
-			})
-		}
-	})
-	browserSubagentTool.SetRestoreURL(func() string {
-		return sm.GetBrowserURL()
-	})
-
 	// Instanciar e registrar as ferramentas nativas unificadas via registro centralizado
 	builtinTools := registry.GetBuiltinTools(registry.RegistrationConfig{
 		WorkspacePath:   target.Path,
@@ -374,11 +358,76 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 			}
 		},
 		BrowserTool:  browserTool,
-		SubagentTool: browserSubagentTool,
+		SubagentTool: nil,
 	})
 
 	for _, t := range builtinTools {
 		al.RegisterTool(t)
+	}
+
+	// Carrega a topologia de agentes dinâmicos
+	topoPath := filepath.Join(target.Path, ".crom", config.AgentsTopologyFile)
+	topo, err := topology.LoadTopology(topoPath)
+	if err != nil {
+		topo = topology.GetDefaultTopology()
+	}
+
+	for _, spec := range topo.GetSpecialists() {
+		if spec.Type == "native" {
+			cacheKey := wsName + "/" + spec.Name
+			agentInst, exists := m.activeSpecialists[cacheKey]
+			if !exists {
+				var ok bool
+				agentInst, ok = agents.GetAgentInst(spec.Name, agents.Config{
+					WorkspacePath:   target.Path,
+					LLMProvider:     provider,
+					BrowserHeadless: resolved.BrowserHeadless,
+				})
+				if !ok {
+					continue
+				}
+				m.activeSpecialists[cacheKey] = agentInst
+			}
+
+			// Injeta callbacks específicos do browser
+			if spec.Name == "browser" || spec.Name == "browser_subagent" {
+				if ba, ok := agentInst.(*browserSpecialist.BrowserAgent); ok {
+					ba.SetOnNavigate(func(url string) {
+						_ = sm.SetBrowserURL(url)
+						if handler != nil {
+							handler.OnEvent(loop.AgentEvent{
+								Timestamp: time.Now(),
+								Event:     "browser_navigate",
+								Data: map[string]interface{}{
+									"url": url,
+								},
+							})
+						}
+					})
+					ba.SetRestoreURL(func() string {
+						return sm.GetBrowserURL()
+					})
+				}
+			}
+
+			al.RegisterTool(tools.NewAgentToolAdapter(agentInst))
+		} else if spec.Type == "external" {
+			cacheKey := wsName + "/" + spec.Name
+			agentInst, exists := m.activeSpecialists[cacheKey]
+			if !exists {
+				agentInst = external.NewExternalAgent(
+					spec.Name,
+					spec.Description,
+					spec.SystemPrompt,
+					spec.ToolIDs,
+					spec.ExecPath,
+					spec.Args,
+					30*time.Second,
+				)
+				m.activeSpecialists[cacheKey] = agentInst
+			}
+			al.RegisterTool(tools.NewAgentToolAdapter(agentInst))
+		}
 	}
 	if tp, ok := handler.(interface {
 		GetCustomTools() []tools.Tool
@@ -450,10 +499,14 @@ func (m *MultiAgentManager) StopAgent(workspaceName string) error {
 		delete(m.activeBrowsers, wsName)
 		closedBrowser = true
 	}
-	if b, ok := m.activeSubagents[wsName]; ok {
-		b.Close()
-		delete(m.activeSubagents, wsName)
-		closedBrowser = true
+	for k, agentInst := range m.activeSpecialists {
+		if strings.HasPrefix(k, wsName+"/") {
+			if closer, ok := agentInst.(interface{ Close() }); ok {
+				closer.Close()
+			}
+			delete(m.activeSpecialists, k)
+			closedBrowser = true
+		}
 	}
 
 	if !running && !closedBrowser {
@@ -510,9 +563,11 @@ func (m *MultiAgentManager) Shutdown() {
 		b.Close()
 		delete(m.activeBrowsers, name)
 	}
-	for name, b := range m.activeSubagents {
-		b.Close()
-		delete(m.activeSubagents, name)
+	for name, agentInst := range m.activeSpecialists {
+		if closer, ok := agentInst.(interface{ Close() }); ok {
+			closer.Close()
+		}
+		delete(m.activeSpecialists, name)
 	}
 	m.mu.Unlock()
 
@@ -542,10 +597,14 @@ func (m *MultiAgentManager) GetBrowserPageContent(workspaceKey string) (string, 
 	wsName := m.ResolveWorkspaceName(workspaceKey)
 
 	// Tenta subagent primeiro, depois browser normal
-	if sub, ok := m.activeSubagents[wsName]; ok {
-		html, url, err := sub.GetCurrentPageContent()
-		if err == nil && html != "" {
-			return html, url, nil
+	if spec, ok := m.activeSpecialists[wsName+"/browser"]; ok {
+		if sub, ok := spec.(interface {
+			GetCurrentPageContent() (string, string, error)
+		}); ok {
+			html, url, err := sub.GetCurrentPageContent()
+			if err == nil && html != "" {
+				return html, url, nil
+			}
 		}
 	}
 

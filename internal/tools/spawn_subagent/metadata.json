@@ -1,5 +1,0 @@
-{
-  "id": "spawn_subagent",
-  "name": "Spawn Subagent",
-  "description": "Dispara um subagente em background em uma tarefa isolada."
-}

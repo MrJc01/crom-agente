@@ -12,6 +12,7 @@ import (
 	"github.com/crom/crom-agente/internal/llm"
 	"github.com/crom/crom-agente/internal/loop"
 	"github.com/crom/crom-agente/internal/state"
+	"github.com/crom/crom-agente/internal/tools"
 
 	"github.com/crom/crom-agente/internal/i18n"
 	"github.com/crom/crom-agente/internal/loop/agentic/prompting"
@@ -537,17 +538,38 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				}
 			}
 
+			// Interceptar se for um subagente especialista adaptado
+			var isAgent bool
+			var priorSummary string
+			var rawArgs = tc.Function.Arguments
+			if _, ok := tool.(*tools.AgentToolAdapter); ok {
+				isAgent = true
+				if al.stateManager != nil {
+					priorSummary = al.stateManager.GetSummaryForAgent(toolID)
+				}
+				// Injeta o prior_summary se não fornecido pelo LLM
+				var argsMap map[string]interface{}
+				if err := json.Unmarshal([]byte(tc.Function.Arguments), &argsMap); err == nil {
+					if _, ok := argsMap["prior_summary"]; !ok || argsMap["prior_summary"] == "" {
+						argsMap["prior_summary"] = priorSummary
+						if newArgs, errMarshal := json.Marshal(argsMap); errMarshal == nil {
+							rawArgs = string(newArgs)
+						}
+					}
+				}
+			}
+
 			// Executar com timeout
 			toolStartTime := time.Now()
 			toolCtx, cancel := context.WithTimeout(ctx, time.Duration(al.config.ToolTimeoutSeconds)*time.Second)
-			result, execErr := tool.Execute(toolCtx, json.RawMessage(tc.Function.Arguments))
+			result, execErr := tool.Execute(toolCtx, json.RawMessage(rawArgs))
 			cancel()
 			toolDuration := time.Since(toolStartTime).Milliseconds()
 
 			if execErr != nil {
 				iterLog.ToolsCalled = append(iterLog.ToolsCalled, state.ToolTrace{
 					ToolName:   toolID,
-					Args:       tc.Function.Arguments,
+					Args:       rawArgs,
 					Success:    false,
 					Output:     execErr.Error(),
 					DurationMs: toolDuration,
@@ -580,9 +602,23 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			}
 
 			if result.Success {
+				if isAgent {
+					var agentRes struct {
+						Output         string `json:"output"`
+						ContextSummary string `json:"context_summary"`
+					}
+					if err := json.Unmarshal([]byte(result.Data), &agentRes); err == nil {
+						if al.stateManager != nil {
+							_ = al.stateManager.UpdateSummaryForAgent(toolID, agentRes.ContextSummary)
+						}
+						// Oculta a estrutura interna de ContextSummary do prompt do Supervisor
+						result.Data = agentRes.Output
+					}
+				}
+
 				iterLog.ToolsCalled = append(iterLog.ToolsCalled, state.ToolTrace{
 					ToolName:   toolID,
-					Args:       tc.Function.Arguments,
+					Args:       rawArgs,
 					Success:    true,
 					Output:     result.Data,
 					DurationMs: toolDuration,

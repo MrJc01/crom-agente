@@ -28,6 +28,9 @@ const (
 
 	// WorkspaceConfigFile é o arquivo de config por workspace
 	WorkspaceConfigFile = "config.json"
+
+	// AgentsTopologyFile é o arquivo de definição de agentes especialistas por workspace
+	AgentsTopologyFile = "crom_agents.json"
 )
 
 // MCPServerConfig descreve a configuração de um servidor MCP externo
@@ -296,6 +299,29 @@ func LoadWorkspaceConfig(workspacePath string) (*WorkspaceConfig, error) {
 			if saveErr := SaveWorkspaceConfig(workspacePath, cfg); saveErr != nil {
 				return nil, fmt.Errorf("erro ao criar config workspace padrão: %w", saveErr)
 			}
+
+			// Criar crom_agents.json se não existir
+			defaultTopo := `{
+  "supervisor": {
+    "model": ""
+  },
+  "specialists": [
+    {
+      "name": "browser",
+      "type": "native",
+      "description": "Especialista em navegação web e automação visual de navegadores",
+      "tool_ids": ["scraper", "http_client"]
+    },
+    {
+      "name": "spawn",
+      "type": "native",
+      "description": "Especialista em executar tarefas assíncronas isoladas e scripts locais",
+      "tool_ids": ["terminal_command", "read_file", "write_file"]
+    }
+  ]
+}`
+			_ = os.WriteFile(filepath.Join(cfgDir, AgentsTopologyFile), []byte(defaultTopo), 0644)
+
 			return cfg, nil
 		}
 		return nil, fmt.Errorf("erro ao ler config workspace: %w", err)
