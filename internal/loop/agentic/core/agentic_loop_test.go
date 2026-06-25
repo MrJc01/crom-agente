@@ -755,3 +755,35 @@ func TestAgenticLoop_CognitiveTransitions(t *testing.T) {
 	}
 }
 
+func TestAgenticLoop_SimpleIntentFastPath(t *testing.T) {
+	provider := providers.NewMockProvider(
+		providers.MockTextResponse("Olá! Como posso ajudar você?", 10),
+	)
+	sm := state.NewStateManager(t.TempDir())
+	handler := &testEventHandler{}
+
+	al := New(provider, sm, handler)
+
+	err := al.Execute(context.Background(), "olá")
+	if err != nil {
+		t.Fatalf("esperava sucesso no fast path, obteve: %v", err)
+	}
+
+	msgs := sm.GetMessages()
+	if len(msgs) != 2 {
+		t.Fatalf("esperava 2 mensagens salvas (user e assistant), obteve %d", len(msgs))
+	}
+	if msgs[0].Role != "user" || msgs[0].Content != "olá" {
+		t.Errorf("primeira mensagem incorreta: %+v", msgs[0])
+	}
+	if msgs[1].Role != "assistant" || msgs[1].Content != "Olá! Como posso ajudar você?" {
+		t.Errorf("segunda mensagem incorreta: %+v", msgs[1])
+	}
+
+	s := sm.GetState()
+	if s.StatusOperacional != state.StatusIdle {
+		t.Errorf("esperava status final 'idle', obteve '%s'", s.StatusOperacional)
+	}
+}
+
+

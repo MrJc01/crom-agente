@@ -38,6 +38,22 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		messages = al.stateManager.GetMessages()
 	}
 
+	if isSimpleIntent(intent) && len(messages) == 0 {
+		resp, err := al.generateSimpleResponse(ctx, intent)
+		if err == nil {
+			messages = append(messages, llm.Message{Role: "user", Content: intent})
+			messages = append(messages, llm.Message{Role: "assistant", Content: resp})
+			saveMsgs(messages)
+
+			if al.stateManager != nil {
+				_ = al.stateManager.SetOperationalStatus(state.StatusIdle)
+			}
+			al.handler.OnMessage("assistant", resp)
+			al.handler.OnStatusChange("idle")
+			return nil
+		}
+	}
+
 	workspaceDir := ""
 	sessionDir := ""
 	if al.stateManager != nil {
@@ -869,3 +885,47 @@ func isValidationAction(toolID string, rawArgs string) bool {
 	}
 	return false
 }
+
+func isSimpleIntent(intent string) bool {
+	clean := strings.TrimSpace(strings.ToLower(intent))
+	clean = strings.TrimRight(clean, ".!?")
+	greetings := []string{
+		"oi", "olá", "ola", "bom dia", "boa tarde", "boa noite", "hello", "hi", "test", "teste",
+	}
+	for _, g := range greetings {
+		if clean == g {
+			return true
+		}
+	}
+	replies := []string{
+		"sim", "não", "nao", "yes", "no", "ok", "confirmar", "confirma", "cancelar", "cancela", "fechar", "rejeitar", "aprovar", "aprovado", "rejeitado", "obrigado", "obrigada", "valeu", "thanks",
+	}
+	for _, r := range replies {
+		if clean == r {
+			return true
+		}
+	}
+	return false
+}
+
+func (al *AgenticLoop) generateSimpleResponse(ctx context.Context, intent string) (string, error) {
+	prompt := []llm.Message{
+		{
+			Role:    "system",
+			Content: "Você é Antigravity, um assistente de IA. Responda à saudação, agradecimento ou resposta curta do usuário de forma extremamente amigável, natural e muito curta (máximo 1 frase).",
+		},
+		{
+			Role:    "user",
+			Content: intent,
+		},
+	}
+	resp, err := al.provider.SendMessages(ctx, prompt, llm.RequestOptions{})
+	if err != nil {
+		return "", err
+	}
+	if al.stateManager != nil {
+		_ = al.stateManager.RecordTokens(resp.Usage.TotalTokens)
+	}
+	return resp.Message.Content, nil
+}
+
