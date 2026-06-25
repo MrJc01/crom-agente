@@ -294,6 +294,220 @@ def check_sim10():
             
     return True, "Estrutura de arquivos Yii2 MVC e tags PHP validadas com sucesso."
 
+def check_generic_file(ws_dir, file_name, min_len=15):
+    path = ws_dir / file_name
+    if not path.exists():
+        return False, f"Arquivo {file_name} nao existe no workspace."
+    if min_len > 0:
+        return check_sanity(path)
+    return True, f"Arquivo {file_name} existe."
+
+def check_go_compile(ws_dir, file_name):
+    path = ws_dir / file_name
+    ok, err = check_sanity(path)
+    if not ok:
+        return False, err
+    try:
+        binary_out = ws_dir / "test_bin"
+        if binary_out.exists():
+            binary_out.unlink()
+        res = subprocess.run(["go", "build", "-o", str(binary_out), str(path)], capture_output=True, text=True, timeout=20, cwd=str(ws_dir))
+        if res.returncode != 0:
+            return False, f"Go build falhou: {res.stderr}"
+        if binary_out.exists():
+            binary_out.unlink()
+        return True, "Go compilado com sucesso."
+    except Exception as e:
+        return False, f"Erro compilação Go: {e}"
+
+def check_sim11():
+    return check_generic_file(SIMS_DIR / "sim11_link_validator", "validator.py")
+
+def check_sim12():
+    return check_go_compile(SIMS_DIR / "sim12_go_crud", "server.go")
+
+def check_sim13():
+    return check_generic_file(SIMS_DIR / "sim13_log_parser", "parse_logs.sh")
+
+def check_sim14():
+    return check_generic_file(SIMS_DIR / "sim14_async_downloader", "downloader.py")
+
+def check_sim15():
+    ws = SIMS_DIR / "sim15_jwt_middleware"
+    ok1, err1 = check_generic_file(ws, "app.js")
+    if not ok1: return False, err1
+    return check_generic_file(ws, "auth.js")
+
+def check_sim16():
+    return check_generic_file(SIMS_DIR / "sim16_sqlite_transaction", "transfer.py")
+
+def check_sim17():
+    return check_go_compile(SIMS_DIR / "sim17_concurrent_crawler", "crawler.go")
+
+def check_sim18():
+    return check_generic_file(SIMS_DIR / "sim18_email_extractor", "parse_emails.py")
+
+def check_sim19():
+    return check_generic_file(SIMS_DIR / "sim19_csv_stream", "stream_processor.js")
+
+def check_sim20():
+    return check_go_compile(SIMS_DIR / "sim20_exec_timeout", "runner.go")
+
+def check_sim21():
+    return check_generic_file(SIMS_DIR / "sim21_file_cipher", "cipher.py")
+
+def check_sim22():
+    return check_generic_file(SIMS_DIR / "sim22_migrations_runner", "migrate.py")
+
+def check_sim23():
+    return check_generic_file(SIMS_DIR / "sim23_html_parser", "parser.py")
+
+def check_sim24():
+    return check_go_compile(SIMS_DIR / "sim24_tcp_server", "tcp_server.go")
+
+def check_sim25():
+    return check_generic_file(SIMS_DIR / "sim25_markdown_converter", "md2html.js")
+
+def check_sim26():
+    return check_generic_file(SIMS_DIR / "sim26_csv_importer", "import_csv.py")
+
+def check_sim27():
+    return check_go_compile(SIMS_DIR / "sim27_memory_cache", "cache.go")
+
+def check_sim28():
+    return check_generic_file(SIMS_DIR / "sim28_path_sanitizer", "sandbox.py")
+
+def check_sim29():
+    ws = SIMS_DIR / "sim29_yii2_rest"
+    path = ws / "controllers" / "PostController.php"
+    return check_sanity(path)
+
+def check_sim30():
+    return check_generic_file(SIMS_DIR / "sim30_cli_manager", "cli.py")
+
+def check_sim31():
+    return check_generic_file(SIMS_DIR / "sim31_legal_contract", "contrato_prestacao_servicos.md")
+
+def check_sim32():
+    return check_generic_file(SIMS_DIR / "sim32_expense_report", "resumo_financeiro.py")
+
+def check_sim33():
+    return check_generic_file(SIMS_DIR / "sim33_recipe_scaler", "redimensionar_receita.py")
+
+def check_sim34():
+    return check_generic_file(SIMS_DIR / "sim34_translation", "tradutor.py")
+
+def check_sim35():
+    return check_generic_file(SIMS_DIR / "sim35_abnt_bibliography", "formatador_abnt.py")
+
+def check_sim36():
+    return check_generic_file(SIMS_DIR / "sim36_marketing_calendar", "calendario_editorial.md")
+
+def check_sim37():
+    return check_generic_file(SIMS_DIR / "sim37_real_estate", "gerador_anuncios.py")
+
+def check_sim38():
+    return check_generic_file(SIMS_DIR / "sim38_customer_support", "respostas_suporte.md")
+
+def check_sim39():
+    return check_generic_file(SIMS_DIR / "sim39_logistics_planner", "planejador_rotas.py")
+
+def check_sim40():
+    return check_generic_file(SIMS_DIR / "sim40_fitness_workout", "treino.py")
+
+def check_sim41():
+    return check_generic_file(SIMS_DIR / "sim41_meal_planner", "plano_alimentar.md")
+
+def check_sim42():
+    return check_generic_file(SIMS_DIR / "sim42_inventory_report", "estoque.py")
+
+def check_sim43():
+    return check_generic_file(SIMS_DIR / "sim43_travel_itinerary", "roteiro_viagem.md")
+
+def check_sim44():
+    return check_generic_file(SIMS_DIR / "sim44_press_release", "press_release.md")
+
+def check_sim45():
+    return check_generic_file(SIMS_DIR / "sim45_book_review", "resenha.py")
+
+def check_sim46():
+    return check_generic_file(SIMS_DIR / "sim46_lesson_plan", "plano_aula.md")
+
+def check_sim47():
+    return check_generic_file(SIMS_DIR / "sim47_product_pricing", "precificacao.py")
+
+def check_sim48():
+    return check_generic_file(SIMS_DIR / "sim48_employee_scheduler", "escala.py")
+
+def check_sim49():
+    return check_generic_file(SIMS_DIR / "sim49_email_newsletter", "newsletter.html")
+
+def check_sim50():
+    return check_generic_file(SIMS_DIR / "sim50_meeting_minutes", "ata_kickoff.md")
+
+def check_sim51():
+    return check_generic_file(SIMS_DIR / "sim51_jwst_wiki", "jwst_resumo.md")
+
+def check_sim52():
+    return check_generic_file(SIMS_DIR / "sim52_screenshot_mobile", "example_mobile.png", min_len=0)
+
+def check_sim53():
+    return check_generic_file(SIMS_DIR / "sim53_github_metrics", "yii2_metrics.json")
+
+def check_sim54():
+    return check_generic_file(SIMS_DIR / "sim54_weather_forecast", "previsao_sp.txt")
+
+def check_sim55():
+    return check_generic_file(SIMS_DIR / "sim55_exchange_rates", "cotacoes.json")
+
+def check_sim56():
+    return check_generic_file(SIMS_DIR / "sim56_pdf_download", "guia.pdf", min_len=0)
+
+def check_sim57():
+    return check_generic_file(SIMS_DIR / "sim57_seo_search", "seo_results.json")
+
+def check_sim58():
+    return check_generic_file(SIMS_DIR / "sim58_news_summary", "tech_news.md")
+
+def check_sim59():
+    return check_generic_file(SIMS_DIR / "sim59_go_doc_formatting", "formatting_links.txt")
+
+def check_sim60():
+    return check_generic_file(SIMS_DIR / "sim60_price_comparison", "rtx4060_precos.json")
+
+def check_sim61():
+    return check_generic_file(SIMS_DIR / "sim61_openapi_schema", "openapi_schema.json")
+
+def check_sim62():
+    ws = SIMS_DIR / "sim62_layout_check"
+    ok1, err1 = check_generic_file(ws, "wikipedia_globe.png", min_len=0)
+    if not ok1: return False, err1
+    return check_generic_file(ws, "layout_report.txt")
+
+def check_sim63():
+    return check_generic_file(SIMS_DIR / "sim63_trending_topics", "trends_post.md")
+
+def check_sim64():
+    return check_generic_file(SIMS_DIR / "sim64_stocks_ticker", "stocks_report.md")
+
+def check_sim65():
+    return check_generic_file(SIMS_DIR / "sim65_form_filler", "form_preenchido.png", min_len=0)
+
+def check_sim66():
+    return check_generic_file(SIMS_DIR / "sim66_pep8_research", "pep8_info.md")
+
+def check_sim67():
+    return check_generic_file(SIMS_DIR / "sim67_restaurant_scraper", "restaurante_info.json")
+
+def check_sim68():
+    return check_generic_file(SIMS_DIR / "sim68_google_logo", "google_logo.png", min_len=0)
+
+def check_sim69():
+    return check_generic_file(SIMS_DIR / "sim69_security_policy", "cloudflare_security.txt")
+
+def check_sim70():
+    return check_generic_file(SIMS_DIR / "sim70_conference_schedule", "grade_palestras.md")
+
 def main():
     print("==================================================")
     print("Iniciando Verificação Físico-Funcional dos Projetos")
@@ -310,6 +524,66 @@ def main():
         ("Simulação 8 (Go HTTP Server)", check_sim08),
         ("Simulação 9 (File Organizer)", check_sim09),
         ("Simulação 10 (Yii2 MVC PHP SQLite)", check_sim10),
+        ("Simulação 11 (Markdown Link Validator)", check_sim11),
+        ("Simulação 12 (Go REST API CRUD SQLite)", check_sim12),
+        ("Simulação 13 (Bash Log Parser)", check_sim13),
+        ("Simulação 14 (Async Image Downloader)", check_sim14),
+        ("Simulação 15 (Node.js JWT Middleware)", check_sim15),
+        ("Simulação 16 (SQLite ACID Transaction)", check_sim16),
+        ("Simulação 17 (Go Concurrent Web Crawler)", check_sim17),
+        ("Simulação 18 (Python Regex Email Extractor)", check_sim18),
+        ("Simulação 19 (Node.js CSV Stream Filter)", check_sim19),
+        ("Simulação 20 (Go Exec Command Timeout)", check_sim20),
+        ("Simulação 21 (Python XOR/AES File Cipher)", check_sim21),
+        ("Simulação 22 (SQL Migrations Runner)", check_sim22),
+        ("Simulação 23 (BeautifulSoup HTML Parser)", check_sim23),
+        ("Simulação 24 (Go TCP Reverse Echo Server)", check_sim24),
+        ("Simulação 25 (Node.js Markdown to HTML Converter)", check_sim25),
+        ("Simulação 26 (Python CSV to SQLite Importer)", check_sim26),
+        ("Simulação 27 (Go Concurrent Memory Cache TTL)", check_sim27),
+        ("Simulação 28 (Python Path Traversal Sanitizer)", check_sim28),
+        ("Simulação 29 (Yii2 REST Controller SQLite)", check_sim29),
+        ("Simulação 30 (Python CLI Task Manager)", check_sim30),
+        ("Simulação 31 (Legal Contract Drafting)", check_sim31),
+        ("Simulação 32 (Financial Expense Report)", check_sim32),
+        ("Simulação 33 (Recipe Book Scaler)", check_sim33),
+        ("Simulação 34 (Language Translation & Localization)", check_sim34),
+        ("Simulação 35 (Academic Bibliography Formatter)", check_sim35),
+        ("Simulação 36 (Weekly Social Media Calendar)", check_sim36),
+        ("Simulação 37 (Real Estate Listing Generator)", check_sim37),
+        ("Simulação 38 (Customer Support Response Templates)", check_sim38),
+        ("Simulação 39 (Logistics Route & Load Planner)", check_sim39),
+        ("Simulação 40 (Workout Routine & Calorie Calculator)", check_sim40),
+        ("Simulação 41 (Nutrition Meal Planner)", check_sim41),
+        ("Simulação 42 (Inventory Stock Management Report)", check_sim42),
+        ("Simulação 43 (Travel Itinerary Planner)", check_sim43),
+        ("Simulação 44 (Product Launch Press Release)", check_sim44),
+        ("Simulação 45 (Book Review Organizer)", check_sim45),
+        ("Simulação 46 (Classroom Lesson Plan)", check_sim46),
+        ("Simulação 47 (Retail Product Pricing Calculator)", check_sim47),
+        ("Simulação 48 (Employee Shift Scheduler)", check_sim48),
+        ("Simulação 49 (Email Newsletter Draft)", check_sim49),
+        ("Simulação 50 (Project Kickoff Meeting Minutes)", check_sim50),
+        ("Simulação 51 (Wikipedia Search & Summary)", check_sim51),
+        ("Simulação 52 (Responsive Website Screenshot)", check_sim52),
+        ("Simulação 53 (GitHub Repository Info Search)", check_sim53),
+        ("Simulação 54 (Weather Forecast Finder)", check_sim54),
+        ("Simulação 55 (Exchange Rate Scraper)", check_sim55),
+        ("Simulação 56 (Online PDF Guide Downloader)", check_sim56),
+        ("Simulação 57 (Search Engine Rank Checker)", check_sim57),
+        ("Simulação 58 (Tech News Summary)", check_sim58),
+        ("Simulação 59 (Doc Downloader & Link Extractor)", check_sim59),
+        ("Simulação 60 (E-commerce Price Comparer)", check_sim60),
+        ("Simulação 61 (Public API Schema Fetcher)", check_sim61),
+        ("Simulação 62 (Visual Layout Bug Detector)", check_sim62),
+        ("Simulação 63 (Trending Topics Finder)", check_sim63),
+        ("Simulação 64 (Stock Market Ticker Research)", check_sim64),
+        ("Simulação 65 (Online HTML Form Filler)", check_sim65),
+        ("Simulação 66 (Official Python PEP Search)", check_sim66),
+        ("Simulação 67 (Local Business Info Scraper)", check_sim67),
+        ("Simulação 68 (Static Assets Downloader)", check_sim68),
+        ("Simulação 69 (Security Policy Checker)", check_sim69),
+        ("Simulação 70 (Conference Schedule Scraper)", check_sim70),
     ]
     
     passed_count = 0
