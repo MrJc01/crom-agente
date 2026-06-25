@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/llm"
@@ -38,6 +39,7 @@ type AgenticLoop struct {
 	promptManager       *config.PromptManager
 	mu                  sync.Mutex
 	pendingUserMessages []string
+	failureRetryDelay   time.Duration
 }
 
 // QueueUserMessage adiciona uma mensagem do usuário na fila de injeção em tempo real
@@ -65,13 +67,16 @@ func New(provider llm.Provider, sm *state.StateManager, handler EventHandler, cf
 	} else {
 		// Defaults hardcoded para backward compatibility
 		resolvedCfg = &config.ResolvedConfig{
-			MaxIterations:             15,
-			MaxConsecutiveFail:        3,
-			ToolTimeoutSeconds:        30,
-			MaxMessageHistory:         40,
-			AutoVerify:                true,
-			PermissionMode:            "scoped",
-			DisablePromptOptimization: true, // Disables by default in tests that don't pass a custom config!
+			MaxIterations:                15,
+			MaxConsecutiveFail:           3,
+			ToolTimeoutSeconds:           30,
+			MaxMessageHistory:            40,
+			AutoVerify:                   true,
+			PermissionMode:               "scoped",
+			DisablePromptOptimization:    true, // Disables by default in tests that don't pass a custom config!
+			ConsecutiveFailureRetry:      true,
+			ConsecutiveFailureRetryLimit: 0,
+			ConsecutiveFailureRetryDelay: 5,
 		}
 	}
 
@@ -80,13 +85,19 @@ func New(provider llm.Provider, sm *state.StateManager, handler EventHandler, cf
 		pm = config.NewPromptManager(sm.GetWorkspaceDir())
 	}
 
+	delay := 5 * time.Second
+	if resolvedCfg.ConsecutiveFailureRetryDelay > 0 {
+		delay = time.Duration(resolvedCfg.ConsecutiveFailureRetryDelay) * time.Second
+	}
+
 	return &AgenticLoop{
-		provider:      provider,
-		tools:         make(map[string]tools.Tool),
-		stateManager:  sm,
-		handler:       handler,
-		config:        resolvedCfg,
-		promptManager: pm,
+		provider:          provider,
+		tools:             make(map[string]tools.Tool),
+		stateManager:      sm,
+		handler:           handler,
+		config:            resolvedCfg,
+		promptManager:     pm,
+		failureRetryDelay: delay,
 	}
 }
 

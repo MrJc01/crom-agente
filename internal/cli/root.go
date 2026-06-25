@@ -41,6 +41,9 @@ var cliMaxHistory int
 var cliPermissionMode string
 var cliSession string
 var cliDisablePromptOptimization bool
+var cliRetry bool
+var cliRetryLimit int
+var cliRetryDelay int
 
 // rootCmd é o comando raiz do crom-agente
 var rootCmd = &cobra.Command{
@@ -430,6 +433,15 @@ func getCLIFlags(cmd *cobra.Command) config.CLIFlags {
 	if cmd.Flags().Changed("disable-prompt-optimization") {
 		flags.DisablePromptOptimization = &cliDisablePromptOptimization
 	}
+	if cmd.Flags().Changed("retry") {
+		flags.ConsecutiveFailureRetry = &cliRetry
+	}
+	if cmd.Flags().Changed("retry-limit") {
+		flags.ConsecutiveFailureRetryLimit = &cliRetryLimit
+	}
+	if cmd.Flags().Changed("retry-delay") {
+		flags.ConsecutiveFailureRetryDelay = &cliRetryDelay
+	}
 	return flags
 }
 
@@ -446,6 +458,9 @@ func init() {
 	rootCmd.PersistentFlags().IntVar(&cliMaxHistory, "max-history", 0, "Override: Limite de mensagens mantidas no histórico")
 	rootCmd.PersistentFlags().StringVar(&cliPermissionMode, "permission-mode", "", "Override: Modo de permissão (total_access, ask_every_time, scoped)")
 	rootCmd.PersistentFlags().BoolVar(&cliDisablePromptOptimization, "disable-prompt-optimization", false, "Desabilita a otimização de prompt inicial")
+	rootCmd.PersistentFlags().BoolVar(&cliRetry, "retry", true, "Override: Habilita retry automático em falhas consecutivas")
+	rootCmd.PersistentFlags().IntVar(&cliRetryLimit, "retry-limit", 0, "Override: Limite de retries automáticos (0 = infinito)")
+	rootCmd.PersistentFlags().IntVar(&cliRetryDelay, "retry-delay", 5, "Override: Tempo de espera entre retries (segundos)")
 
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(stateCmd)

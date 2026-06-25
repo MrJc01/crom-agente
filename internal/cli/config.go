@@ -50,6 +50,9 @@ var globalListCmd = &cobra.Command{
 		cmd.Printf("  max_message_history_default:      %d\n", cfg.MaxMessageHistoryDefault)
 		cmd.Printf("  log_level:                        %s\n", cfg.LogLevel)
 		cmd.Printf("  telemetry_enabled:                %t\n", cfg.TelemetryEnabled)
+		cmd.Printf("  consecutive_failure_retry_default: %t\n", cfg.ConsecutiveFailureRetryDefault)
+		cmd.Printf("  consecutive_failure_retry_limit_default: %d\n", cfg.ConsecutiveFailureRetryLimitDefault)
+		cmd.Printf("  consecutive_failure_retry_delay_default: %d\n", cfg.ConsecutiveFailureRetryDelayDefault)
 		cmd.Println("═══════════════════════════════════════")
 		return nil
 	},
@@ -204,6 +207,9 @@ var configWorkspaceListCmd = &cobra.Command{
 		cmd.Printf("  auto_verify:              %t\n", cfg.AutoVerify)
 		cmd.Printf("  allowed_tools:            %s\n", strings.Join(cfg.AllowedTools, ", "))
 		cmd.Printf("  blocked_commands:         %s\n", strings.Join(cfg.BlockedCommands, ", "))
+		cmd.Printf("  consecutive_failure_retry: %s\n", formatOptBool(cfg.ConsecutiveFailureRetry))
+		cmd.Printf("  consecutive_failure_retry_limit: %s\n", formatOptInt(cfg.ConsecutiveFailureRetryLimit))
+		cmd.Printf("  consecutive_failure_retry_delay: %s\n", formatOptInt(cfg.ConsecutiveFailureRetryDelay))
 		cmd.Println("═══════════════════════════════════════")
 		return nil
 	},
@@ -294,6 +300,9 @@ var resolvedCmd = &cobra.Command{
 		cmd.Printf("  AllowedTools:       %s\n", strings.Join(resolved.AllowedTools, ", "))
 		cmd.Printf("  BlockedCommands:    %s\n", strings.Join(resolved.BlockedCommands, ", "))
 		cmd.Printf("  LogLevel:           %s\n", resolved.LogLevel)
+		cmd.Printf("  ConsecutiveFailureRetry: %t\n", resolved.ConsecutiveFailureRetry)
+		cmd.Printf("  ConsecutiveFailureRetryLimit: %d\n", resolved.ConsecutiveFailureRetryLimit)
+		cmd.Printf("  ConsecutiveFailureRetryDelay: %d\n", resolved.ConsecutiveFailureRetryDelay)
 		cmd.Println("═══════════════════════════════════════")
 		return nil
 	},
@@ -324,6 +333,13 @@ func formatOptInt(i *int) string {
 		return "<não definido (usa global)>"
 	}
 	return strconv.Itoa(*i)
+}
+
+func formatOptBool(b *bool) string {
+	if b == nil {
+		return "<não definido (usa global)>"
+	}
+	return strconv.FormatBool(*b)
 }
 
 // --- Helpers de Atribuição Dinâmica ---
@@ -372,6 +388,24 @@ func setGlobalField(cfg *config.GlobalConfig, key, val string) error {
 			return fmt.Errorf("valor inválido para bool: %w", err)
 		}
 		cfg.TelemetryEnabled = v
+	case "consecutive_failure_retry_default":
+		v, err := strconv.ParseBool(val)
+		if err != nil {
+			return fmt.Errorf("valor inválido para bool: %w", err)
+		}
+		cfg.ConsecutiveFailureRetryDefault = v
+	case "consecutive_failure_retry_limit_default":
+		v, err := strconv.Atoi(val)
+		if err != nil {
+			return fmt.Errorf("valor inválido para int: %w", err)
+		}
+		cfg.ConsecutiveFailureRetryLimitDefault = v
+	case "consecutive_failure_retry_delay_default":
+		v, err := strconv.Atoi(val)
+		if err != nil {
+			return fmt.Errorf("valor inválido para int: %w", err)
+		}
+		cfg.ConsecutiveFailureRetryDelayDefault = v
 	default:
 		return fmt.Errorf("chave global desconhecida: %s", key)
 	}
@@ -398,6 +432,12 @@ func getGlobalField(cfg *config.GlobalConfig, key string) (string, error) {
 		return cfg.LogLevel, nil
 	case "telemetry_enabled":
 		return strconv.FormatBool(cfg.TelemetryEnabled), nil
+	case "consecutive_failure_retry_default":
+		return strconv.FormatBool(cfg.ConsecutiveFailureRetryDefault), nil
+	case "consecutive_failure_retry_limit_default":
+		return strconv.Itoa(cfg.ConsecutiveFailureRetryLimitDefault), nil
+	case "consecutive_failure_retry_delay_default":
+		return strconv.Itoa(cfg.ConsecutiveFailureRetryDelayDefault), nil
 	default:
 		return "", fmt.Errorf("chave global desconhecida: %s", key)
 	}
@@ -475,6 +515,24 @@ func setWorkspaceField(cfg *config.WorkspaceConfig, key, val string) error {
 			}
 			cfg.BlockedCommands = parts
 		}
+	case "consecutive_failure_retry":
+		v, err := strconv.ParseBool(val)
+		if err != nil {
+			return fmt.Errorf("valor inválido para bool: %w", err)
+		}
+		cfg.ConsecutiveFailureRetry = &v
+	case "consecutive_failure_retry_limit":
+		v, err := strconv.Atoi(val)
+		if err != nil {
+			return fmt.Errorf("valor inválido para int: %w", err)
+		}
+		cfg.ConsecutiveFailureRetryLimit = &v
+	case "consecutive_failure_retry_delay":
+		v, err := strconv.Atoi(val)
+		if err != nil {
+			return fmt.Errorf("valor inválido para int: %w", err)
+		}
+		cfg.ConsecutiveFailureRetryDelay = &v
 	default:
 		return fmt.Errorf("chave de workspace desconhecida: %s", key)
 	}
@@ -524,6 +582,21 @@ func getWorkspaceField(cfg *config.WorkspaceConfig, key string) (string, error) 
 		return strings.Join(cfg.AllowedTools, ","), nil
 	case "blocked_commands":
 		return strings.Join(cfg.BlockedCommands, ","), nil
+	case "consecutive_failure_retry":
+		if cfg.ConsecutiveFailureRetry == nil {
+			return "<não definido>", nil
+		}
+		return strconv.FormatBool(*cfg.ConsecutiveFailureRetry), nil
+	case "consecutive_failure_retry_limit":
+		if cfg.ConsecutiveFailureRetryLimit == nil {
+			return "<não definido>", nil
+		}
+		return strconv.Itoa(*cfg.ConsecutiveFailureRetryLimit), nil
+	case "consecutive_failure_retry_delay":
+		if cfg.ConsecutiveFailureRetryDelay == nil {
+			return "<não definido>", nil
+		}
+		return strconv.Itoa(*cfg.ConsecutiveFailureRetryDelay), nil
 	default:
 		return "", fmt.Errorf("chave de workspace desconhecida: %s", key)
 	}

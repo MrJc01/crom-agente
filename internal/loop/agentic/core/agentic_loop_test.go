@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/llm"
@@ -61,6 +62,26 @@ func (h *testEventHandler) OnMessage(role, content string) {
 }
 func (h *testEventHandler) OnEvent(event loop.AgentEvent) {
 	h.Events = append(h.Events, event)
+}
+
+type cancelOnRetryHandler struct {
+	StatusChanges []string
+	Messages      []struct{ Role, Content string }
+	Events        []loop.AgentEvent
+	cancelFunc    context.CancelFunc
+}
+
+func (h *cancelOnRetryHandler) OnStatusChange(s string) {
+	h.StatusChanges = append(h.StatusChanges, s)
+}
+func (h *cancelOnRetryHandler) OnMessage(role, content string) {
+	h.Messages = append(h.Messages, struct{ Role, Content string }{role, content})
+}
+func (h *cancelOnRetryHandler) OnEvent(event loop.AgentEvent) {
+	h.Events = append(h.Events, event)
+	if event.Event == "retry" && h.cancelFunc != nil {
+		h.cancelFunc()
+	}
 }
 
 // --- Testes ---
@@ -304,7 +325,15 @@ func TestAgenticLoop_ConsecutiveToolFailuresAbort(t *testing.T) {
 	provider := providers.NewMockProvider(responses...)
 	sm := state.NewStateManager(t.TempDir())
 
-	al := New(provider, sm, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	handler := &cancelOnRetryHandler{
+		cancelFunc: cancel,
+	}
+
+	al := New(provider, sm, handler)
+	al.failureRetryDelay = 1 * time.Millisecond
 	al.RegisterTool(&mockTool{
 		id:          "bad_tool",
 		description: "Sempre falha",
@@ -313,12 +342,29 @@ func TestAgenticLoop_ConsecutiveToolFailuresAbort(t *testing.T) {
 		},
 	})
 
-	err := al.Execute(context.Background(), "Use bad_tool")
+	err := al.Execute(ctx, "Use bad_tool")
 	if err == nil {
-		t.Fatal("esperado erro por falhas consecutivas, obteve nil")
+		t.Fatal("esperado erro por cancelamento de contexto, obteve nil")
 	}
-	if !strings.Contains(err.Error(), "falhas consecutivas") {
+	if err != context.Canceled && !strings.Contains(err.Error(), "canceled") && !strings.Contains(err.Error(), "cancelado") {
 		t.Fatalf("erro inesperado: %v", err)
+	}
+
+	// Verifica se o evento retry foi emitido
+	hasRetry := false
+	for _, ev := range handler.Events {
+		if ev.Event == "retry" {
+			hasRetry = true
+			if ev.Data["reason"] != "consecutive_failures" {
+				t.Fatalf("esperado reason=consecutive_failures, obteve %v", ev.Data["reason"])
+			}
+			if ev.Data["error_type"] != "tool_failure" {
+				t.Fatalf("esperado error_type=tool_failure, obteve %v", ev.Data["error_type"])
+			}
+		}
+	}
+	if !hasRetry {
+		t.Fatal("esperado evento 'retry' no handler")
 	}
 }
 
@@ -783,6 +829,88 @@ func TestAgenticLoop_SimpleIntentFastPath(t *testing.T) {
 	s := sm.GetState()
 	if s.StatusOperacional != state.StatusIdle {
 		t.Errorf("esperava status final 'idle', obteve '%s'", s.StatusOperacional)
+	}
+}
+
+func TestAgenticLoop_ConsecutiveFailuresRetryDisabled(t *testing.T) {
+	responses := make([]providers.MockResponse, MaxConsecutiveFailures+1)
+	for i := range responses {
+		responses[i] = providers.MockToolCallResponse("bad_tool", `{}`, 10)
+	}
+	provider := providers.NewMockProvider(responses...)
+	sm := state.NewStateManager(t.TempDir())
+
+	cfg := &config.ResolvedConfig{
+		MaxIterations:             15,
+		MaxConsecutiveFail:        3,
+		ConsecutiveFailureRetry:      false, // retry desabilitado
+		ConsecutiveFailureRetryLimit: 0,
+		ConsecutiveFailureRetryDelay: 0,
+	}
+
+	al := New(provider, sm, nil, cfg)
+	al.RegisterTool(&mockTool{
+		id:          "bad_tool",
+		description: "Sempre falha",
+		executeFunc: func(ctx context.Context, args json.RawMessage) (tools.Result, error) {
+			return tools.Result{Success: false, Error: "always fails"}, nil
+		},
+	})
+
+	err := al.Execute(context.Background(), "Use bad_tool")
+	if err == nil {
+		t.Fatal("esperado erro por falhas consecutivas, obteve nil")
+	}
+	if !strings.Contains(err.Error(), "falhas consecutivas") {
+		t.Fatalf("erro inesperado: %v", err)
+	}
+}
+
+func TestAgenticLoop_ConsecutiveFailuresRetryLimit(t *testing.T) {
+	responses := make([]providers.MockResponse, MaxConsecutiveFailures+5)
+	for i := range responses {
+		responses[i] = providers.MockToolCallResponse("bad_tool", `{}`, 10)
+	}
+	provider := providers.NewMockProvider(responses...)
+	sm := state.NewStateManager(t.TempDir())
+
+	handler := &testEventHandler{}
+
+	cfg := &config.ResolvedConfig{
+		MaxIterations:             15,
+		MaxConsecutiveFail:        3,
+		ConsecutiveFailureRetry:      true,
+		ConsecutiveFailureRetryLimit: 2, // Limite de 2 retries
+		ConsecutiveFailureRetryDelay: 0,
+	}
+
+	al := New(provider, sm, handler, cfg)
+	al.failureRetryDelay = 1 * time.Millisecond
+	al.RegisterTool(&mockTool{
+		id:          "bad_tool",
+		description: "Sempre falha",
+		executeFunc: func(ctx context.Context, args json.RawMessage) (tools.Result, error) {
+			return tools.Result{Success: false, Error: "always fails"}, nil
+		},
+	})
+
+	err := al.Execute(context.Background(), "Use bad_tool")
+	if err == nil {
+		t.Fatal("esperado erro por atingir limite de retry, obteve nil")
+	}
+	if !strings.Contains(err.Error(), "falhas consecutivas") {
+		t.Fatalf("erro inesperado: %v", err)
+	}
+
+	// Deve ter emitido o evento retry exatamente 2 vezes
+	retryCount := 0
+	for _, ev := range handler.Events {
+		if ev.Event == "retry" {
+			retryCount++
+		}
+	}
+	if retryCount != 2 {
+		t.Fatalf("esperado exatamente 2 eventos de retry, obteve %d", retryCount)
 	}
 }
 

@@ -152,6 +152,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 	}
 
 	consecutiveFailures := 0
+	consecutiveRetryCount := 0
 	timerScheduled := false
 	lastIterFailed := false
 	lastToolWasValidation := false
@@ -374,17 +375,54 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			iterationHasFailure = true
 			consecutiveFailures++
 			if consecutiveFailures >= al.config.MaxConsecutiveFail {
-				al.handler.OnMessage("system", i18n.Get("errors.abort_consecutive_failures", al.config.MaxConsecutiveFail))
+				if !al.config.ConsecutiveFailureRetry || (al.config.ConsecutiveFailureRetryLimit > 0 && consecutiveRetryCount >= al.config.ConsecutiveFailureRetryLimit) {
+					al.handler.OnMessage("system", i18n.Get("errors.abort_consecutive_failures", al.config.MaxConsecutiveFail))
+					al.handler.OnEvent(loop.AgentEvent{
+						Timestamp: time.Now(),
+						Event:     "finished",
+						Iteration: i + 1,
+						Data:      map[string]interface{}{"reason": "consecutive_failures", "total_iterations": i + 1},
+					})
+					if al.stateManager != nil {
+						_ = al.stateManager.SaveIterationLog(i+1, iterLog)
+					}
+					return fmt.Errorf("abortando: %d falhas consecutivas", al.config.MaxConsecutiveFail)
+				}
+
+				consecutiveRetryCount++
+				limitStr := "infinito"
+				if al.config.ConsecutiveFailureRetryLimit > 0 {
+					limitStr = fmt.Sprintf("%d", al.config.ConsecutiveFailureRetryLimit)
+				}
+				al.handler.OnMessage("system", fmt.Sprintf("Atingido limite de %d falhas consecutivas (LLM vazio). Aguardando %v antes de tentar novamente (retry %d/%s, cancele para interromper)...", al.config.MaxConsecutiveFail, al.failureRetryDelay, consecutiveRetryCount, limitStr))
 				al.handler.OnEvent(loop.AgentEvent{
 					Timestamp: time.Now(),
-					Event:     "finished",
+					Event:     "retry",
 					Iteration: i + 1,
-					Data:      map[string]interface{}{"reason": "consecutive_failures", "total_iterations": i + 1},
+					Data:      map[string]interface{}{"reason": "consecutive_failures", "delay": al.failureRetryDelay.String(), "error_type": "empty_llm_response", "retry_count": consecutiveRetryCount},
 				})
 				if al.stateManager != nil {
 					_ = al.stateManager.SaveIterationLog(i+1, iterLog)
 				}
-				return fmt.Errorf("abortando: %d falhas consecutivas", al.config.MaxConsecutiveFail)
+				select {
+				case <-ctx.Done():
+					al.handler.OnMessage("system", i18n.Get("system.loop_canceled"))
+					al.handler.OnEvent(loop.AgentEvent{
+						Timestamp: time.Now(),
+						Event:     "error",
+						Iteration: i + 1,
+						Data: map[string]interface{}{
+							"error": loop.AgentError{Code: loop.ErrContextCanceled, Message: "Loop cancelado pelo contexto"},
+						},
+					})
+					return ctx.Err()
+				case <-time.After(al.failureRetryDelay):
+				}
+				i--
+				consecutiveFailures = al.config.MaxConsecutiveFail - 1
+				lastIterFailed = iterationHasFailure
+				lastToolWasValidation = false
+				continue
 			}
 			if al.stateManager != nil {
 				_ = al.stateManager.SaveIterationLog(i+1, iterLog)
@@ -789,17 +827,49 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		if iterationHasFailure {
 			consecutiveFailures++
 			if consecutiveFailures >= al.config.MaxConsecutiveFail {
-				al.handler.OnMessage("system", i18n.Get("errors.abort_consecutive_failures", al.config.MaxConsecutiveFail))
+				if !al.config.ConsecutiveFailureRetry || (al.config.ConsecutiveFailureRetryLimit > 0 && consecutiveRetryCount >= al.config.ConsecutiveFailureRetryLimit) {
+					al.handler.OnMessage("system", i18n.Get("errors.abort_consecutive_failures", al.config.MaxConsecutiveFail))
+					al.handler.OnEvent(loop.AgentEvent{
+						Timestamp: time.Now(),
+						Event:     "finished",
+						Iteration: i + 1,
+						Data:      map[string]interface{}{"reason": "consecutive_failures", "total_iterations": i + 1},
+					})
+					return fmt.Errorf("abortando: %d falhas consecutivas", al.config.MaxConsecutiveFail)
+				}
+
+				consecutiveRetryCount++
+				limitStr := "infinito"
+				if al.config.ConsecutiveFailureRetryLimit > 0 {
+					limitStr = fmt.Sprintf("%d", al.config.ConsecutiveFailureRetryLimit)
+				}
+				al.handler.OnMessage("system", fmt.Sprintf("Atingido limite de %d falhas consecutivas (execução). Aguardando %v antes de tentar novamente (retry %d/%s, cancele para interromper)...", al.config.MaxConsecutiveFail, al.failureRetryDelay, consecutiveRetryCount, limitStr))
 				al.handler.OnEvent(loop.AgentEvent{
 					Timestamp: time.Now(),
-					Event:     "finished",
+					Event:     "retry",
 					Iteration: i + 1,
-					Data:      map[string]interface{}{"reason": "consecutive_failures", "total_iterations": i + 1},
+					Data:      map[string]interface{}{"reason": "consecutive_failures", "delay": al.failureRetryDelay.String(), "error_type": "tool_failure", "retry_count": consecutiveRetryCount},
 				})
-				return fmt.Errorf("abortando: %d falhas consecutivas", al.config.MaxConsecutiveFail)
+				select {
+				case <-ctx.Done():
+					al.handler.OnMessage("system", i18n.Get("system.loop_canceled"))
+					al.handler.OnEvent(loop.AgentEvent{
+						Timestamp: time.Now(),
+						Event:     "error",
+						Iteration: i + 1,
+						Data: map[string]interface{}{
+							"error": loop.AgentError{Code: loop.ErrContextCanceled, Message: "Loop cancelado pelo contexto"},
+						},
+					})
+					return ctx.Err()
+				case <-time.After(al.failureRetryDelay):
+				}
+				i--
+				consecutiveFailures = al.config.MaxConsecutiveFail - 1
 			}
 		} else {
 			consecutiveFailures = 0
+			consecutiveRetryCount = 0
 		}
 
 		lastIterFailed = iterationHasFailure

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/llm/providers"
@@ -276,29 +277,58 @@ func TestAgentEvent_ContextCanceledEmitsError(t *testing.T) {
 	}
 }
 
-func TestAgentEvent_ConsecutiveFailuresEmitsFinished(t *testing.T) {
+func TestAgentEvent_ConsecutiveFailuresEmitsRetry(t *testing.T) {
 	provider := providers.NewMockProvider(
 		providers.MockEmptyResponse(),
 		providers.MockEmptyResponse(),
 		providers.MockEmptyResponse(),
 	)
 	sm := state.NewStateManager(t.TempDir())
-	handler := &testEventHandler{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	handler := &cancelOnRetryHandler{
+		cancelFunc: cancel,
+	}
 
 	al := New(provider, sm, handler)
-	_ = al.Execute(context.Background(), "Falhe")
-
-	finEvt := findEvent(handler.Events, "finished")
-	if finEvt == nil {
-		t.Fatal("evento 'finished' não encontrado")
-	}
-	if finEvt.Data["reason"] != "consecutive_failures" {
-		t.Fatalf("esperado reason=consecutive_failures, obteve %v", finEvt.Data["reason"])
-	}
+	al.failureRetryDelay = 1 * time.Millisecond
+	_ = al.Execute(ctx, "Falhe")
 
 	emptyErr := findEventWithCode(handler.Events, loop.ErrLLMEmptyResponse)
 	if emptyErr == nil {
 		t.Fatal("esperado ERR_LLM_EMPTY_RESPONSE")
+	}
+
+	// Deve ter emitido o evento retry
+	hasRetry := false
+	for _, ev := range handler.Events {
+		if ev.Event == "retry" {
+			hasRetry = true
+			if ev.Data["reason"] != "consecutive_failures" {
+				t.Fatalf("esperado reason=consecutive_failures, obteve %v", ev.Data["reason"])
+			}
+			if ev.Data["error_type"] != "empty_llm_response" {
+				t.Fatalf("esperado error_type=empty_llm_response, obteve %v", ev.Data["error_type"])
+			}
+		}
+	}
+	if !hasRetry {
+		t.Fatal("esperado evento 'retry' no handler")
+	}
+
+	// Deve ter emitido o evento error indicando cancelamento de contexto
+	cancelErrEvt := findEvent(handler.Events, "error")
+	if cancelErrEvt == nil {
+		t.Fatal("evento 'error' não encontrado após cancelamento")
+	}
+	agentErr, ok := cancelErrEvt.Data["error"].(loop.AgentError)
+	if !ok {
+		t.Fatalf("esperado AgentError, obteve %T", cancelErrEvt.Data["error"])
+	}
+	if agentErr.Code != loop.ErrContextCanceled {
+		t.Fatalf("esperado code=%s, obteve %s", loop.ErrContextCanceled, agentErr.Code)
 	}
 }
 

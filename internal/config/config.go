@@ -55,6 +55,9 @@ type GlobalConfig struct {
 	LogLevel                         string            `json:"log_level"`
 	TelemetryEnabled                 bool              `json:"telemetry_enabled"`
 	DisablePromptOptimizationDefault bool              `json:"disable_prompt_optimization_default"`
+	ConsecutiveFailureRetryDefault      bool              `json:"consecutive_failure_retry_default"`
+	ConsecutiveFailureRetryLimitDefault int               `json:"consecutive_failure_retry_limit_default"`
+	ConsecutiveFailureRetryDelayDefault int               `json:"consecutive_failure_retry_delay_default"`
 	MCPServers                       []MCPServerConfig `json:"mcp_servers,omitempty"` // Servidores MCP globais
 }
 
@@ -82,6 +85,9 @@ type WorkspaceConfig struct {
 	AutoSelfCheck             bool     `json:"auto_self_check"`
 	BrowserHeadless           *bool    `json:"browser_headless,omitempty"`
 	DisablePromptOptimization *bool    `json:"disable_prompt_optimization,omitempty"`
+	ConsecutiveFailureRetry      *bool `json:"consecutive_failure_retry,omitempty"`
+	ConsecutiveFailureRetryLimit *int  `json:"consecutive_failure_retry_limit,omitempty"`
+	ConsecutiveFailureRetryDelay *int  `json:"consecutive_failure_retry_delay,omitempty"`
 }
 
 // ResolvedConfig é o resultado do merge de todas as camadas de configuração
@@ -102,6 +108,9 @@ type ResolvedConfig struct {
 	LogLevel                  string
 	BrowserHeadless           bool
 	DisablePromptOptimization bool
+	ConsecutiveFailureRetry      bool
+	ConsecutiveFailureRetryLimit int
+	ConsecutiveFailureRetryDelay int
 }
 
 // CLIFlags contém flags passados via linha de comando (prioridade máxima)
@@ -114,6 +123,9 @@ type CLIFlags struct {
 	MaxMessageHistory         *int
 	PermissionMode            string
 	DisablePromptOptimization *bool
+	ConsecutiveFailureRetry      *bool
+	ConsecutiveFailureRetryLimit *int
+	ConsecutiveFailureRetryDelay *int
 }
 
 // --- Defaults ---
@@ -131,6 +143,9 @@ func DefaultGlobalConfig() *GlobalConfig {
 		LogLevel:                         "info",
 		TelemetryEnabled:                 false,
 		DisablePromptOptimizationDefault: false,
+		ConsecutiveFailureRetryDefault:      true,
+		ConsecutiveFailureRetryLimitDefault: 0,
+		ConsecutiveFailureRetryDelayDefault: 5,
 	}
 }
 
@@ -350,8 +365,6 @@ func SaveWorkspaceConfig(workspacePath string, cfg *WorkspaceConfig) error {
 	return os.WriteFile(cfgPath, data, 0644)
 }
 
-// --- Resolve ---
-
 // Resolve aplica a hierarquia de precedência para gerar a configuração efetiva:
 // CLI Flags > Workspace config > Global config > Hardcoded defaults
 func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *ResolvedConfig {
@@ -371,6 +384,9 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 		AutoSelfCheck:             true,
 		BrowserHeadless:           true, // por padrão roda de fundo
 		DisablePromptOptimization: global.DisablePromptOptimizationDefault,
+		ConsecutiveFailureRetry:      global.ConsecutiveFailureRetryDefault,
+		ConsecutiveFailureRetryLimit: global.ConsecutiveFailureRetryLimitDefault,
+		ConsecutiveFailureRetryDelay: global.ConsecutiveFailureRetryDelayDefault,
 	}
 
 	// Camada 2: Workspace overrides
@@ -410,6 +426,15 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 		if workspace.DisablePromptOptimization != nil {
 			resolved.DisablePromptOptimization = *workspace.DisablePromptOptimization
 		}
+		if workspace.ConsecutiveFailureRetry != nil {
+			resolved.ConsecutiveFailureRetry = *workspace.ConsecutiveFailureRetry
+		}
+		if workspace.ConsecutiveFailureRetryLimit != nil {
+			resolved.ConsecutiveFailureRetryLimit = *workspace.ConsecutiveFailureRetryLimit
+		}
+		if workspace.ConsecutiveFailureRetryDelay != nil {
+			resolved.ConsecutiveFailureRetryDelay = *workspace.ConsecutiveFailureRetryDelay
+		}
 	}
 
 	// Camada 3: CLI Flags (prioridade máxima)
@@ -436,6 +461,15 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 	}
 	if flags.DisablePromptOptimization != nil {
 		resolved.DisablePromptOptimization = *flags.DisablePromptOptimization
+	}
+	if flags.ConsecutiveFailureRetry != nil {
+		resolved.ConsecutiveFailureRetry = *flags.ConsecutiveFailureRetry
+	}
+	if flags.ConsecutiveFailureRetryLimit != nil {
+		resolved.ConsecutiveFailureRetryLimit = *flags.ConsecutiveFailureRetryLimit
+	}
+	if flags.ConsecutiveFailureRetryDelay != nil {
+		resolved.ConsecutiveFailureRetryDelay = *flags.ConsecutiveFailureRetryDelay
 	}
 
 	return resolved
