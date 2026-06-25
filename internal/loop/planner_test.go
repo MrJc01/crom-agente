@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/crom/crom-agente/internal/llm"
 	"github.com/crom/crom-agente/internal/state"
 )
 
@@ -141,5 +142,132 @@ func TestPlannerHelpers(t *testing.T) {
 	content := string(data)
 	if !strings.Contains(content, "- [ ] Task 1") || !strings.Contains(content, "- [/] Task 2") || !strings.Contains(content, "- [x] Task 3") {
 		t.Errorf("task.md has invalid content: %s", content)
+	}
+}
+
+func TestNormalizeTitle(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"Criar o arquivo main.go", "arquivo main.go"},
+		{"fazer testes de unidade", "testes unidade"},
+		{"implementar a rota de login", "rota login"},
+		{"Create new database connection", "new database connection"},
+		{"Anotações e detalhes", "anotações detalhes"},
+	}
+
+	for _, tc := range tests {
+		res := NormalizeTitle(tc.input)
+		if res != tc.expected {
+			t.Errorf("NormalizeTitle(%q) = %q; esperado %q", tc.input, res, tc.expected)
+		}
+	}
+}
+
+func TestUpdatePlannerRegressionGuard(t *testing.T) {
+	ws := t.TempDir()
+	sm := state.NewStateManager(ws)
+	_ = sm.LoadState()
+
+	// Define completed task
+	plan1 := `
+	- [x] Tarefa Importante
+	`
+	UpdatePlannerFromMessage(sm, plan1)
+	
+	// Tentativa de regredir para pending
+	plan2 := `
+	- [ ] Tarefa Importante
+	`
+	UpdatePlannerFromMessage(sm, plan2)
+
+	plan := sm.GetPlan()
+	if len(plan) != 1 || plan[0].Status != "completed" {
+		t.Errorf("erro: tarefa regrediu status de completed para %q", plan[0].Status)
+	}
+}
+
+func TestUpdatePlannerRegressionAllowed(t *testing.T) {
+	ws := t.TempDir()
+	sm := state.NewStateManager(ws)
+	_ = sm.LoadState()
+
+	plan1 := `
+	- [x] Tarefa Importante
+	`
+	UpdatePlannerFromMessageWithConfig(sm, plan1, false)
+
+	// Regressão permitida com disableCacheProtection = true
+	plan2 := `
+	- [ ] Tarefa Importante
+	`
+	UpdatePlannerFromMessageWithConfig(sm, plan2, true)
+
+	plan := sm.GetPlan()
+	if len(plan) != 1 || plan[0].Status != "pending" {
+		t.Errorf("esperava status pending pós regressão permitida, obteve %q", plan[0].Status)
+	}
+}
+
+func TestUpdatePlannerDeduplication(t *testing.T) {
+	ws := t.TempDir()
+	sm := state.NewStateManager(ws)
+	_ = sm.LoadState()
+
+	// Adiciona uma tarefa
+	UpdatePlannerFromMessage(sm, "- [ ] Criar o arquivo principal main.go")
+
+	// Adiciona tarefa similar que normaliza para o mesmo título ("arquivo principal main.go")
+	UpdatePlannerFromMessage(sm, "- [ ] Fazer o arquivo principal main.go")
+
+	plan := sm.GetPlan()
+	if len(plan) != 1 {
+		t.Errorf("esperava 1 tarefa por conta da de-duplicação, obteve %d: %+v", len(plan), plan)
+	}
+}
+
+func TestParseExpectedFiles(t *testing.T) {
+	fromLLM := []llm.Message{
+		{
+			Role:    "assistant",
+			Content: `Para resolver isso vamos criar o arquivo [NEW] [main.go](file:///home/j/workspace/main.go)
+			E também editar o arquivo [MODIFY] [utils/helper.py](file:///home/j/workspace/utils/helper.py)
+			Ou simplesmente o link file:///home/j/workspace/config.json e deletar [DELETE] test.txt.
+			`,
+		},
+	}
+
+	files := ParseExpectedFiles(fromLLM)
+	expected := []string{"main.go", "utils/helper.py", "/home/j/workspace/config.json"}
+	
+	hasFile := func(name string) bool {
+		for _, f := range files {
+			if strings.Contains(f, name) {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, exp := range expected {
+		if !hasFile(exp) {
+			t.Errorf("ParseExpectedFiles não extraiu o arquivo esperado: %s, extraídos: %v", exp, files)
+		}
+	}
+}
+
+func TestVerifyExpectedFiles(t *testing.T) {
+	ws := t.TempDir()
+	
+	// Cria um arquivo existente
+	existFile := filepath.Join(ws, "exists.go")
+	_ = os.WriteFile(existFile, []byte("package main"), 0644)
+
+	expected := []string{"exists.go", "missing.go"}
+	missing := VerifyExpectedFiles(expected, ws)
+
+	if len(missing) != 1 || missing[0] != "missing.go" {
+		t.Errorf("VerifyExpectedFiles deveria retornar missing.go como ausente, obteve %v", missing)
 	}
 }

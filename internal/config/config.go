@@ -58,6 +58,7 @@ type GlobalConfig struct {
 	ConsecutiveFailureRetryDefault      bool              `json:"consecutive_failure_retry_default"`
 	ConsecutiveFailureRetryLimitDefault int               `json:"consecutive_failure_retry_limit_default"`
 	ConsecutiveFailureRetryDelayDefault int               `json:"consecutive_failure_retry_delay_default"`
+	DisablePlanCacheProtectionDefault  bool              `json:"disable_plan_cache_protection_default"`
 	MCPServers                       []MCPServerConfig `json:"mcp_servers,omitempty"` // Servidores MCP globais
 }
 
@@ -88,6 +89,7 @@ type WorkspaceConfig struct {
 	ConsecutiveFailureRetry      *bool `json:"consecutive_failure_retry,omitempty"`
 	ConsecutiveFailureRetryLimit *int  `json:"consecutive_failure_retry_limit,omitempty"`
 	ConsecutiveFailureRetryDelay *int  `json:"consecutive_failure_retry_delay,omitempty"`
+	DisablePlanCacheProtection   *bool `json:"disable_plan_cache_protection,omitempty"`
 }
 
 // ResolvedConfig é o resultado do merge de todas as camadas de configuração
@@ -111,6 +113,7 @@ type ResolvedConfig struct {
 	ConsecutiveFailureRetry      bool
 	ConsecutiveFailureRetryLimit int
 	ConsecutiveFailureRetryDelay int
+	DisablePlanCacheProtection   bool
 }
 
 // CLIFlags contém flags passados via linha de comando (prioridade máxima)
@@ -126,6 +129,7 @@ type CLIFlags struct {
 	ConsecutiveFailureRetry      *bool
 	ConsecutiveFailureRetryLimit *int
 	ConsecutiveFailureRetryDelay *int
+	DisablePlanCacheProtection   *bool
 }
 
 // --- Defaults ---
@@ -146,6 +150,7 @@ func DefaultGlobalConfig() *GlobalConfig {
 		ConsecutiveFailureRetryDefault:      true,
 		ConsecutiveFailureRetryLimitDefault: 0,
 		ConsecutiveFailureRetryDelayDefault: 5,
+		DisablePlanCacheProtectionDefault:  false,
 	}
 }
 
@@ -387,6 +392,7 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 		ConsecutiveFailureRetry:      global.ConsecutiveFailureRetryDefault,
 		ConsecutiveFailureRetryLimit: global.ConsecutiveFailureRetryLimitDefault,
 		ConsecutiveFailureRetryDelay: global.ConsecutiveFailureRetryDelayDefault,
+		DisablePlanCacheProtection:   global.DisablePlanCacheProtectionDefault,
 	}
 
 	// Camada 2: Workspace overrides
@@ -435,6 +441,9 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 		if workspace.ConsecutiveFailureRetryDelay != nil {
 			resolved.ConsecutiveFailureRetryDelay = *workspace.ConsecutiveFailureRetryDelay
 		}
+		if workspace.DisablePlanCacheProtection != nil {
+			resolved.DisablePlanCacheProtection = *workspace.DisablePlanCacheProtection
+		}
 	}
 
 	// Camada 3: CLI Flags (prioridade máxima)
@@ -470,6 +479,9 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 	}
 	if flags.ConsecutiveFailureRetryDelay != nil {
 		resolved.ConsecutiveFailureRetryDelay = *flags.ConsecutiveFailureRetryDelay
+	}
+	if flags.DisablePlanCacheProtection != nil {
+		resolved.DisablePlanCacheProtection = *flags.DisablePlanCacheProtection
 	}
 
 	return resolved

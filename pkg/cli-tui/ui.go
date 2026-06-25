@@ -204,6 +204,7 @@ func Start(opts Options) error {
 		TerminalOutput:  nil,
 		OnSchedule:      nil,
 		BrowserTool:     browserTool,
+		StateManager:    sm,
 	})
 
 	for _, t := range builtinTools {

@@ -3,7 +3,9 @@ package registry
 import (
 	"io"
 
+	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/tools"
+	"github.com/crom/crom-agente/internal/tools/ask_user"
 	"github.com/crom/crom-agente/internal/tools/code_explainer"
 	"github.com/crom/crom-agente/internal/tools/complexity_reducer"
 	"github.com/crom/crom-agente/internal/tools/computer_control"
@@ -20,6 +22,7 @@ import (
 	"github.com/crom/crom-agente/internal/tools/git_status"
 	"github.com/crom/crom-agente/internal/tools/grep"
 	"github.com/crom/crom-agente/internal/tools/http_client"
+	"github.com/crom/crom-agente/internal/tools/manage_plan"
 	"github.com/crom/crom-agente/internal/tools/memory_leak_scanner"
 	"github.com/crom/crom-agente/internal/tools/mock_generator"
 	"github.com/crom/crom-agente/internal/tools/port_monitor"
@@ -30,7 +33,6 @@ import (
 	"github.com/crom/crom-agente/internal/tools/schedule_timer"
 	"github.com/crom/crom-agente/internal/tools/scraper"
 	"github.com/crom/crom-agente/internal/tools/stack_translator"
-	"github.com/crom/crom-agente/internal/tools/ask_user"
 	"github.com/crom/crom-agente/internal/tools/terminal_command"
 	"github.com/crom/crom-agente/internal/tools/tree"
 	"github.com/crom/crom-agente/internal/tools/write_file"
@@ -48,6 +50,7 @@ type RegistrationConfig struct {
 	// Instâncias pré-configuradas e opcionais de navegadores
 	BrowserTool  tools.Tool
 	SubagentTool tools.Tool
+	StateManager *state.StateManager
 }
 
 // GetBuiltinTools retorna a lista completa de ferramentas nativas instanciadas e prontas para registro
@@ -109,6 +112,10 @@ func GetBuiltinTools(cfg RegistrationConfig) []tools.Tool {
 	list = append(list, mock_generator.NewMockGeneratorTool(cfg.WorkspacePath, cfg.WorkspaceJail))
 	list = append(list, complexity_reducer.NewComplexityReducerTool(cfg.WorkspacePath, cfg.WorkspaceJail))
 	list = append(list, memory_leak_scanner.NewMemoryLeakScannerTool(cfg.WorkspacePath, cfg.WorkspaceJail))
+
+	if cfg.StateManager != nil {
+		list = append(list, manage_plan.NewManagePlanTool(cfg.WorkspacePath, cfg.StateManager))
+	}
 
 	return list
 }

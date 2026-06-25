@@ -359,6 +359,7 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 		},
 		BrowserTool:  browserTool,
 		SubagentTool: nil,
+		StateManager: sm,
 	})
 
 	for _, t := range builtinTools {

@@ -1,0 +1,5 @@
+{
+  "id": "manage_plan",
+  "name": "Manage Plan",
+  "description": "Gerencia o plano de trabalho estruturado do agente. Permite criar, atualizar status e consultar o plano de tarefas sem depender da extração automática de checklists markdown."
+}

@@ -212,7 +212,6 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			modo = state.ModoVerifying
 		}
 
-
 		if al.stateManager != nil {
 			_ = al.stateManager.SetCognitiveMode(modo)
 		}
@@ -340,7 +339,11 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		saveMsgs(messages)
 
 		// Atualiza o plano a partir do conteúdo textual da mensagem do assistente
-		loop.UpdatePlannerFromMessage(al.stateManager, msg.Content)
+		disablePlanCache := false
+		if al.config != nil {
+			disablePlanCache = al.config.DisablePlanCacheProtection
+		}
+		loop.UpdatePlannerFromMessageWithConfig(al.stateManager, msg.Content, disablePlanCache)
 
 		// Emitir evento de mensagem estruturado com token usage
 		al.handler.OnEvent(loop.AgentEvent{
@@ -442,6 +445,21 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			lastToolWasValidation = false
 			continue
 		} else if len(msg.ToolCalls) == 0 {
+			// Scanner de alucinações: detectar menções a ferramentas no texto sem tool calls
+			if hallucinatedTools := detectHallucinatedToolCalls(msg.Content, al.tools); len(hallucinatedTools) > 0 {
+				warning := fmt.Sprintf("⚠️ [INVALID_TOOL_CALL_FORMAT] Você mencionou as ferramentas %s no texto, mas não emitiu chamadas de ferramenta JSON/XML estruturadas. Emita as chamadas corretamente.",
+					strings.Join(hallucinatedTools, ", "))
+				al.handler.OnMessage("system", warning)
+				messages = append(messages, llm.Message{Role: "system", Content: warning})
+				saveMsgs(messages)
+				lastIterFailed = false
+				lastToolWasValidation = false
+				if al.stateManager != nil {
+					_ = al.stateManager.SaveIterationLog(i+1, iterLog)
+				}
+				continue
+			}
+
 			if timerScheduled {
 				al.handler.OnMessage("system", "Timer agendado. Suspendendo execução do agente até o timer expirar.")
 				if al.stateManager != nil {
@@ -479,6 +497,24 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 						Role:    "system",
 						Content: warning,
 					})
+					saveMsgs(messages)
+					lastIterFailed = false
+					lastToolWasValidation = false
+					if al.stateManager != nil {
+						_ = al.stateManager.SaveIterationLog(i+1, iterLog)
+					}
+					continue
+				}
+			}
+
+			// Verificação física de arquivos planejados
+			expectedFiles := loop.ParseExpectedFiles(messages)
+			if len(expectedFiles) > 0 && workspaceDir != "" {
+				missingFiles := loop.VerifyExpectedFiles(expectedFiles, workspaceDir)
+				if len(missingFiles) > 0 {
+					warning := fmt.Sprintf("⚠️ [PHYSICAL_FILE_MISSING] Os seguintes arquivos planejados não existem no disco:\n%s\nCrie os arquivos ausentes antes de encerrar.", strings.Join(missingFiles, "\n"))
+					al.handler.OnMessage("system", warning)
+					messages = append(messages, llm.Message{Role: "system", Content: warning})
 					saveMsgs(messages)
 					lastIterFailed = false
 					lastToolWasValidation = false
@@ -1011,7 +1047,7 @@ func (al *AgenticLoop) generateSimpleResponse(ctx context.Context, intent string
 	prompt := []llm.Message{
 		{
 			Role:    "system",
-			Content: "Você é Antigravity, um assistente de IA. Responda à saudação, agradecimento ou resposta curta do usuário de forma extremamente amigável, natural e muito curta (máximo 1 frase).",
+			Content: "Você é um Agente, um assistente de IA. Responda à saudação, agradecimento ou resposta curta do usuário de forma extremamente amigável, natural e muito curta (máximo 1 frase).",
 		},
 		{
 			Role:    "user",
@@ -1028,3 +1064,28 @@ func (al *AgenticLoop) generateSimpleResponse(ctx context.Context, intent string
 	return resp.Message.Content, nil
 }
 
+func detectHallucinatedToolCalls(content string, toolsMap map[string]tools.Tool) []string {
+	if content == "" {
+		return nil
+	}
+
+	var found []string
+	// Detecta menções no formato tool_name( ou tool_name { ou tool_name: {
+	for name := range toolsMap {
+		patterns := []string{
+			name + "(",
+			name + " {",
+			name + ": {",
+			"tool_call: " + name,
+			"tool: " + name,
+			"call: " + name,
+		}
+		for _, pat := range patterns {
+			if strings.Contains(content, pat) {
+				found = append(found, name)
+				break
+			}
+		}
+	}
+	return found
+}

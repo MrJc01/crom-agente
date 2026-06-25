@@ -375,6 +375,7 @@ var runCmd = &cobra.Command{
 			TerminalOutput:  cmd.OutOrStdout(),
 			OnSchedule:      nil,
 			BrowserTool:     browserTool,
+			StateManager:    sm,
 		})
 
 		for _, t := range builtinTools {

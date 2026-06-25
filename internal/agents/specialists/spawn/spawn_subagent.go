@@ -100,6 +100,7 @@ func (s *SpawnAgent) Execute(ctx context.Context, prompt string, priorSummary st
 	builtinTools := registry.GetBuiltinTools(registry.RegistrationConfig{
 		WorkspacePath: s.workspacePath,
 		WorkspaceJail: true,
+		StateManager:  subSM,
 	})
 
 	for _, t := range builtinTools {
