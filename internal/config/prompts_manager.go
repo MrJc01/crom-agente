@@ -134,7 +134,7 @@ func (pm *PromptManager) GetAllEnabled() []PromptTemplate {
 				break
 			}
 		}
-		if !found && p.Enabled && k != "phase_planning" && k != "phase_execution" {
+		if !found && p.Enabled && k != "phase_planning" && k != "phase_execution" && k != "phase_verification" && k != "phase_debugging" && k != "phase_interaction" {
 			enabled = append(enabled, p)
 		}
 	}

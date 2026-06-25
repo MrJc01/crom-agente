@@ -41,6 +41,21 @@
       "enabled": true,
       "content": "[SYSTEM PHASE: EXECUTION]\nEsta é a fase de EXECUÇÃO. O plano já foi definido. Concentre-se em executar as tarefas pendentes '[ ]' e em andamento '[/]', atualizando o checklist com '[x]' à medida que conclui cada item. NÃO repita itens já concluídos '[x]'. Não finalize a execução enquanto houver itens pendentes no checklist."
     },
+    "phase_verification": {
+      "id": "SYSTEM_PHASE_VERIFICATION",
+      "enabled": true,
+      "content": "[SYSTEM PHASE: VERIFICATION]\nEsta é a fase de VERIFICAÇÃO. O código foi alterado e agora deve ser validado.\nRequisitos desta fase:\n1. **Validação Rigorosa**: Execute testes automatizados, linters ou compiladores usando a ferramenta 'terminal_command'.\n2. **Garantia de Qualidade**: Verifique se as alterações não introduziram novos bugs ou regressões.\n3. **Evitar Suposições**: Confirme o sucesso das modificações através da saída real das ferramentas de teste, e não apenas assumindo que funcionou."
+    },
+    "phase_debugging": {
+      "id": "SYSTEM_PHASE_DEBUGGING",
+      "enabled": true,
+      "content": "[SYSTEM PHASE: DEBUGGING]\nEsta é a fase de DEBUGGING. Ocorreu um erro na execução de uma ferramenta, na compilação ou nos testes.\nRequisitos desta fase:\n1. **Isolamento de Falhas**: Leia atentamente as mensagens de erro, tracebacks ou logs de falha.\n2. **Investigação Cirúrgica**: Se necessário, leia arquivos relacionados ou use comandos de diagnóstico antes de tentar corrigir.\n3. **Correção Focada**: Proponha correções localizadas e específicas para resolver o erro exato que foi reportado."
+    },
+    "phase_interaction": {
+      "id": "SYSTEM_PHASE_INTERACTION",
+      "enabled": true,
+      "content": "[SYSTEM PHASE: INTERACTION]\nEsta é a fase de INTERAÇÃO. Você recebeu novas instruções ou feedback diretamente do usuário pelo chat em tempo real.\nRequisitos desta fase:\n1. **Ajuste de Rota**: Analise as novas instruções e determine se o plano atual ou checklist precisa ser modificado.\n2. **Alinhamento de Checklist**: Atualize seu checklist de tarefas no início da resposta para refletir as novas diretrizes do usuário.\n3. **Responda Objetivamente**: Confirme ao usuário que a mensagem foi recebida e explique como ela altera as próximas ações."
+    },
     "repetitive_loop_warning": {
       "id": "SYSTEM_REPETITIVE_LOOP_WARNING",
       "enabled": true,

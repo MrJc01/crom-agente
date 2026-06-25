@@ -129,6 +129,35 @@ func (s *APIServer) handleWS(w http.ResponseWriter, r *http.Request) {
 
 			case "run":
 				log.Printf("[daemon WS run] msg Workspace: %s, Task: %s, Provider: %s, Model: %s\n", msg.Workspace, msg.Task, msg.Provider, msg.Model)
+
+				// Se já houver um agente ativo neste workspace, injeta a mensagem no loop em vez de iniciar outro
+				running := s.manager.ListRunningAgents()
+				var alreadyActive bool
+				for _, a := range running {
+					if a.WorkspaceName == msg.Workspace || a.WorkspaceName == s.manager.ResolveWorkspaceName(msg.Workspace) {
+						alreadyActive = true
+						break
+					}
+				}
+
+				if alreadyActive {
+					err := s.manager.InjectUserMessage(msg.Workspace, msg.Task)
+					if err != nil {
+						errPayload, _ := json.Marshal(map[string]string{
+							"type":  "error",
+							"error": err.Error(),
+						})
+						eventCh <- IPCResponse{Success: false, Stream: true, Error: err.Error(), Data: errPayload}
+					} else {
+						injectedPayload, _ := json.Marshal(map[string]string{
+							"type":    "message_injected",
+							"content": msg.Task,
+						})
+						eventCh <- IPCResponse{Success: true, Stream: true, Data: injectedPayload}
+					}
+					continue
+				}
+
 				if currentWorkspace != "" {
 					s.router.Unregister(currentWorkspace, eventCh)
 				}

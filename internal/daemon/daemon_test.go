@@ -2,6 +2,8 @@ package daemon
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -15,7 +17,7 @@ import (
 	"github.com/crom/crom-agente/internal/daemon/pb"
 	"github.com/gorilla/websocket"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -454,11 +456,24 @@ func TestGRPCServer_TokenAuthentication(t *testing.T) {
 	}()
 
 	// Aguarda subir
-	grpcAddr := "127.0.0.1:19111"
-	var conn *grpc.ClientConn
+	certsDir := filepath.Join(tempHome, ".crom", "certs")
+	var creds credentials.TransportCredentials
 	var err error
 	for i := 0; i < 30; i++ {
-		conn, err = grpc.Dial(grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+		creds, err = getClientCredentials(certsDir)
+		if err == nil {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("falha ao obter credenciais do cliente gRPC: %v", err)
+	}
+
+	grpcAddr := "127.0.0.1:19111"
+	var conn *grpc.ClientConn
+	for i := 0; i < 30; i++ {
+		conn, err = grpc.Dial(grpcAddr, grpc.WithTransportCredentials(creds), grpc.WithBlock())
 		if err == nil {
 			break
 		}
@@ -508,6 +523,36 @@ func TestGRPCServer_TokenAuthentication(t *testing.T) {
 	d.Stop()
 	<-startErrChan
 }
+
+func getClientCredentials(certsDir string) (credentials.TransportCredentials, error) {
+	clientCertPath := filepath.Join(certsDir, "client.crt")
+	clientKeyPath := filepath.Join(certsDir, "client.key")
+	caCertPath := filepath.Join(certsDir, "ca.crt")
+
+	cliCert, err := tls.LoadX509KeyPair(clientCertPath, clientKeyPath)
+	if err != nil {
+		return nil, err
+	}
+
+	caCert, err := os.ReadFile(caCertPath)
+	if err != nil {
+		return nil, err
+	}
+
+	caCertPool := x509.NewCertPool()
+	if !caCertPool.AppendCertsFromPEM(caCert) {
+		return nil, fmt.Errorf("falha ao parsear CA")
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cliCert},
+		RootCAs:      caCertPool,
+		ServerName:   "localhost",
+	}
+
+	return credentials.NewTLS(tlsConfig), nil
+}
+
 
 func TestAPIServer_MultipleWebSocketsConcurrency(t *testing.T) {
 	tempHome := t.TempDir()

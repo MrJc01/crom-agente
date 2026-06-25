@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"sync"
 
 	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/llm"
@@ -34,7 +35,16 @@ type AgenticLoop struct {
 	permissionManager interface {
 		Authorize(ctx context.Context, action, target string) (bool, error)
 	}
-	promptManager *config.PromptManager
+	promptManager       *config.PromptManager
+	mu                  sync.Mutex
+	pendingUserMessages []string
+}
+
+// QueueUserMessage adiciona uma mensagem do usuário na fila de injeção em tempo real
+func (al *AgenticLoop) QueueUserMessage(content string) {
+	al.mu.Lock()
+	defer al.mu.Unlock()
+	al.pendingUserMessages = append(al.pendingUserMessages, content)
 }
 
 func (al *AgenticLoop) SetPermissionManager(pm interface {

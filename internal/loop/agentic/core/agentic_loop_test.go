@@ -681,3 +681,77 @@ func TestAgenticLoop_AskUserSuspension(t *testing.T) {
 	}
 }
 
+func TestAgenticLoop_CognitiveTransitions(t *testing.T) {
+	provider := providers.NewMockProvider(
+		// 1ª: LLM chama ferramenta de validação (terminal_command com go test)
+		providers.MockToolCallResponse("terminal_command", `{"command":"go test ./..."}`, 100),
+		// 2ª: LLM chama ferramenta que vai falhar (bad_tool)
+		providers.MockToolCallResponse("bad_tool", `{}`, 100),
+		// 3ª: LLM responde finalizando
+		providers.MockTextResponse("Tudo pronto.", 150),
+	)
+
+	sm := state.NewStateManager(t.TempDir())
+	// Pré-popular o plano para que não comece em "planning"
+	_ = sm.SetPlan([]state.TaskItem{{Title: "Tarefa 1", Status: "pending"}})
+
+	handler := &testEventHandler{}
+	al := New(provider, sm, handler)
+
+	// Registrar ferramentas
+	al.RegisterTool(&mockTool{
+		id:          "terminal_command",
+		description: "roda comando",
+		executeFunc: func(ctx context.Context, args json.RawMessage) (tools.Result, error) {
+			return tools.Result{Success: true, Data: "tests passed"}, nil
+		},
+	})
+	al.RegisterTool(&mockTool{
+		id:          "bad_tool",
+		description: "falha sempre",
+		executeFunc: func(ctx context.Context, args json.RawMessage) (tools.Result, error) {
+			return tools.Result{Success: false, Error: "error occurred"}, nil
+		},
+	})
+
+	// Capturar os modos cognitivos salvos
+	var modesRecorded []string
+	// Para monitorar mudanças de modo cognitivo, podemos ler do StateManager durante a execução das ferramentas
+	// ou injetar um callback se possível. Como o StateManager é persistido, podemos capturar o estado dentro dos mocks.
+	// No terminal_command (1ª iteração):
+	// O loop já determinou o modo cognitivo para a iteração 1 (executing) e salvou no StateManager.
+	al.tools["terminal_command"].(*mockTool).executeFunc = func(ctx context.Context, args json.RawMessage) (tools.Result, error) {
+		modesRecorded = append(modesRecorded, sm.GetState().ModoCognitivo)
+		return tools.Result{Success: true, Data: "tests passed"}, nil
+	}
+	// No bad_tool (2ª iteração):
+	// O loop já determinou o modo cognitivo para a iteração 2 (verifying, já que terminal_command foi validação) e salvou.
+	al.tools["bad_tool"].(*mockTool).executeFunc = func(ctx context.Context, args json.RawMessage) (tools.Result, error) {
+		modesRecorded = append(modesRecorded, sm.GetState().ModoCognitivo)
+		return tools.Result{Success: false, Error: "error occurred"}, nil
+	}
+
+	err := al.Execute(context.Background(), "Rode validações")
+	if err != nil {
+		t.Fatalf("Execute falhou: %v", err)
+	}
+
+	// 3ª iteração (finalização textual):
+	// O loop determinou o modo cognitivo para a iteração 3 (debugging, já que bad_tool falhou) e salvou.
+	modesRecorded = append(modesRecorded, sm.GetState().ModoCognitivo)
+
+	if len(modesRecorded) != 3 {
+		t.Fatalf("esperava 3 registros de modos cognitivos, obteve %d: %v", len(modesRecorded), modesRecorded)
+	}
+
+	if modesRecorded[0] != state.ModoExecuting {
+		t.Errorf("esperava 1º modo 'executing', obteve '%s'", modesRecorded[0])
+	}
+	if modesRecorded[1] != state.ModoVerifying {
+		t.Errorf("esperava 2º modo 'verifying', obteve '%s'", modesRecorded[1])
+	}
+	if modesRecorded[2] != state.ModoDebugging {
+		t.Errorf("esperava 3º modo 'debugging', obteve '%s'", modesRecorded[2])
+	}
+}
+

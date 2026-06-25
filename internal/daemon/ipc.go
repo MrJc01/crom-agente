@@ -307,6 +307,31 @@ func (s *IPCServer) handleConnection(conn net.Conn) {
 
 			case "run":
 				handler.workspaceName = msg.Workspace
+
+				// Se já houver um agente ativo neste workspace, injeta a mensagem no loop em vez de iniciar outro
+				running := s.manager.ListRunningAgents()
+				var alreadyActive bool
+				for _, a := range running {
+					if a.WorkspaceName == msg.Workspace || a.WorkspaceName == s.manager.ResolveWorkspaceName(msg.Workspace) {
+						alreadyActive = true
+						break
+					}
+				}
+
+				if alreadyActive {
+					err := s.manager.InjectUserMessage(msg.Workspace, msg.Task)
+					if err != nil {
+						handler.writeResponse(IPCResponse{Success: false, Error: err.Error()})
+					} else {
+						injectedPayload, _ := json.Marshal(map[string]string{
+							"type":    "message_injected",
+							"content": msg.Task,
+						})
+						handler.writeResponse(IPCResponse{Success: true, Stream: true, Data: injectedPayload})
+					}
+					continue
+				}
+
 				eventCh := make(chan IPCResponse, 100)
 				s.router.Register(msg.Workspace, eventCh)
 

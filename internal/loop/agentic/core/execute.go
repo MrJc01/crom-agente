@@ -137,12 +137,56 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 
 	consecutiveFailures := 0
 	timerScheduled := false
+	lastIterFailed := false
+	lastToolWasValidation := false
 
 	for i := 0; i < al.config.MaxIterations; i++ {
 		askUserCalled := false
 		iterLog := state.IterationLog{
 			Iteration: i + 1,
 			Timestamp: time.Now(),
+		}
+
+		// Injetar mensagens pendentes do usuário enviadas em tempo real
+		userMsgInjected := false
+		al.mu.Lock()
+		if len(al.pendingUserMessages) > 0 {
+			userMsgInjected = true
+			for _, pendingMsg := range al.pendingUserMessages {
+				messages = append(messages, llm.Message{
+					Role:    "user",
+					Content: pendingMsg,
+				})
+				al.handler.OnMessage("user", pendingMsg)
+			}
+			al.pendingUserMessages = nil
+			saveMsgs(messages)
+		}
+		al.mu.Unlock()
+
+		// Determinar ModoCognitivo
+		modo := state.ModoExecuting // Default
+		planIsEmpty := true
+		if al.stateManager != nil {
+			plan := al.stateManager.GetPlan()
+			if len(plan) > 0 {
+				planIsEmpty = false
+			}
+		}
+
+		if userMsgInjected {
+			modo = state.ModoInteracting
+		} else if planIsEmpty {
+			modo = state.ModoPlanning
+		} else if lastIterFailed {
+			modo = state.ModoDebugging
+		} else if lastToolWasValidation {
+			modo = state.ModoVerifying
+		}
+
+
+		if al.stateManager != nil {
+			_ = al.stateManager.SetCognitiveMode(modo)
 		}
 
 		select {
@@ -187,14 +231,31 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 
 		// Injetar plano de trabalho atualizado de forma dinâmica no contexto
 		runMessages := messages
+		copied := false
 		if planCtx := loop.SyncPlanToContext(al.stateManager); planCtx != "" {
 			// Cria uma cópia rasa para injetar a mensagem do sistema sem corromper o histórico salvo
 			runMessages = make([]llm.Message, len(messages))
 			copy(runMessages, messages)
+			copied = true
 			runMessages = append(runMessages, llm.Message{
 				Role:    "system",
 				Content: planCtx,
 			})
+		}
+
+		// Injetar diretrizes do ModoCognitivo atual de forma dinâmica
+		if al.promptManager != nil {
+			if phasePrompt, ok := al.promptManager.GetPrompt("phase_" + modo); ok && phasePrompt.Enabled {
+				if !copied {
+					runMessages = make([]llm.Message, len(messages))
+					copy(runMessages, messages)
+					copied = true
+				}
+				runMessages = append(runMessages, llm.Message{
+					Role:    "system",
+					Content: phasePrompt.Content,
+				})
+			}
 		}
 
 		// Chamar o LLM
@@ -312,6 +373,8 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			if al.stateManager != nil {
 				_ = al.stateManager.SaveIterationLog(i+1, iterLog)
 			}
+			lastIterFailed = iterationHasFailure
+			lastToolWasValidation = false
 			continue
 		} else if len(msg.ToolCalls) == 0 {
 			if timerScheduled {
@@ -333,24 +396,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				return nil
 			}
 
-			// Se não há chamadas de ferramentas, a tarefa foi concluída ou o agente respondeu textualmente ao usuário.
-			// Porém, se ainda houver tarefas pendentes ou em progresso no plano, avisa o agente e continua a iteração.
-			if al.stateManager != nil {
-				plan := al.stateManager.GetPlan()
-				if len(plan) > 0 && loop.HasPendingTasks(plan) {
-					warning := loop.GeneratePendingTasksWarning(plan)
-					al.handler.OnMessage("system", "Plano de trabalho com tarefas pendentes. Solicitando continuação.")
-					messages = append(messages, llm.Message{
-						Role:    "system",
-						Content: warning,
-					})
-					saveMsgs(messages)
-					if al.stateManager != nil {
-						_ = al.stateManager.SaveIterationLog(i+1, iterLog)
-					}
-					continue
-				}
-			}
+
 
 			// Finaliza o loop ReAct normalmente.
 			if al.stateManager != nil {
@@ -739,6 +785,13 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		} else {
 			consecutiveFailures = 0
 		}
+
+		lastIterFailed = iterationHasFailure
+		lastToolWasValidation = false
+		if len(msg.ToolCalls) > 0 {
+			lastTc := msg.ToolCalls[len(msg.ToolCalls)-1]
+			lastToolWasValidation = isValidationAction(lastTc.Function.Name, lastTc.Function.Arguments)
+		}
 	}
 
 	al.handler.OnMessage("system", "Limite de iterações atingido.")
@@ -795,4 +848,24 @@ func FormatMessagesForModel(messages []llm.Message, provider llm.Provider) []llm
 	}
 
 	return otherMessages
+}
+
+func isValidationAction(toolID string, rawArgs string) bool {
+	if toolID == "terminal_command" {
+		var args struct {
+			Command string `json:"command"`
+		}
+		if err := json.Unmarshal([]byte(rawArgs), &args); err == nil {
+			cmd := strings.ToLower(args.Command)
+			for _, word := range []string{"test", "lint", "vet", "compile", "build"} {
+				if strings.Contains(cmd, word) {
+					return true
+				}
+			}
+		}
+	}
+	if strings.Contains(toolID, "test") || strings.Contains(toolID, "lint") || strings.Contains(toolID, "vet") {
+		return true
+	}
+	return false
 }

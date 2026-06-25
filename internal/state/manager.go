@@ -18,6 +18,24 @@ const (
 
 	// MaxRelevantLogs limita o histórico de logs no estado para evitar crescimento infinito
 	MaxRelevantLogs = 20
+
+	// Status Operacionais
+	StatusIdle             = "idle"
+	StatusThinking         = "thinking"
+	StatusReading          = "reading"
+	StatusWriting          = "writing"
+	StatusExecutingTool    = "executing_tool"
+	StatusWaitingUserInput = "waiting_user_input"
+	StatusFinished         = "finished"
+	StatusCanceled         = "canceled"
+	StatusFailed           = "failed"
+
+	// Modos Cognitivos
+	ModoPlanning    = "planning"
+	ModoExecuting   = "executing"
+	ModoVerifying   = "verifying"
+	ModoDebugging   = "debugging"
+	ModoInteracting = "interacting"
 )
 
 // ToolTrace representa o rastro exato de uma execução de ferramenta
@@ -51,17 +69,19 @@ type TaskItem struct {
 
 // AgentState representa o estado completo e persistente de um agente
 type AgentState struct {
-	ID                string        `json:"id,omitempty"`
-	Name              string        `json:"name,omitempty"`
-	Status            string        `json:"status,omitempty"` // Mapeia para o status da UI do frontend
-	DiretorioAtual    string        `json:"diretorio_atual"`
-	ArquivosFocados   []string      `json:"arquivos_focados"`
-	TarefaEmAndamento string        `json:"tarefa_em_andamento"`
-	UltimoStatus      string        `json:"ultimo_status"` // idle, thinking, executing, finished
-	LogsRelevantes    []string      `json:"logs_relevantes"`
-	TokensGastos      int           `json:"tokens_gastos"`
-	TotalTurnos       int           `json:"total_turnos"`
-	Timestamp         time.Time     `json:"timestamp"`
+	ID                string            `json:"id,omitempty"`
+	Name              string            `json:"name,omitempty"`
+	Status            string            `json:"status,omitempty"` // Mapeia para o status da UI do frontend (compatibilidade)
+	DiretorioAtual    string            `json:"diretorio_atual"`
+	ArquivosFocados   []string          `json:"arquivos_focados"`
+	TarefaEmAndamento string            `json:"tarefa_em_andamento"`
+	UltimoStatus      string            `json:"ultimo_status"` // Mapeia para StatusOperacional (compatibilidade)
+	StatusOperacional string            `json:"status_operacional"` // idle, thinking, reading, etc.
+	ModoCognitivo     string            `json:"modo_cognitivo"`     // planning, executing, etc.
+	LogsRelevantes    []string          `json:"logs_relevantes"`
+	TokensGastos      int               `json:"tokens_gastos"`
+	TotalTurnos       int               `json:"total_turnos"`
+	Timestamp         time.Time         `json:"timestamp"`
 	Messages          []llm.Message     `json:"messages,omitempty"`
 	Plan              []TaskItem        `json:"plan,omitempty"`
 	BrowserURL        string            `json:"browser_url,omitempty"`
@@ -88,13 +108,15 @@ func NewSessionStateManager(storagePath, sessionName string) *StateManager {
 	return &StateManager{
 		filePath: filepath.Join(storagePath, "sessions", sessionName, "session.json"),
 		state: &AgentState{
-			ID:              sessionName,
-			Name:            "Sessão", // Default
-			UltimoStatus:    "idle",
-			Status:          "idle",
-			ArquivosFocados: []string{},
-			LogsRelevantes:  []string{},
-			Timestamp:       time.Now(),
+			ID:                sessionName,
+			Name:              "Sessão", // Default
+			UltimoStatus:      StatusIdle,
+			Status:            StatusIdle,
+			StatusOperacional: StatusIdle,
+			ModoCognitivo:     ModoPlanning,
+			ArquivosFocados:   []string{},
+			LogsRelevantes:    []string{},
+			Timestamp:         time.Now(),
 		},
 	}
 }
@@ -102,10 +124,13 @@ func NewSessionStateManager(storagePath, sessionName string) *StateManager {
 // newDefaultState retorna um estado inicial limpo
 func newDefaultState() *AgentState {
 	return &AgentState{
-		UltimoStatus:    "idle",
-		ArquivosFocados: []string{},
-		LogsRelevantes:  []string{},
-		Timestamp:       time.Now(),
+		UltimoStatus:      StatusIdle,
+		Status:            StatusIdle,
+		StatusOperacional: StatusIdle,
+		ModoCognitivo:     ModoPlanning,
+		ArquivosFocados:   []string{},
+		LogsRelevantes:    []string{},
+		Timestamp:         time.Now(),
 	}
 }
 
@@ -129,6 +154,22 @@ func (sm *StateManager) LoadState() error {
 	}
 
 	sm.state = &loaded
+
+	// Compatibilidade e fallbacks para sessões legadas
+	if sm.state.StatusOperacional == "" {
+		if sm.state.UltimoStatus != "" {
+			sm.state.StatusOperacional = sm.state.UltimoStatus
+		} else {
+			sm.state.StatusOperacional = StatusIdle
+		}
+	}
+	if sm.state.ModoCognitivo == "" {
+		sm.state.ModoCognitivo = ModoPlanning
+	}
+	// Garante consistência de campos legados
+	sm.state.UltimoStatus = sm.state.StatusOperacional
+	sm.state.Status = sm.state.StatusOperacional
+
 	return nil
 }
 
@@ -185,7 +226,27 @@ func (sm *StateManager) GetState() AgentState {
 func (sm *StateManager) SetStatus(status string) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
+	sm.state.StatusOperacional = status
 	sm.state.UltimoStatus = status
+	sm.state.Status = status
+	return sm.saveStateLocked()
+}
+
+// SetOperationalStatus define o status operacional físico do agente e persiste no disco
+func (sm *StateManager) SetOperationalStatus(status string) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.state.StatusOperacional = status
+	sm.state.UltimoStatus = status
+	sm.state.Status = status
+	return sm.saveStateLocked()
+}
+
+// SetCognitiveMode define a fase/modo de raciocínio cognitivo do agente e persiste no disco
+func (sm *StateManager) SetCognitiveMode(mode string) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.state.ModoCognitivo = mode
 	return sm.saveStateLocked()
 }
 
@@ -194,7 +255,9 @@ func (sm *StateManager) SetActiveTask(task string) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	sm.state.TarefaEmAndamento = task
-	sm.state.UltimoStatus = "thinking"
+	sm.state.StatusOperacional = StatusThinking
+	sm.state.UltimoStatus = StatusThinking
+	sm.state.Status = StatusThinking
 	return sm.saveStateLocked()
 }
 

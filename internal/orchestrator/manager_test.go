@@ -270,3 +270,55 @@ func (m *mockAgent) ToolIDs() []string { return nil }
 func (m *mockAgent) Execute(ctx context.Context, prompt string, prior string) (agentscore.AgentResult, error) {
 	return agentscore.AgentResult{Success: true, Output: "Mock Output"}, nil
 }
+
+func TestMultiAgentManager_InjectUserMessage(t *testing.T) {
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+
+	gDir, err := config.GlobalDir()
+	if err != nil {
+		t.Fatalf("erro ao obter global dir: %v", err)
+	}
+	_ = os.MkdirAll(gDir, 0755)
+
+	gCfg := config.DefaultGlobalConfig()
+	gCfg.DefaultProvider = "mock"
+	_ = config.SaveGlobalConfig(gDir, gCfg)
+
+	env := &config.EnvVars{}
+	_ = env.Save(gDir)
+
+	wsDir := t.TempDir()
+	_ = config.SaveWorkspaceConfig(wsDir, config.DefaultWorkspaceConfig("test-inject-proj"))
+
+	mgr := NewMultiAgentManager()
+	_ = mgr.AddWorkspace("test-inject-proj", wsDir)
+
+	ctx := context.Background()
+	handler := &testEventHandler{done: make(chan struct{})}
+
+	err = mgr.StartAgent(ctx, "test-inject-proj", "", "Tarefa de teste", handler)
+	if err != nil {
+		t.Fatalf("erro ao iniciar agente: %v", err)
+	}
+
+	// Tenta injetar mensagem do usuário
+	err = mgr.InjectUserMessage("test-inject-proj", "Nova instrução em tempo real")
+	if err != nil {
+		t.Fatalf("erro ao injetar mensagem de usuário: %v", err)
+	}
+
+	// Se tentarmos injetar em um workspace inexistente, deve falhar
+	err = mgr.InjectUserMessage("inexistente", "Oi")
+	if err == nil {
+		t.Fatal("esperava erro ao injetar em workspace inexistente, obteve nil")
+	}
+
+	_ = mgr.StopAgent("test-inject-proj")
+	select {
+	case <-handler.done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timeout")
+	}
+	time.Sleep(50 * time.Millisecond)
+}

@@ -617,3 +617,18 @@ func (m *MultiAgentManager) GetBrowserPageContent(workspaceKey string) (string, 
 
 	return "", "", fmt.Errorf("nenhum navegador ativo encontrado para o workspace %s", workspaceKey)
 }
+
+// InjectUserMessage insere uma mensagem de usuário em tempo real no loop de um agente ativo
+func (m *MultiAgentManager) InjectUserMessage(workspaceName, content string) error {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	wsName := m.ResolveWorkspaceName(workspaceName)
+	agent, running := m.runningAgents[wsName]
+	if !running || agent == nil {
+		return fmt.Errorf("nenhum agente ativo no workspace '%s'", workspaceName)
+	}
+
+	agent.Loop.QueueUserMessage(content)
+	return nil
+}

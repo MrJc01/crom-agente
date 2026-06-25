@@ -259,3 +259,48 @@ func TestSubagentsContext(t *testing.T) {
 	}
 }
 
+func TestStructuredStatusesAndCognitiveModes(t *testing.T) {
+	dir := t.TempDir()
+	sm := NewStateManager(dir)
+	if err := sm.LoadState(); err != nil {
+		t.Fatalf("LoadState falhou: %v", err)
+	}
+
+	// 1. Testa os valores padrão
+	s := sm.GetState()
+	if s.StatusOperacional != StatusIdle {
+		t.Errorf("esperava StatusOperacional padrão '%s', obteve '%s'", StatusIdle, s.StatusOperacional)
+	}
+	if s.ModoCognitivo != ModoPlanning {
+		t.Errorf("esperava ModoCognitivo padrão '%s', obteve '%s'", ModoPlanning, s.ModoCognitivo)
+	}
+
+	// 2. Testa SetOperationalStatus e SetCognitiveMode
+	if err := sm.SetOperationalStatus(StatusThinking); err != nil {
+		t.Fatalf("SetOperationalStatus falhou: %v", err)
+	}
+	if err := sm.SetCognitiveMode(ModoExecuting); err != nil {
+		t.Fatalf("SetCognitiveMode falhou: %v", err)
+	}
+
+	// Verifica se persistiu e atualizou os campos legados de compatibilidade
+	s2 := sm.GetState()
+	if s2.StatusOperacional != StatusThinking || s2.UltimoStatus != StatusThinking || s2.Status != StatusThinking {
+		t.Errorf("valores de status operacional ou de compatibilidade não coincidem: %+v", s2)
+	}
+	if s2.ModoCognitivo != ModoExecuting {
+		t.Errorf("ModoCognitivo incorreto: %s", s2.ModoCognitivo)
+	}
+
+	// 3. Testa recarregar do disco em novo StateManager
+	sm2 := NewStateManager(dir)
+	if err := sm2.LoadState(); err != nil {
+		t.Fatalf("LoadState falhou: %v", err)
+	}
+	s3 := sm2.GetState()
+	if s3.StatusOperacional != StatusThinking || s3.ModoCognitivo != ModoExecuting {
+		t.Errorf("valores não persistiram no disco corretamente: %+v", s3)
+	}
+}
+
+
