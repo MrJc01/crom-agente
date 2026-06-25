@@ -1,0 +1,5 @@
+{
+  "id": "ask_user",
+  "name": "Ask User",
+  "description": "Faz uma pergunta ao usuário, opcionalmente fornecendo opções de escolha recomendadas, e suspende a execução do agente até que o usuário responda no chat."
+}

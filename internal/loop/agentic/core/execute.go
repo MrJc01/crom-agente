@@ -139,6 +139,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 	timerScheduled := false
 
 	for i := 0; i < al.config.MaxIterations; i++ {
+		askUserCalled := false
 		iterLog := state.IterationLog{
 			Iteration: i + 1,
 			Timestamp: time.Now(),
@@ -626,6 +627,9 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				if toolID == "schedule_timer" {
 					timerScheduled = true
 				}
+				if toolID == "ask_user" {
+					askUserCalled = true
+				}
 				if strings.HasPrefix(result.Data, "image:base64:") {
 					// Extrai texto adicional se houver
 					toolMsgContent := "✓ Captura de tela realizada com sucesso."
@@ -702,6 +706,22 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 
 		if al.stateManager != nil {
 			_ = al.stateManager.SaveIterationLog(i+1, iterLog)
+		}
+
+		if askUserCalled {
+			al.handler.OnMessage("system", "Pergunta enviada ao usuário. Suspendendo execução para aguardar resposta no chat.")
+			if al.stateManager != nil {
+				_ = al.stateManager.SetStatus("waiting_user_input")
+				_ = al.stateManager.AddLog("Suspenso aguardando resposta do usuário")
+			}
+			al.handler.OnEvent(loop.AgentEvent{
+				Timestamp: time.Now(),
+				Event:     "finished",
+				Iteration: i + 1,
+				Data:      map[string]interface{}{"reason": "waiting_user_input", "total_iterations": i + 1},
+			})
+			al.handler.OnStatusChange("waiting_user_input")
+			return nil
 		}
 
 		if iterationHasFailure {

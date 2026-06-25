@@ -80,7 +80,7 @@ func (h *ipcConnectionHandler) OnStatusChange(status string) {
 		"status": status,
 	})
 
-	isFinished := status == "finished" || status == "idle" || strings.HasPrefix(status, "error:")
+	isFinished := status == "finished" || status == "idle" || status == "waiting_user_input" || strings.HasPrefix(status, "error:")
 	errStr := ""
 	if strings.HasPrefix(status, "error:") {
 		errStr = strings.TrimPrefix(status, "error: ")

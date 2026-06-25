@@ -67,7 +67,7 @@ func (s *APIServer) handleWS(w http.ResponseWriter, r *http.Request) {
 					})
 					_ = conn.WriteJSON(IPCResponse{
 						Success: !strings.HasPrefix(h.lastStatus, "error:"),
-						Stream:  h.lastStatus != "finished" && h.lastStatus != "idle" && !strings.HasPrefix(h.lastStatus, "error:"),
+						Stream:  h.lastStatus != "finished" && h.lastStatus != "idle" && h.lastStatus != "waiting_user_input" && !strings.HasPrefix(h.lastStatus, "error:"),
 						Data:    statusPayload,
 					})
 

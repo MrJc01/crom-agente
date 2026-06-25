@@ -30,6 +30,7 @@ import (
 	"github.com/crom/crom-agente/internal/tools/schedule_timer"
 	"github.com/crom/crom-agente/internal/tools/scraper"
 	"github.com/crom/crom-agente/internal/tools/stack_translator"
+	"github.com/crom/crom-agente/internal/tools/ask_user"
 	"github.com/crom/crom-agente/internal/tools/terminal_command"
 	"github.com/crom/crom-agente/internal/tools/tree"
 	"github.com/crom/crom-agente/internal/tools/write_file"
@@ -53,8 +54,9 @@ type RegistrationConfig struct {
 func GetBuiltinTools(cfg RegistrationConfig) []tools.Tool {
 	var list []tools.Tool
 
-	// 1. Ferramenta de agendamento
+	// 1. Ferramenta de agendamento e interacao
 	list = append(list, schedule_timer.NewScheduleTimerTool(cfg.WorkspacePath, cfg.OnSchedule))
+	list = append(list, ask_user.NewAskUserTool(cfg.WorkspacePath))
 
 	// 2. Leitura e Escrita
 	list = append(list, read_file.NewReadFileTool(cfg.WorkspacePath, cfg.WorkspaceJail))

@@ -639,3 +639,45 @@ func TestAgenticLoop_SupportsSystemPromptFallback(t *testing.T) {
 		t.Errorf("esperado que a tarefa original do usuário estivesse presente na mensagem mesclada, mas obteve: %s", sentUserMsg.Content)
 	}
 }
+
+func TestAgenticLoop_AskUserSuspension(t *testing.T) {
+	provider := providers.NewMockProvider(
+		// 1ª: LLM pede ask_user
+		providers.MockToolCallResponse("ask_user", `{"question":"Qual banco de dados usar?"}`, 100),
+		// O loop deve sair imediatamente após a chamada do ask_user, então não deve haver 2ª chamada!
+	)
+	sm := state.NewStateManager(t.TempDir())
+	handler := &testEventHandler{}
+
+	al := New(provider, sm, handler)
+	al.RegisterTool(&mockTool{
+		id:          "ask_user",
+		description: "Faz uma pergunta ao usuário",
+		executeFunc: func(ctx context.Context, args json.RawMessage) (tools.Result, error) {
+			return tools.Result{Success: true, Data: "Pergunta enviada."}, nil
+		},
+	})
+
+	err := al.Execute(context.Background(), "Configure o banco de dados")
+	if err != nil {
+		t.Fatalf("esperado sucesso (loop suspenso com nil), obteve erro: %v", err)
+	}
+
+	// O status final deve ser "waiting_user_input"
+	lastStatus := handler.StatusChanges[len(handler.StatusChanges)-1]
+	if lastStatus != "waiting_user_input" {
+		t.Fatalf("esperado status final 'waiting_user_input', obteve '%s'", lastStatus)
+	}
+
+	// O estado salvo no disco deve estar como "waiting_user_input"
+	savedState := sm.GetState()
+	if savedState.UltimoStatus != "waiting_user_input" {
+		t.Errorf("esperava UltimoStatus 'waiting_user_input', obteve '%s'", savedState.UltimoStatus)
+	}
+
+	// Não deve ter havido uma segunda chamada cognitiva
+	if provider.TotalCalls() != 1 {
+		t.Fatalf("esperado apenas 1 chamada ao LLM, obteve %d", provider.TotalCalls())
+	}
+}
+
