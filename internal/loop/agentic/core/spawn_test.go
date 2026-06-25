@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/crom/crom-agente/internal/llm"
+	"github.com/crom/crom-agente/internal/llm/providers"
 	"github.com/crom/crom-agente/internal/state"
 )
 
@@ -18,11 +18,11 @@ func TestAgenticLoop_SpawnSubagent_Success(t *testing.T) {
 	// 1. Pai chama spawn_subagent
 	// 2. Filho responde com texto concluído (sem tool calls)
 	// 3. Pai responde com texto final concluído
-	provider := llm.NewMockProvider(
-		llm.MockToolCallResponse("spawn_subagent", `{"task": "subtask task"}`, 10),
-		llm.MockTextResponse("filho concluído", 10),
-		llm.MockTextResponse("pai verificado", 10),
-		llm.MockTextResponse("pai concluído", 10),
+	provider := providers.NewMockProvider(
+		providers.MockToolCallResponse("spawn_subagent", `{"task": "subtask task"}`, 10),
+		providers.MockTextResponse("filho concluído", 10),
+		providers.MockTextResponse("pai verificado", 10),
+		providers.MockTextResponse("pai concluído", 10),
 	)
 
 	sm := state.NewStateManager(filepath.Join(ws, ".crom"))
@@ -78,9 +78,9 @@ func TestAgenticLoop_SpawnSubagent_GitRollback(t *testing.T) {
 	_ = os.WriteFile(initFile, []byte("versao modificada"), 0644)
 
 	// 4. Configura mock LLM para falhar
-	provider := llm.NewMockProvider(
-		llm.MockToolCallResponse("spawn_subagent", `{"task": "subtask falha"}`, 10),
-		llm.MockErrorResponse("simulated LLM error inside subagent"),
+	provider := providers.NewMockProvider(
+		providers.MockToolCallResponse("spawn_subagent", `{"task": "subtask falha"}`, 10),
+		providers.MockErrorResponse("simulated LLM error inside subagent"),
 	)
 
 	sm := state.NewStateManager(filepath.Join(ws, ".crom"))

@@ -1,10 +1,12 @@
-package llm
+package providers
 
 import (
 	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/crom/crom-agente/internal/llm"
 )
 
 func TestGeminiProvider_Name(t *testing.T) {
@@ -49,7 +51,7 @@ func TestGeminiProvider_SendMessages(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := provider.SendMessages(ctx, []Message{{Role: "user", Content: "Hello"}}, RequestOptions{})
+	_, err := provider.SendMessages(ctx, []llm.Message{{Role: "user", Content: "Hello"}}, llm.RequestOptions{})
 
 	// We expect a context canceled error because it tries to hit the real Google API
 	if err == nil {

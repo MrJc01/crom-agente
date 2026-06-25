@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/crom/crom-agente/internal/config"
-	"github.com/crom/crom-agente/internal/llm"
+	"github.com/crom/crom-agente/internal/llm/providers"
 	"github.com/crom/crom-agente/internal/loop"
 	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/tools"
@@ -54,8 +54,8 @@ func assertEventExists(t *testing.T, events []loop.AgentEvent, eventType string)
 }
 
 func TestAgentEvent_SimpleTextEmitsThinkingMessageFinished(t *testing.T) {
-	provider := llm.NewMockProvider(
-		llm.MockTextResponse("Resposta simples.", 150),
+	provider := providers.NewMockProvider(
+		providers.MockTextResponse("Resposta simples.", 150),
 	)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
@@ -102,10 +102,10 @@ func TestAgentEvent_SimpleTextEmitsThinkingMessageFinished(t *testing.T) {
 }
 
 func TestAgentEvent_ToolCallEmitsToolEvents(t *testing.T) {
-	provider := llm.NewMockProvider(
-		llm.MockToolCallResponse("read_file", `{"path":"/tmp/test.txt"}`, 200),
-		llm.MockTextResponse("Arquivo lido.", 100),
-		llm.MockTextResponse("Verificação ok.", 50),
+	provider := providers.NewMockProvider(
+		providers.MockToolCallResponse("read_file", `{"path":"/tmp/test.txt"}`, 200),
+		providers.MockTextResponse("Arquivo lido.", 100),
+		providers.MockTextResponse("Verificação ok.", 50),
 	)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
@@ -142,10 +142,10 @@ func TestAgentEvent_ToolCallEmitsToolEvents(t *testing.T) {
 }
 
 func TestAgentEvent_ToolFailureEmitsErrorResult(t *testing.T) {
-	provider := llm.NewMockProvider(
-		llm.MockToolCallResponse("read_file", `{"path":"/nope"}`, 200),
-		llm.MockTextResponse("Não encontrado.", 50),
-		llm.MockTextResponse("Ok.", 30),
+	provider := providers.NewMockProvider(
+		providers.MockToolCallResponse("read_file", `{"path":"/nope"}`, 200),
+		providers.MockTextResponse("Não encontrado.", 50),
+		providers.MockTextResponse("Ok.", 30),
 	)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
@@ -177,10 +177,10 @@ func TestAgentEvent_ToolFailureEmitsErrorResult(t *testing.T) {
 }
 
 func TestAgentEvent_ToolNotFoundEmitsError(t *testing.T) {
-	provider := llm.NewMockProvider(
-		llm.MockToolCallResponse("non_existent", `{}`, 100),
-		llm.MockTextResponse("Ok.", 30),
-		llm.MockTextResponse("Fim.", 20),
+	provider := providers.NewMockProvider(
+		providers.MockToolCallResponse("non_existent", `{}`, 100),
+		providers.MockTextResponse("Ok.", 30),
+		providers.MockTextResponse("Fim.", 20),
 	)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
@@ -202,8 +202,8 @@ func TestAgentEvent_ToolNotFoundEmitsError(t *testing.T) {
 }
 
 func TestAgentEvent_LLMErrorEmitsTypedError(t *testing.T) {
-	provider := llm.NewMockProvider(
-		llm.MockErrorResponse("connection refused"),
+	provider := providers.NewMockProvider(
+		providers.MockErrorResponse("connection refused"),
 	)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
@@ -225,11 +225,11 @@ func TestAgentEvent_LLMErrorEmitsTypedError(t *testing.T) {
 }
 
 func TestAgentEvent_MaxIterationsEmitsFinished(t *testing.T) {
-	responses := make([]llm.MockResponse, MaxIterations+1)
+	responses := make([]providers.MockResponse, MaxIterations+1)
 	for i := range responses {
-		responses[i] = llm.MockToolCallResponse("echo", `{"msg":"loop"}`, 10)
+		responses[i] = providers.MockToolCallResponse("echo", `{"msg":"loop"}`, 10)
 	}
-	provider := llm.NewMockProvider(responses...)
+	provider := providers.NewMockProvider(responses...)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
 
@@ -251,8 +251,8 @@ func TestAgentEvent_MaxIterationsEmitsFinished(t *testing.T) {
 }
 
 func TestAgentEvent_ContextCanceledEmitsError(t *testing.T) {
-	provider := llm.NewMockProvider(
-		llm.MockTextResponse("nunca", 100),
+	provider := providers.NewMockProvider(
+		providers.MockTextResponse("nunca", 100),
 	)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
@@ -277,10 +277,10 @@ func TestAgentEvent_ContextCanceledEmitsError(t *testing.T) {
 }
 
 func TestAgentEvent_ConsecutiveFailuresEmitsFinished(t *testing.T) {
-	provider := llm.NewMockProvider(
-		llm.MockEmptyResponse(),
-		llm.MockEmptyResponse(),
-		llm.MockEmptyResponse(),
+	provider := providers.NewMockProvider(
+		providers.MockEmptyResponse(),
+		providers.MockEmptyResponse(),
+		providers.MockEmptyResponse(),
 	)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
@@ -303,8 +303,8 @@ func TestAgentEvent_ConsecutiveFailuresEmitsFinished(t *testing.T) {
 }
 
 func TestAgentEvent_ThinkingHasProviderAndIteration(t *testing.T) {
-	provider := llm.NewMockProvider(
-		llm.MockTextResponse("Ok.", 50),
+	provider := providers.NewMockProvider(
+		providers.MockTextResponse("Ok.", 50),
 	)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
@@ -328,10 +328,10 @@ func TestAgentEvent_ThinkingHasProviderAndIteration(t *testing.T) {
 }
 
 func TestAgentEvent_AllEventsHaveTimestamp(t *testing.T) {
-	provider := llm.NewMockProvider(
-		llm.MockToolCallResponse("read_file", `{"path":"/x"}`, 100),
-		llm.MockTextResponse("Ok.", 50),
-		llm.MockTextResponse("Fim.", 30),
+	provider := providers.NewMockProvider(
+		providers.MockToolCallResponse("read_file", `{"path":"/x"}`, 100),
+		providers.MockTextResponse("Ok.", 50),
+		providers.MockTextResponse("Fim.", 30),
 	)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}

@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/crom/crom-agente/internal/llm"
+	"github.com/crom/crom-agente/internal/llm/providers"
 )
 
 func main() {
@@ -16,7 +17,7 @@ func main() {
 	}
 
 	fmt.Println("Testando OpenRouter com api key...")
-	p := llm.NewOpenAIProvider(apiKey, "google/gemini-2.5-flash-lite")
+	p := providers.NewOpenAIProvider(apiKey, "google/gemini-2.5-flash-lite")
 	p.URL = "https://openrouter.ai/api/v1/chat/completions"
 
 	messages := []llm.Message{

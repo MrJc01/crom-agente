@@ -1,22 +1,25 @@
-package llm
+package providers
 
 import (
 	"context"
 	"fmt"
+
+	"github.com/crom/crom-agente/internal/llm"
 )
 
 // MockResponse define uma resposta programável para o provider mock
 type MockResponse struct {
-	Response *Response
+	Response *llm.Response
 	Err      error
 }
 
 // MockProvider é um provedor de LLM para testes automatizados offline
 // Ele responde com respostas pré-programadas em sequência
 type MockProvider struct {
-	responses []MockResponse
-	callIndex int
-	CallLog   [][]Message // Registra todas as chamadas recebidas para inspeção nos testes
+	responses           []MockResponse
+	callIndex           int
+	CallLog             [][]llm.Message // Registra todas as chamadas recebidas para inspeção nos testes
+	DisableSystemPrompt bool            // Para simular a falta de suporte a System Prompt nos testes
 }
 
 // NewMockProvider cria um provider mock com respostas pré-programadas
@@ -28,14 +31,14 @@ func NewMockProvider(responses ...MockResponse) *MockProvider {
 	}
 	return &MockProvider{
 		responses: responses,
-		CallLog:   make([][]Message, 0),
+		CallLog:   make([][]llm.Message, 0),
 	}
 }
 
 // SendMessages retorna a próxima resposta pré-programada na fila
-func (m *MockProvider) SendMessages(ctx context.Context, messages []Message, opts RequestOptions) (*Response, error) {
+func (m *MockProvider) SendMessages(ctx context.Context, messages []llm.Message, opts llm.RequestOptions) (*llm.Response, error) {
 	// Registra a chamada
-	msgCopy := make([]Message, len(messages))
+	msgCopy := make([]llm.Message, len(messages))
 	copy(msgCopy, messages)
 	m.CallLog = append(m.CallLog, msgCopy)
 
@@ -53,6 +56,11 @@ func (m *MockProvider) Name() string {
 	return "mock"
 }
 
+// SupportsSystemPrompt retorna se o mock suporta System Prompt (baseado no campo DisableSystemPrompt)
+func (m *MockProvider) SupportsSystemPrompt() bool {
+	return !m.DisableSystemPrompt
+}
+
 // TotalCalls retorna o número total de chamadas feitas ao provider
 func (m *MockProvider) TotalCalls() int {
 	return len(m.CallLog)
@@ -63,12 +71,12 @@ func (m *MockProvider) TotalCalls() int {
 // MockTextResponse cria uma resposta mock com apenas texto (sem tool calls)
 func MockTextResponse(content string, tokens int) MockResponse {
 	return MockResponse{
-		Response: &Response{
-			Message: Message{
+		Response: &llm.Response{
+			Message: llm.Message{
 				Role:    "assistant",
 				Content: content,
 			},
-			Usage: Usage{TotalTokens: tokens},
+			Usage: llm.Usage{TotalTokens: tokens},
 		},
 	}
 }
@@ -76,21 +84,21 @@ func MockTextResponse(content string, tokens int) MockResponse {
 // MockToolCallResponse cria uma resposta mock com uma chamada de ferramenta
 func MockToolCallResponse(toolName string, toolArgs string, tokens int) MockResponse {
 	return MockResponse{
-		Response: &Response{
-			Message: Message{
+		Response: &llm.Response{
+			Message: llm.Message{
 				Role: "assistant",
-				ToolCalls: []ToolCall{
+				ToolCalls: []llm.ToolCall{
 					{
 						ID:   fmt.Sprintf("call_%s", toolName),
 						Type: "function",
-						Function: FunctionCall{
+						Function: llm.FunctionCall{
 							Name:      toolName,
 							Arguments: toolArgs,
 						},
 					},
 				},
 			},
-			Usage: Usage{TotalTokens: tokens},
+			Usage: llm.Usage{TotalTokens: tokens},
 		},
 	}
 }
@@ -98,9 +106,9 @@ func MockToolCallResponse(toolName string, toolArgs string, tokens int) MockResp
 // MockEmptyResponse cria uma resposta mock completamente vazia (sem texto nem tool calls)
 func MockEmptyResponse() MockResponse {
 	return MockResponse{
-		Response: &Response{
-			Message: Message{Role: "assistant"},
-			Usage:   Usage{TotalTokens: 5},
+		Response: &llm.Response{
+			Message: llm.Message{Role: "assistant"},
+			Usage:   llm.Usage{TotalTokens: 5},
 		},
 	}
 }

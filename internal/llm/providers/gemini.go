@@ -1,4 +1,4 @@
-package llm
+package providers
 
 import (
 	"bytes"
@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/crom/crom-agente/internal/llm"
 )
 
 type GeminiProvider struct {
@@ -17,7 +19,7 @@ type GeminiProvider struct {
 
 func NewGeminiProvider(apiKey, model string) *GeminiProvider {
 	if model == "" {
-		model = "gemini-1.5-pro"
+		model = "gemini-2.5-pro"
 	}
 	return &GeminiProvider{
 		apiKey: apiKey,
@@ -27,6 +29,10 @@ func NewGeminiProvider(apiKey, model string) *GeminiProvider {
 
 func (p *GeminiProvider) Name() string {
 	return "gemini"
+}
+
+func (p *GeminiProvider) SupportsSystemPrompt() bool {
+	return true
 }
 
 func parseGeminiMultimodalContent(text string) interface{} {
@@ -74,22 +80,22 @@ func parseGeminiMultimodalContent(text string) interface{} {
 	return parts
 }
 
-func (p *GeminiProvider) SendMessages(ctx context.Context, messages []Message, opts RequestOptions) (*Response, error) {
+func (p *GeminiProvider) SendMessages(ctx context.Context, messages []llm.Message, opts llm.RequestOptions) (*llm.Response, error) {
 	// Endpoint oficial do Google com compatibilidade OpenAI
 	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/chat/completions?key=%s", p.apiKey)
 
 	type geminiChatMessage struct {
-		Role       string      `json:"role"`
-		Content    interface{} `json:"content,omitempty"`
-		ToolCalls  []ToolCall  `json:"tool_calls,omitempty"`
-		ToolCallID string      `json:"tool_call_id,omitempty"`
-		Name       string      `json:"name,omitempty"`
+		Role       string         `json:"role"`
+		Content    interface{}    `json:"content,omitempty"`
+		ToolCalls  []llm.ToolCall `json:"tool_calls,omitempty"`
+		ToolCallID string         `json:"tool_call_id,omitempty"`
+		Name       string         `json:"name,omitempty"`
 	}
 
 	// Layer 2: Extrai o contexto escrito da mídia antes do envio
 	// Gera a URL completa com a chave para uso do MediaExtractor se ele precisar fazer VLM
 	completeURL := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/chat/completions?key=%s", p.apiKey)
-	injectedMessages := ExtractAndInjectMediaContext(ctx, messages, p.Name(), p.apiKey, completeURL)
+	injectedMessages := llm.ExtractAndInjectMediaContext(ctx, messages, p.Name(), p.apiKey, completeURL)
 
 	reqMessages := make([]geminiChatMessage, len(injectedMessages))
 	for i, m := range injectedMessages {
@@ -108,10 +114,10 @@ func (p *GeminiProvider) SendMessages(ctx context.Context, messages []Message, o
 	}
 
 	type geminiRequest struct {
-		Model      string              `json:"model"`
-		Messages   []geminiChatMessage `json:"messages"`
-		Tools      []ToolDefinition    `json:"tools,omitempty"`
-		ToolChoice interface{}         `json:"tool_choice,omitempty"`
+		Model      string               `json:"model"`
+		Messages   []geminiChatMessage  `json:"messages"`
+		Tools      []llm.ToolDefinition `json:"tools,omitempty"`
+		ToolChoice interface{}          `json:"tool_choice,omitempty"`
 	}
 
 	reqBody := geminiRequest{
@@ -163,7 +169,7 @@ func (p *GeminiProvider) SendMessages(ctx context.Context, messages []Message, o
 		if isVisionError {
 			// Remove payloads nativos de visão, retendo a descrição textual da imagem já injetada
 			for idx := range reqMessages {
-				reqMessages[idx].Content = StripMultimodalPayloads(reqMessages[idx].Content)
+				reqMessages[idx].Content = llm.StripMultimodalPayloads(reqMessages[idx].Content)
 			}
 			reqBody.Messages = reqMessages
 
@@ -199,9 +205,9 @@ func (p *GeminiProvider) SendMessages(ctx context.Context, messages []Message, o
 
 	type geminiResponse struct {
 		Choices []struct {
-			Message Message `json:"message"`
+			Message llm.Message `json:"message"`
 		} `json:"choices"`
-		Usage Usage `json:"usage"`
+		Usage llm.Usage `json:"usage"`
 	}
 
 	var apiResp geminiResponse
@@ -213,7 +219,7 @@ func (p *GeminiProvider) SendMessages(ctx context.Context, messages []Message, o
 		return nil, fmt.Errorf("gemini: resposta vazia do modelo")
 	}
 
-	return &Response{
+	return &llm.Response{
 		Message: apiResp.Choices[0].Message,
 		Usage:   apiResp.Usage,
 	}, nil

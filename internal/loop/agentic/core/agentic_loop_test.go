@@ -12,6 +12,7 @@ import (
 
 	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/llm"
+	"github.com/crom/crom-agente/internal/llm/providers"
 	"github.com/crom/crom-agente/internal/loop"
 	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/loop/agentic/prompting"
@@ -65,8 +66,8 @@ func (h *testEventHandler) OnEvent(event loop.AgentEvent) {
 // --- Testes ---
 
 func TestAgenticLoop_SimpleTextResponse(t *testing.T) {
-	provider := llm.NewMockProvider(
-		llm.MockTextResponse("Olá! Tarefa concluída.", 100),
+	provider := providers.NewMockProvider(
+		providers.MockTextResponse("Olá! Tarefa concluída.", 100),
 	)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
@@ -89,11 +90,11 @@ func TestAgenticLoop_SimpleTextResponse(t *testing.T) {
 }
 
 func TestAgenticLoop_ToolCallSuccess(t *testing.T) {
-	provider := llm.NewMockProvider(
+	provider := providers.NewMockProvider(
 		// 1ª: LLM pede read_file
-		llm.MockToolCallResponse("read_file", `{"path":"/tmp/test.txt"}`, 200),
+		providers.MockToolCallResponse("read_file", `{"path":"/tmp/test.txt"}`, 200),
 		// 2ª: LLM responde com texto
-		llm.MockTextResponse("Arquivo lido com sucesso.", 150),
+		providers.MockTextResponse("Arquivo lido com sucesso.", 150),
 	)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
@@ -117,11 +118,11 @@ func TestAgenticLoop_ToolCallSuccess(t *testing.T) {
 }
 
 func TestAgenticLoop_ToolCallFailure(t *testing.T) {
-	provider := llm.NewMockProvider(
+	provider := providers.NewMockProvider(
 		// 1ª: LLM pede read_file
-		llm.MockToolCallResponse("read_file", `{"path":"/nope"}`, 200),
+		providers.MockToolCallResponse("read_file", `{"path":"/nope"}`, 200),
 		// 2ª: LLM responde com texto
-		llm.MockTextResponse("O arquivo não foi encontrado.", 100),
+		providers.MockTextResponse("O arquivo não foi encontrado.", 100),
 	)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
@@ -142,11 +143,11 @@ func TestAgenticLoop_ToolCallFailure(t *testing.T) {
 }
 
 func TestAgenticLoop_ToolNotFound(t *testing.T) {
-	provider := llm.NewMockProvider(
+	provider := providers.NewMockProvider(
 		// LLM pede ferramenta inexistente
-		llm.MockToolCallResponse("delete_universe", `{}`, 200),
+		providers.MockToolCallResponse("delete_universe", `{}`, 200),
 		// LLM reconhece o erro
-		llm.MockTextResponse("Ok, ferramenta não disponível.", 50),
+		providers.MockTextResponse("Ok, ferramenta não disponível.", 50),
 	)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
@@ -172,13 +173,13 @@ func TestAgenticLoop_ToolNotFound(t *testing.T) {
 }
 
 func TestAgenticLoop_EmptyResponseAutoCorrection(t *testing.T) {
-	provider := llm.NewMockProvider(
+	provider := providers.NewMockProvider(
 		// 1ª: resposta vazia
-		llm.MockEmptyResponse(),
+		providers.MockEmptyResponse(),
 		// 2ª: resposta vazia novamente
-		llm.MockEmptyResponse(),
+		providers.MockEmptyResponse(),
 		// 3ª: resposta vazia (3ª falha consecutiva → abort)
-		llm.MockEmptyResponse(),
+		providers.MockEmptyResponse(),
 	)
 	sm := state.NewStateManager(t.TempDir())
 
@@ -197,13 +198,13 @@ func TestAgenticLoop_RepetitiveLoopDetection(t *testing.T) {
 	// Cenário: LLM fica chamando a mesma tool com os mesmos args repetidamente.
 	// A detecção de loop olha para as mensagens do assistant repetidas.
 	// Precisamos que o loop rode iterações suficientes para o detector disparar.
-	provider := llm.NewMockProvider(
+	provider := providers.NewMockProvider(
 		// Iterações 1-3: tool calls iguais (conteúdo do assistant é vazio pois são tool calls)
-		llm.MockToolCallResponse("read_file", `{"path":"/tmp/a.txt"}`, 50),
-		llm.MockToolCallResponse("read_file", `{"path":"/tmp/a.txt"}`, 50),
-		llm.MockToolCallResponse("read_file", `{"path":"/tmp/a.txt"}`, 50),
+		providers.MockToolCallResponse("read_file", `{"path":"/tmp/a.txt"}`, 50),
+		providers.MockToolCallResponse("read_file", `{"path":"/tmp/a.txt"}`, 50),
+		providers.MockToolCallResponse("read_file", `{"path":"/tmp/a.txt"}`, 50),
 		// Iteração 4: finalmente responde com texto (após loop warning injetado)
-		llm.MockTextResponse("Ok, mudei de estratégia.", 50),
+		providers.MockTextResponse("Ok, mudei de estratégia.", 50),
 	)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
@@ -236,8 +237,8 @@ func TestAgenticLoop_RepetitiveLoopDetection(t *testing.T) {
 }
 
 func TestAgenticLoop_LLMError(t *testing.T) {
-	provider := llm.NewMockProvider(
-		llm.MockErrorResponse("connection refused"),
+	provider := providers.NewMockProvider(
+		providers.MockErrorResponse("connection refused"),
 	)
 	sm := state.NewStateManager(t.TempDir())
 
@@ -254,8 +255,8 @@ func TestAgenticLoop_LLMError(t *testing.T) {
 
 func TestAgenticLoop_ContextCancellation(t *testing.T) {
 	// O LLM nunca responde porque o contexto é cancelado antes
-	provider := llm.NewMockProvider(
-		llm.MockTextResponse("nunca deveria chegar aqui", 100),
+	provider := providers.NewMockProvider(
+		providers.MockTextResponse("nunca deveria chegar aqui", 100),
 	)
 	sm := state.NewStateManager(t.TempDir())
 
@@ -272,12 +273,12 @@ func TestAgenticLoop_ContextCancellation(t *testing.T) {
 
 func TestAgenticLoop_MaxIterationsExceeded(t *testing.T) {
 	// Gera respostas infinitas com tool calls para esgotar o limite
-	responses := make([]llm.MockResponse, MaxIterations+1)
+	responses := make([]providers.MockResponse, MaxIterations+1)
 	for i := range responses {
-		responses[i] = llm.MockToolCallResponse("echo", `{"msg":"loop"}`, 10)
+		responses[i] = providers.MockToolCallResponse("echo", `{"msg":"loop"}`, 10)
 	}
 
-	provider := llm.NewMockProvider(responses...)
+	provider := providers.NewMockProvider(responses...)
 	sm := state.NewStateManager(t.TempDir())
 
 	al := New(provider, sm, nil, &config.ResolvedConfig{
@@ -296,11 +297,11 @@ func TestAgenticLoop_MaxIterationsExceeded(t *testing.T) {
 }
 
 func TestAgenticLoop_ConsecutiveToolFailuresAbort(t *testing.T) {
-	responses := make([]llm.MockResponse, MaxConsecutiveFailures+1)
+	responses := make([]providers.MockResponse, MaxConsecutiveFailures+1)
 	for i := range responses {
-		responses[i] = llm.MockToolCallResponse("bad_tool", `{}`, 10)
+		responses[i] = providers.MockToolCallResponse("bad_tool", `{}`, 10)
 	}
-	provider := llm.NewMockProvider(responses...)
+	provider := providers.NewMockProvider(responses...)
 	sm := state.NewStateManager(t.TempDir())
 
 	al := New(provider, sm, nil)
@@ -322,8 +323,8 @@ func TestAgenticLoop_ConsecutiveToolFailuresAbort(t *testing.T) {
 }
 
 func TestCompactMessages(t *testing.T) {
-	provider := llm.NewMockProvider(
-		llm.MockTextResponse("Resumo do histórico", 100),
+	provider := providers.NewMockProvider(
+		providers.MockTextResponse("Resumo do histórico", 100),
 	)
 	al := New(provider, nil, &testEventHandler{})
 
@@ -377,8 +378,8 @@ func TestDetectRepetitiveLoop(t *testing.T) {
 }
 
 func TestAgenticLoop_AgenticIdentityInjection(t *testing.T) {
-	provider := llm.NewMockProvider(
-		llm.MockTextResponse("Entendido, posso criar arquivos no seu computador.", 100),
+	provider := providers.NewMockProvider(
+		providers.MockTextResponse("Entendido, posso criar arquivos no seu computador.", 100),
 	)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
@@ -443,11 +444,11 @@ func TestAgenticLoop_SpawnSubagentRollback(t *testing.T) {
 	}
 
 	// Mock do Provider
-	provider := llm.NewMockProvider(
+	provider := providers.NewMockProvider(
 		// 1ª: Chama spawn_subagent
-		llm.MockToolCallResponse("spawn_subagent", `{"task":"modify initial.txt"}`, 100),
+		providers.MockToolCallResponse("spawn_subagent", `{"task":"modify initial.txt"}`, 100),
 		// 2ª: LLM reconhece a falha e responde
-		llm.MockTextResponse("O subagente falhou e o rollback foi executado.", 150),
+		providers.MockTextResponse("O subagente falhou e o rollback foi executado.", 150),
 	)
 
 	_ = os.MkdirAll(filepath.Join(tempDir, ".crom"), 0755)
@@ -498,11 +499,11 @@ func TestAgenticLoop_SpawnSubagentRollback(t *testing.T) {
 }
 
 func TestAgenticLoop_ScreenshotFallback(t *testing.T) {
-	provider := llm.NewMockProvider(
+	provider := providers.NewMockProvider(
 		// LLM chama o método inexistente "screenshot"
-		llm.MockToolCallResponse("screenshot", `{"path":"my_screenshot.png"}`, 200),
+		providers.MockToolCallResponse("screenshot", `{"path":"my_screenshot.png"}`, 200),
 		// LLM recebe a resposta traduzida e finaliza
-		llm.MockTextResponse("Screenshot capturado com sucesso.", 100),
+		providers.MockTextResponse("Screenshot capturado com sucesso.", 100),
 	)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
@@ -535,11 +536,11 @@ func TestAgenticLoop_ScreenshotFallback(t *testing.T) {
 }
 
 func TestAgenticLoop_PromptOptimization(t *testing.T) {
-	provider := llm.NewMockProvider(
+	provider := providers.NewMockProvider(
 		// 1ª chamada: Otimização do prompt
-		llm.MockTextResponse("PROMPT OTIMIZADO: crie uma API REST Go com cobertura de testes", 50),
+		providers.MockTextResponse("PROMPT OTIMIZADO: crie uma API REST Go com cobertura de testes", 50),
 		// 2ª chamada: Resposta do ReAct loop
-		llm.MockTextResponse("Olá! Processando o prompt otimizado.", 100),
+		providers.MockTextResponse("Olá! Processando o prompt otimizado.", 100),
 	)
 	sm := state.NewStateManager(t.TempDir())
 	handler := &testEventHandler{}
@@ -564,9 +565,77 @@ func TestAgenticLoop_PromptOptimization(t *testing.T) {
 		t.Fatalf("esperado histórico de mensagens contendo o prompt otimizado, obteve tamanho %d", len(messages))
 	}
 
-	// A primeira mensagem (user) deve ser o prompt otimizado
-	firstMsg := messages[0]
-	if firstMsg.Role != "user" || !strings.Contains(firstMsg.Content, "PROMPT OTIMIZADO") {
-		t.Errorf("esperado prompt otimizado na primeira mensagem, obteve: %v", firstMsg)
+	// A primeira mensagem de role user deve ser o prompt otimizado
+	var userMsg llm.Message
+	foundUser := false
+	for _, m := range messages {
+		if m.Role == "user" {
+			userMsg = m
+			foundUser = true
+			break
+		}
+	}
+	if !foundUser || !strings.Contains(userMsg.Content, "PROMPT OTIMIZADO") {
+		t.Errorf("esperado prompt otimizado na primeira mensagem do usuário, obteve: %+v", userMsg)
+	}
+}
+
+func TestAgenticLoop_SupportsSystemPromptFallback(t *testing.T) {
+	provider := providers.NewMockProvider(
+		providers.MockTextResponse("Processado com sucesso.", 100),
+	)
+	provider.DisableSystemPrompt = true // Simular que não suporta System Prompt!
+
+	sm := state.NewStateManager(t.TempDir())
+	handler := &testEventHandler{}
+
+	al := New(provider, sm, handler, &config.ResolvedConfig{
+		MaxIterations:             1,
+		MaxConsecutiveFail:        1,
+		ToolTimeoutSeconds:        30,
+		MaxMessageHistory:         40,
+		AutoVerify:                false,
+		PermissionMode:            "scoped",
+		DisablePromptOptimization: true,
+	})
+
+	err := al.Execute(context.Background(), "Tarefa de teste")
+	if err != nil {
+		t.Fatalf("esperado sucesso, obteve erro: %v", err)
+	}
+
+	// Verificar se o CallLog no provider não contém mensagens de sistema
+	if len(provider.CallLog) == 0 {
+		t.Fatalf("esperada pelo menos uma chamada ao LLM")
+	}
+
+	lastCallMsgs := provider.CallLog[0]
+	for _, m := range lastCallMsgs {
+		if m.Role == "system" {
+			t.Errorf("encontrada mensagem com role system enviada ao LLM, mas o provedor declarou que não suporta!")
+		}
+	}
+
+	// Verificar se as instruções de sistema foram mescladas no prompt do usuário
+	var sentUserMsg llm.Message
+	foundSentUser := false
+	for _, m := range lastCallMsgs {
+		if m.Role == "user" {
+			sentUserMsg = m
+			foundSentUser = true
+			break
+		}
+	}
+
+	if !foundSentUser {
+		t.Fatalf("não foi encontrada nenhuma mensagem do usuário no payload enviado")
+	}
+
+	if !strings.Contains(sentUserMsg.Content, "=== INSTRUÇÕES DO SISTEMA ===") {
+		t.Errorf("esperado que as instruções do sistema fossem mescladas no prompt do usuário, mas obteve: %s", sentUserMsg.Content)
+	}
+
+	if !strings.Contains(sentUserMsg.Content, "Tarefa de teste") {
+		t.Errorf("esperado que a tarefa original do usuário estivesse presente na mensagem mesclada, mas obteve: %s", sentUserMsg.Content)
 	}
 }

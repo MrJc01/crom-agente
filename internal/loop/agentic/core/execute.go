@@ -37,10 +37,16 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		messages = al.stateManager.GetMessages()
 	}
 
+	workspaceDir := ""
+	sessionDir := ""
+	if al.stateManager != nil {
+		workspaceDir = al.stateManager.GetWorkspaceDir()
+		sessionDir = filepath.Dir(al.stateManager.FilePath())
+	}
+
 	if len(messages) == 0 {
-		// se tiver + de 500 palavras
+		// 1. Otimização do prompt inicial via camada agêntica
 		if al.config == nil || !al.config.DisablePromptOptimization || len(strings.Fields(intent)) > 500 {
-			// Otimização do prompt inicial via camada agêntica
 			optimized, err := prompting.OptimizePrompt(ctx, al.provider, al.promptManager, al.GetTools(), intent)
 			if err == nil && optimized != "" {
 				al.handler.OnMessage("system", i18n.Get("system.optimized_prompt_log", optimized))
@@ -50,89 +56,81 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				}
 			}
 		}
-		messages = []llm.Message{
-			{Role: "user", Content: intent},
-		}
-	} else {
-		messages = append(messages, llm.Message{Role: "user", Content: intent})
-	}
-	saveMsgs(messages)
 
-	workspaceDir := ""
-	sessionDir := ""
-	if al.stateManager != nil {
-		workspaceDir = al.stateManager.GetWorkspaceDir()
-		sessionDir = filepath.Dir(al.stateManager.FilePath())
-	}
+		// 2. Injetar todas as mensagens de sistema *antes* do prompt do usuário
+		if workspaceDir != "" {
+			if al.promptManager != nil {
+				for _, p := range al.promptManager.GetAllEnabled() {
+					content := p.Content
+					if p.ID == "SYSTEM_AGENTIC_IDENTITY" {
+						content += "\n" + prompting.BuildToolsInstructions(al.promptManager, al.GetTools())
+					}
+					messages = append(messages, llm.Message{
+						Role:    "system",
+						Content: content,
+					})
+				}
+			}
 
-	// Primeira iteração da sessão: injetar regras locais, stack e instruções de planejamento
-	hasAgenticIdentity := false
-	for _, m := range messages {
-		if m.Role == "system" && strings.Contains(m.Content, "[SYSTEM AGENTIC IDENTITY]") {
-			hasAgenticIdentity = true
-			break
-		}
-	}
+			// 2.1. Detectar stack técnica (Dinâmico)
+			stack := workspace.DetectStack(workspaceDir)
+			messages = append(messages, llm.Message{
+				Role:    "system",
+				Content: i18n.Get("system.stack_detected", stack),
+			})
 
-	if !hasAgenticIdentity && workspaceDir != "" {
-		if al.promptManager != nil {
-			for _, p := range al.promptManager.GetAllEnabled() {
-				content := p.Content
-				if p.ID == "SYSTEM_AGENTIC_IDENTITY" {
-					content += "\n" + prompting.BuildToolsInstructions(al.promptManager, al.GetTools())
+			// 2.2. Carregar regras locais
+			if localRules := workspace.LoadLocalRules(workspaceDir); localRules != "" {
+				messages = append(messages, llm.Message{
+					Role:    "system",
+					Content: i18n.Get("system.local_rules", localRules),
+				})
+			}
+
+			// 2.3. Diretório de Sessão para Artefatos, Tasks e Scripts (Dinâmico)
+			if sessionDir != "" && strings.Contains(al.stateManager.FilePath(), "sessions") {
+				relSessionDir, errRel := filepath.Rel(workspaceDir, sessionDir)
+				displayDir := sessionDir
+				if errRel == nil {
+					displayDir = relSessionDir
 				}
 				messages = append(messages, llm.Message{
 					Role:    "system",
-					Content: content,
+					Content: i18n.Get("system.session_isolation", displayDir),
 				})
+			}
+
+			// 2.4. Injetar fase atual (Planning ou Execution)
+			phase := loop.GetCurrentPhase(al.stateManager)
+			if al.promptManager != nil {
+				var phasePrompt config.PromptTemplate
+				var ok bool
+				if phase == loop.PhasePlanning {
+					phasePrompt, ok = al.promptManager.GetPrompt("phase_planning")
+				} else {
+					phasePrompt, ok = al.promptManager.GetPrompt("phase_execution")
+				}
+				if ok && phasePrompt.Enabled {
+					messages = append(messages, llm.Message{
+						Role:    "system",
+						Content: phasePrompt.Content,
+					})
+				}
 			}
 		}
 
-		// 1. Detectar stack técnica (Dinâmico)
-		stack := workspace.DetectStack(workspaceDir)
+		// 3. Adicionar a intenção original ou otimizada do usuário
 		messages = append(messages, llm.Message{
-			Role:    "system",
-			Content: i18n.Get("system.stack_detected", stack),
+			Role:    "user",
+			Content: intent,
 		})
-
-		// 2. Carregar regras locais
-		if localRules := workspace.LoadLocalRules(workspaceDir); localRules != "" {
-			messages = append(messages, llm.Message{
-				Role:    "system",
-				Content: i18n.Get("system.local_rules", localRules),
-			})
-		}
-
-		// 4. Diretório de Sessão para Artefatos, Tasks e Scripts (Dinâmico)
-		if sessionDir != "" && strings.Contains(al.stateManager.FilePath(), "sessions") {
-			relSessionDir, errRel := filepath.Rel(workspaceDir, sessionDir)
-			displayDir := sessionDir
-			if errRel == nil {
-				displayDir = relSessionDir
-			}
-			messages = append(messages, llm.Message{
-				Role:    "system",
-				Content: i18n.Get("system.session_isolation", displayDir),
-			})
-		}
-
-		// 5. Injetar fase atual (Planning ou Execution)
-		phase := loop.GetCurrentPhase(al.stateManager)
-		if al.promptManager != nil {
-			var phasePrompt config.PromptTemplate
-			var ok bool
-			if phase == loop.PhasePlanning {
-				phasePrompt, ok = al.promptManager.GetPrompt("phase_planning")
-			} else {
-				phasePrompt, ok = al.promptManager.GetPrompt("phase_execution")
-			}
-			if ok && phasePrompt.Enabled {
-				messages = append(messages, llm.Message{
-					Role:    "system",
-					Content: phasePrompt.Content,
-				})
-			}
-		}
+		saveMsgs(messages)
+	} else {
+		// Se já existir histórico, apenas adicionamos a nova intenção à conversação
+		messages = append(messages, llm.Message{
+			Role:    "user",
+			Content: intent,
+		})
 		saveMsgs(messages)
 	}
 
@@ -199,7 +197,8 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 
 		// Chamar o LLM
 		compactedMsgs := prompting.CompactMessages(ctx, al.provider, al.config.MaxMessageHistory, al.handler, runMessages)
-		resp, err := al.provider.SendMessages(ctx, compactedMsgs, opts)
+		finalMsgs := FormatMessagesForModel(compactedMsgs, al.provider)
+		resp, err := al.provider.SendMessages(ctx, finalMsgs, opts)
 		if err != nil {
 			errMsg := err.Error()
 			al.handler.OnMessage("system", i18n.Get("errors.llm_error", i+1)+": "+errMsg)
@@ -703,4 +702,41 @@ func truncateStr(s string, max int) string {
 		return s[:max] + "..."
 	}
 	return s
+}
+
+// FormatMessagesForModel formata as mensagens para o LLM. Se o provedor não suportar
+// System Prompt, todas as mensagens de role "system" serão mescladas no início da primeira
+// mensagem de role "user".
+func FormatMessagesForModel(messages []llm.Message, provider llm.Provider) []llm.Message {
+	if provider.SupportsSystemPrompt() {
+		return messages
+	}
+
+	var systemContents []string
+	var otherMessages []llm.Message
+
+	for _, msg := range messages {
+		if msg.Role == "system" {
+			if msg.Content != "" {
+				systemContents = append(systemContents, msg.Content)
+			}
+		} else {
+			otherMessages = append(otherMessages, msg)
+		}
+	}
+
+	if len(systemContents) > 0 && len(otherMessages) > 0 {
+		// Encontra a primeira mensagem user para mesclar
+		for i, msg := range otherMessages {
+			if msg.Role == "user" {
+				// Mescla os conteúdos
+				instructions := strings.Join(systemContents, "\n\n")
+				merged := fmt.Sprintf("=== INSTRUÇÕES DO SISTEMA ===\n%s\n=============================\n\n%s", instructions, msg.Content)
+				otherMessages[i].Content = merged
+				break
+			}
+		}
+	}
+
+	return otherMessages
 }

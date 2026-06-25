@@ -1,4 +1,4 @@
-package llm
+package providers
 
 import (
 	"bytes"
@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/crom/crom-agente/internal/llm"
 )
 
 type AnthropicProvider struct {
@@ -26,6 +28,10 @@ func NewAnthropicProvider(apiKey, model string) *AnthropicProvider {
 
 func (p *AnthropicProvider) Name() string {
 	return "anthropic"
+}
+
+func (p *AnthropicProvider) SupportsSystemPrompt() bool {
+	return true
 }
 
 // Structs para API Anthropic Messages
@@ -59,7 +65,7 @@ type anthropicRequest struct {
 	Tools     []anthropicTool    `json:"tools,omitempty"`
 }
 
-func (p *AnthropicProvider) SendMessages(ctx context.Context, messages []Message, opts RequestOptions) (*Response, error) {
+func (p *AnthropicProvider) SendMessages(ctx context.Context, messages []llm.Message, opts llm.RequestOptions) (*llm.Response, error) {
 	url := "https://api.anthropic.com/v1/messages"
 
 	var systemPrompt string
@@ -198,17 +204,17 @@ func (p *AnthropicProvider) SendMessages(ctx context.Context, messages []Message
 
 	// Converter resposta da Anthropic de volta para llm.Message
 	var resContent string
-	toolCalls := make([]ToolCall, 0)
+	toolCalls := make([]llm.ToolCall, 0)
 
 	for _, block := range apiResp.Content {
 		if block.Type == "text" {
 			resContent += block.Text
 		} else if block.Type == "tool_use" {
 			argBytes, _ := json.Marshal(block.Input)
-			toolCalls = append(toolCalls, ToolCall{
+			toolCalls = append(toolCalls, llm.ToolCall{
 				ID:   block.ID,
 				Type: "function",
-				Function: FunctionCall{
+				Function: llm.FunctionCall{
 					Name:      block.Name,
 					Arguments: string(argBytes),
 				},
@@ -216,13 +222,13 @@ func (p *AnthropicProvider) SendMessages(ctx context.Context, messages []Message
 		}
 	}
 
-	return &Response{
-		Message: Message{
+	return &llm.Response{
+		Message: llm.Message{
 			Role:      "assistant",
 			Content:   resContent,
 			ToolCalls: toolCalls,
 		},
-		Usage: Usage{
+		Usage: llm.Usage{
 			PromptTokens:     apiResp.Usage.InputTokens,
 			CompletionTokens: apiResp.Usage.OutputTokens,
 			TotalTokens:      apiResp.Usage.InputTokens + apiResp.Usage.OutputTokens,

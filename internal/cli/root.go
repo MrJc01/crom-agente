@@ -12,7 +12,7 @@ import (
 
 	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/daemon"
-	"github.com/crom/crom-agente/internal/llm"
+	"github.com/crom/crom-agente/internal/llm/providers"
 	"github.com/crom/crom-agente/internal/loop"
 	"github.com/crom/crom-agente/internal/loop/agentic/core"
 	"github.com/crom/crom-agente/internal/orchestrator"
@@ -316,7 +316,7 @@ var runCmd = &cobra.Command{
 		resolved := config.Resolve(global, workspace, flags)
 
 		// 6. Instanciar LLM Provider
-		provider, err := llm.NewProvider(resolved.Provider, resolved.Model, func(key string) string {
+		provider, err := providers.NewProvider(resolved.Provider, resolved.Model, func(key string) string {
 			return env.Get(key)
 		})
 		if err != nil {

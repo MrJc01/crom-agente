@@ -79,4 +79,7 @@ type Provider interface {
 
 	// Name retorna o nome do provedor (para logs)
 	Name() string
+
+	// SupportsSystemPrompt indica se o provedor/modelo suporta mensagens com role "system"
+	SupportsSystemPrompt() bool
 }

@@ -1,4 +1,4 @@
-package llm
+package providers
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/crom/crom-agente/internal/llm"
 )
 
 func TestOpenAIProvider_SendMessages_RetriesWithoutToolsOnError(t *testing.T) {
@@ -52,15 +54,15 @@ func TestOpenAIProvider_SendMessages_RetriesWithoutToolsOnError(t *testing.T) {
 	p := NewOpenAIProvider("test-api-key", "some-cheap-model")
 	p.URL = server.URL // Aponta para o mock server
 
-	history := []Message{
+	history := []llm.Message{
 		{Role: "user", Content: "Olá"},
 	}
 
-	opts := RequestOptions{
-		Tools: []ToolDefinition{
+	opts := llm.RequestOptions{
+		Tools: []llm.ToolDefinition{
 			{
 				Type: "function",
-				Function: ToolFunctionSchema{
+				Function: llm.ToolFunctionSchema{
 					Name:        "write_file",
 					Description: "Escreve arquivo",
 				},

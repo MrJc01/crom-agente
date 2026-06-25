@@ -1,4 +1,4 @@
-package llm
+package providers
 
 import (
 	"bytes"
@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/crom/crom-agente/internal/llm"
 )
 
 type OpenAIProvider struct {
@@ -33,12 +35,16 @@ func (p *OpenAIProvider) Name() string {
 	return "openai"
 }
 
+func (p *OpenAIProvider) SupportsSystemPrompt() bool {
+	return true
+}
+
 type openAIChatMessage struct {
-	Role       string      `json:"role"`
-	Content    interface{} `json:"content,omitempty"`
-	ToolCalls  []ToolCall  `json:"tool_calls,omitempty"`
-	ToolCallID string      `json:"tool_call_id,omitempty"`
-	Name       string      `json:"name,omitempty"`
+	Role       string         `json:"role"`
+	Content    interface{}    `json:"content,omitempty"`
+	ToolCalls  []llm.ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string         `json:"tool_call_id,omitempty"`
+	Name       string         `json:"name,omitempty"`
 }
 
 func sanitizeMessagesForTextOnly(messages []openAIChatMessage) []openAIChatMessage {
@@ -130,11 +136,11 @@ func parseMultimodalContent(text string) interface{} {
 	return parts
 }
 
-func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []Message, opts RequestOptions) (*Response, error) {
+func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []llm.Message, opts llm.RequestOptions) (*llm.Response, error) {
 	url := p.URL
 
 	// Layer 2: Extrai o contexto escrito da mídia antes do envio
-	injectedMessages := ExtractAndInjectMediaContext(ctx, messages, p.Name(), p.apiKey, p.URL)
+	injectedMessages := llm.ExtractAndInjectMediaContext(ctx, messages, p.Name(), p.apiKey, p.URL)
 
 	reqMessages := make([]openAIChatMessage, len(injectedMessages))
 	for i, m := range injectedMessages {
@@ -152,10 +158,10 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []Message, o
 	}
 
 	type openAIRequest struct {
-		Model      string              `json:"model"`
-		Messages   []openAIChatMessage `json:"messages"`
-		Tools      []ToolDefinition    `json:"tools,omitempty"`
-		ToolChoice interface{}         `json:"tool_choice,omitempty"`
+		Model      string               `json:"model"`
+		Messages   []openAIChatMessage  `json:"messages"`
+		Tools      []llm.ToolDefinition `json:"tools,omitempty"`
+		ToolChoice interface{}          `json:"tool_choice,omitempty"`
 	}
 
 	reqBody := openAIRequest{
@@ -244,7 +250,7 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []Message, o
 
 			// Remove payloads nativos de visão, retendo a descrição textual da imagem já injetada
 			for idx := range reqMessages {
-				reqMessages[idx].Content = StripMultimodalPayloads(reqMessages[idx].Content)
+				reqMessages[idx].Content = llm.StripMultimodalPayloads(reqMessages[idx].Content)
 			}
 			reqBody.Messages = reqMessages
 
@@ -318,9 +324,9 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []Message, o
 
 	type openAIResponse struct {
 		Choices []struct {
-			Message Message `json:"message"`
+			Message llm.Message `json:"message"`
 		} `json:"choices"`
-		Usage Usage `json:"usage"`
+		Usage llm.Usage `json:"usage"`
 	}
 
 	var apiResp openAIResponse
@@ -332,7 +338,7 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []Message, o
 		return nil, fmt.Errorf("openai: resposta vazia do modelo")
 	}
 
-	return &Response{
+	return &llm.Response{
 		Message: apiResp.Choices[0].Message,
 		Usage:   apiResp.Usage,
 	}, nil

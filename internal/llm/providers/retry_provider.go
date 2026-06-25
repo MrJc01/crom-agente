@@ -1,4 +1,4 @@
-package llm
+package providers
 
 import (
 	"context"
@@ -6,15 +6,17 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+
+	"github.com/crom/crom-agente/internal/llm"
 )
 
 // RetryProvider é um wrapper que implementa tolerância a falhas (Exponential Backoff)
 type RetryProvider struct {
-	underlying Provider
+	underlying llm.Provider
 	maxRetries int
 }
 
-func NewRetryProvider(p Provider, retries int) *RetryProvider {
+func NewRetryProvider(p llm.Provider, retries int) *RetryProvider {
 	if retries <= 0 {
 		retries = 3
 	}
@@ -28,7 +30,11 @@ func (r *RetryProvider) Name() string {
 	return r.underlying.Name()
 }
 
-func (r *RetryProvider) SendMessages(ctx context.Context, messages []Message, opts RequestOptions) (*Response, error) {
+func (r *RetryProvider) SupportsSystemPrompt() bool {
+	return r.underlying.SupportsSystemPrompt()
+}
+
+func (r *RetryProvider) SendMessages(ctx context.Context, messages []llm.Message, opts llm.RequestOptions) (*llm.Response, error) {
 	var lastErr error
 	backoff := 2 * time.Second
 

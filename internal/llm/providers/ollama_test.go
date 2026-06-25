@@ -1,4 +1,4 @@
-package llm
+package providers
 
 import (
 	"context"
@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/crom/crom-agente/internal/llm"
 )
 
 func TestOllamaProvider_SendMessages_SanitizesDeepSeek(t *testing.T) {
@@ -40,16 +42,16 @@ func TestOllamaProvider_SendMessages_SanitizesDeepSeek(t *testing.T) {
 	// 1. Testa modelo DeepSeek (deve sanitizar histórico e desativar tools)
 	pDeepSeek := NewOllamaProvider(server.URL, "deepseek-r1:8b")
 
-	history := []Message{
+	history := []llm.Message{
 		{Role: "user", Content: "Rode a tarefa"},
 		{
 			Role:    "assistant",
 			Content: "Vou rodar.",
-			ToolCalls: []ToolCall{
+			ToolCalls: []llm.ToolCall{
 				{
 					ID:   "call-1",
 					Type: "function",
-					Function: FunctionCall{
+					Function: llm.FunctionCall{
 						Name:      "write_file",
 						Arguments: `{"path":"a.txt","content":"ok"}`,
 					},
@@ -59,11 +61,11 @@ func TestOllamaProvider_SendMessages_SanitizesDeepSeek(t *testing.T) {
 		{Role: "tool", Name: "write_file", ToolCallID: "call-1", Content: "Sucesso"},
 	}
 
-	opts := RequestOptions{
-		Tools: []ToolDefinition{
+	opts := llm.RequestOptions{
+		Tools: []llm.ToolDefinition{
 			{
 				Type: "function",
-				Function: ToolFunctionSchema{
+				Function: llm.ToolFunctionSchema{
 					Name:        "write_file",
 					Description: "Escreve arquivo",
 				},

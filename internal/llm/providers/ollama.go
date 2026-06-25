@@ -1,4 +1,4 @@
-package llm
+package providers
 
 import (
 	"bytes"
@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/crom/crom-agente/internal/llm"
 )
 
 type OllamaProvider struct {
@@ -32,7 +34,13 @@ func (p *OllamaProvider) Name() string {
 	return "ollama"
 }
 
-func (p *OllamaProvider) SendMessages(ctx context.Context, messages []Message, opts RequestOptions) (*Response, error) {
+func (p *OllamaProvider) SupportsSystemPrompt() bool {
+	// A grande maioria dos modelos modernos rodando no Ollama suporta System Prompt.
+	// Se no futuro identificarmos modelos específicos sem suporte, podemos tratá-los aqui.
+	return true
+}
+
+func (p *OllamaProvider) SendMessages(ctx context.Context, messages []llm.Message, opts llm.RequestOptions) (*llm.Response, error) {
 	url := p.endpoint + "/api/chat"
 
 	type ollamaFunctionCall struct {
@@ -56,7 +64,7 @@ func (p *OllamaProvider) SendMessages(ctx context.Context, messages []Message, o
 	isDeepSeek := strings.Contains(strings.ToLower(p.model), "deepseek")
 
 	// Layer 2: Extrai o contexto escrito da mídia antes do envio
-	injectedMessages := ExtractAndInjectMediaContext(ctx, messages, p.Name(), "", p.endpoint)
+	injectedMessages := llm.ExtractAndInjectMediaContext(ctx, messages, p.Name(), "", p.endpoint)
 
 	reqMessages := make([]ollamaChatMessage, len(injectedMessages))
 	for i, m := range injectedMessages {
@@ -107,10 +115,10 @@ func (p *OllamaProvider) SendMessages(ctx context.Context, messages []Message, o
 	}
 
 	type ollamaRequest struct {
-		Model    string              `json:"model"`
-		Messages []ollamaChatMessage `json:"messages"`
-		Tools    []ToolDefinition    `json:"tools,omitempty"`
-		Stream   bool                `json:"stream"`
+		Model    string               `json:"model"`
+		Messages []ollamaChatMessage  `json:"messages"`
+		Tools    []llm.ToolDefinition `json:"tools,omitempty"`
+		Stream   bool                 `json:"stream"`
 	}
 
 	reqTools := opts.Tools
@@ -169,25 +177,25 @@ func (p *OllamaProvider) SendMessages(ctx context.Context, messages []Message, o
 		return nil, fmt.Errorf("ollama: erro ao parsear response: %w", err)
 	}
 
-	var respTcs []ToolCall
+	var respTcs []llm.ToolCall
 	for _, tc := range apiResp.Message.ToolCalls {
-		respTcs = append(respTcs, ToolCall{
+		respTcs = append(respTcs, llm.ToolCall{
 			ID:   tc.ID,
 			Type: tc.Type,
-			Function: FunctionCall{
+			Function: llm.FunctionCall{
 				Name:      tc.Function.Name,
 				Arguments: string(tc.Function.Arguments),
 			},
 		})
 	}
 
-	return &Response{
-		Message: Message{
+	return &llm.Response{
+		Message: llm.Message{
 			Role:      apiResp.Message.Role,
 			Content:   apiResp.Message.Content,
 			ToolCalls: respTcs,
 		},
-		Usage: Usage{
+		Usage: llm.Usage{
 			PromptTokens:     apiResp.PromptEvalCount,
 			CompletionTokens: apiResp.EvalCount,
 			TotalTokens:      apiResp.PromptEvalCount + apiResp.EvalCount,

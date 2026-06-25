@@ -1,16 +1,18 @@
-package llm
+package providers
 
 import (
 	"fmt"
+
+	"github.com/crom/crom-agente/internal/llm"
 )
 
 // WrapProvider encapsulates an existing provider with standard enterprise decorators like Retry
-func WrapProvider(p Provider) Provider {
+func WrapProvider(p llm.Provider) llm.Provider {
 	return NewRetryProvider(p, 3)
 }
 
 // NewProvider fabrica um LLM Provider com base no nome, modelo e função para obter variáveis de ambiente
-func NewProvider(providerName, model string, getEnv func(string) string) (Provider, error) {
+func NewProvider(providerName, model string, getEnv func(string) string) (llm.Provider, error) {
 	p, err := buildBaseProvider(providerName, model, getEnv)
 	if err != nil {
 		return nil, err
@@ -18,7 +20,7 @@ func NewProvider(providerName, model string, getEnv func(string) string) (Provid
 	return WrapProvider(p), nil
 }
 
-func buildBaseProvider(providerName, model string, getEnv func(string) string) (Provider, error) {
+func buildBaseProvider(providerName, model string, getEnv func(string) string) (llm.Provider, error) {
 	switch providerName {
 	case "openai":
 		apiKey := getEnv("OPENAI_API_KEY")
