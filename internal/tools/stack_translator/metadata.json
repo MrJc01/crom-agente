@@ -1,0 +1,5 @@
+{
+  "id": "stack_translator",
+  "name": "stack_translator",
+  "description": "Traduz estruturas de dados de uma linguagem para outra (ex: Go struct -> TypeScript interface, JSON Schema)."
+}

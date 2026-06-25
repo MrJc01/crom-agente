@@ -1,0 +1,5 @@
+{
+  "id": "schedule_timer",
+  "name": "Schedule Timer",
+  "description": "Agenda a execução de uma nova tarefa (ou a continuidade da tarefa atual) para este agente após um intervalo de tempo em segundos. Útil para verificar resultados de processos em background ou servidores locais após uma espera."
+}

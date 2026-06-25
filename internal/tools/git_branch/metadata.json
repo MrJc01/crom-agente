@@ -1,0 +1,5 @@
+{
+  "id": "git_branch",
+  "name": "Git Branch",
+  "description": "Gerencia branches Git. Permite listar branches locais, criar uma nova branch com checkout, ou trocar para uma branch existente."
+}

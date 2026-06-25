@@ -1,0 +1,5 @@
+{
+  "id": "code_explainer",
+  "name": "Code Explainer",
+  "description": "Analisa a AST de um arquivo Go e gera uma descrição Markdown detalhada de seu funcionamento."
+}

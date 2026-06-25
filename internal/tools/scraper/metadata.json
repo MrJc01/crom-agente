@@ -1,0 +1,5 @@
+{
+  "id": "scraper",
+  "name": "Scraper",
+  "description": "Faz raspagem de páginas de documentação pública (HTML) e converte o conteúdo principal em Markdown limpo, ignorando elementos de navegação, cabeçalhos, rodapés e banners de cookies."
+}

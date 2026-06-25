@@ -1,0 +1,5 @@
+{
+  "id": "diff_replace",
+  "name": "Diff Replace",
+  "description": "Substitui um bloco de texto específico por um novo conteúdo dentro de um arquivo do workspace."
+}

@@ -1,0 +1,5 @@
+{
+  "id": "git_add",
+  "name": "git_add",
+  "description": "Adiciona arquivos ao stage do Git (git add). Aceita lista de caminhos ou 'all' para adicionar tudo."
+}

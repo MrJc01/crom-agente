@@ -4,7 +4,7 @@
     "optimizer_user_prompt": "Prompt original do usuário: %q\n\nPor favor, retorne o prompt otimizado de forma direta:",
     "optimized_prompt_log": " Prompt otimizado pelo Agente:\n%s",
     "compactor_summary_prompt": "Resuma de forma extremamente concisa (max 2 parágrafos) os eventos, resultados e decisões do bloco de conversa a seguir para que o agente principal saiba o que já foi tentado e concluído.\n\nCONVERSA:\n%s",
-    "compactor_system_role": "Você resume histórico técnico do agente. Seja direto e objetivo.",
+    "compactor_system_role": "Resumir histórico técnico do agente. Seja direto e objetivo.",
     "compactor_optimization_log": "Otimização de tokens: histórico intermediário resumido via LLM.",
     "compactor_history_summary": "[SYSTEM HISTORY SUMMARY] Um trecho intermediário da conversa foi compactado:\n%s",
     "stack_detected": "[SYSTEM STACK DETECTED] A stack técnica deste projeto foi identificada como: %s. Priorize comandos e validações desta stack.",

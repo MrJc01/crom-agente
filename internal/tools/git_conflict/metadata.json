@@ -1,0 +1,5 @@
+{
+  "id": "git_conflict",
+  "name": "git_conflict",
+  "description": "Analisa arquivos com conflitos de merge Git. Aceita ações:\n- \"scan\": Escaneia o workspace em busca de arquivos com marcadores de conflito (<<<<<<<, =======, >>>>>>>)\n- \"analyze\": Analisa um arquivo específico e retorna os blocos de conflito estruturados (ours vs theirs)\nUse esta ferramenta para identificar e resolver conflitos de merge automaticamente."
+}

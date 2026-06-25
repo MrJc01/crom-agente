@@ -1,0 +1,5 @@
+{
+  "id": "computer_control",
+  "name": "Computer Control",
+  "description": "Controla a interface gráfica do sistema operacional local (simula mouse, cliques, digitação e captura tela/screenshots)."
+}

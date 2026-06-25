@@ -1,0 +1,5 @@
+{
+  "id": "memory_leak_scanner",
+  "name": "Memory Leak Scanner",
+  "description": "Analisa código Go para padrões de vazamento de memória (goroutines órfãs, channels não fechados) e opcionalmente coleta perfil de runtime."
+}

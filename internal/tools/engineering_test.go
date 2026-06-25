@@ -1,4 +1,4 @@
-package tools
+package tools_test
 
 import (
 	"context"
@@ -7,6 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/crom/crom-agente/internal/tools/code_explainer"
+	"github.com/crom/crom-agente/internal/tools/complexity_reducer"
+	"github.com/crom/crom-agente/internal/tools/doc_generator"
+	"github.com/crom/crom-agente/internal/tools/memory_leak_scanner"
+	"github.com/crom/crom-agente/internal/tools/mock_generator"
+	"github.com/crom/crom-agente/internal/tools/stack_translator"
 )
 
 // === Cap 35: Stack Translator Tests ===
@@ -29,7 +36,7 @@ type User struct {
 `
 	os.WriteFile(goFile, []byte(src), 0644)
 
-	tool := NewStackTranslatorTool(dir, false)
+	tool := stack_translator.NewStackTranslatorTool(dir, false)
 	args, _ := json.Marshal(map[string]string{
 		"path":            "types.go",
 		"target_language": "typescript",
@@ -74,7 +81,7 @@ type Config struct {
 `
 	os.WriteFile(goFile, []byte(src), 0644)
 
-	tool := NewStackTranslatorTool(dir, false)
+	tool := stack_translator.NewStackTranslatorTool(dir, false)
 	args, _ := json.Marshal(map[string]string{
 		"path":            "types.go",
 		"target_language": "python",
@@ -115,7 +122,7 @@ type Item struct {
 `
 	os.WriteFile(goFile, []byte(src), 0644)
 
-	tool := NewStackTranslatorTool(dir, false)
+	tool := stack_translator.NewStackTranslatorTool(dir, false)
 	args, _ := json.Marshal(map[string]string{
 		"path":            "types.go",
 		"target_language": "rust",
@@ -156,7 +163,7 @@ type Response struct {
 `
 	os.WriteFile(goFile, []byte(src), 0644)
 
-	tool := NewStackTranslatorTool(dir, false)
+	tool := stack_translator.NewStackTranslatorTool(dir, false)
 	args, _ := json.Marshal(map[string]string{
 		"path":            "types.go",
 		"target_language": "json_schema",
@@ -185,7 +192,7 @@ func TestStackTranslator_StructNotFound(t *testing.T) {
 type Foo struct { X int }
 `), 0644)
 
-	tool := NewStackTranslatorTool(dir, false)
+	tool := stack_translator.NewStackTranslatorTool(dir, false)
 	args, _ := json.Marshal(map[string]interface{}{
 		"path":            "types.go",
 		"target_language": "typescript",
@@ -223,7 +230,7 @@ func ValidateInput(data string) bool {
 `
 	os.WriteFile(goFile, []byte(src), 0644)
 
-	tool := NewDocGeneratorTool(dir, false)
+	tool := doc_generator.NewDocGeneratorTool(dir, false)
 	args, _ := json.Marshal(map[string]interface{}{
 		"path":  "funcs.go",
 		"apply": false,
@@ -256,7 +263,7 @@ func ParseData(input string) (string, error) {
 `
 	os.WriteFile(goFile, []byte(src), 0644)
 
-	tool := NewDocGeneratorTool(dir, false)
+	tool := doc_generator.NewDocGeneratorTool(dir, false)
 	args, _ := json.Marshal(map[string]interface{}{
 		"path":  "funcs.go",
 		"apply": true,
@@ -318,7 +325,7 @@ func (s *Service) Start() error {
 `
 	os.WriteFile(goFile, []byte(src), 0644)
 
-	tool := NewCodeExplainerTool(dir, false)
+	tool := code_explainer.NewCodeExplainerTool(dir, false)
 	args, _ := json.Marshal(map[string]interface{}{
 		"path":         "example.go",
 		"detail_level": "detailed",
@@ -358,7 +365,7 @@ func FuncA() {}
 func FuncB() {}
 `), 0644)
 
-	tool := NewCodeExplainerTool(dir, false)
+	tool := code_explainer.NewCodeExplainerTool(dir, false)
 	args, _ := json.Marshal(map[string]interface{}{
 		"path":          "funcs.go",
 		"function_name": "FuncA",
@@ -400,7 +407,7 @@ type Logger interface {
 `
 	os.WriteFile(goFile, []byte(src), 0644)
 
-	tool := NewMockGeneratorTool(dir, false)
+	tool := mock_generator.NewMockGeneratorTool(dir, false)
 	args, _ := json.Marshal(map[string]interface{}{
 		"path": "interfaces.go",
 	})
@@ -447,7 +454,7 @@ type Storer interface {
 `
 	os.WriteFile(goFile, []byte(src), 0644)
 
-	tool := NewMockGeneratorTool(dir, false)
+	tool := mock_generator.NewMockGeneratorTool(dir, false)
 	args, _ := json.Marshal(map[string]interface{}{
 		"path":          "model.go",
 		"generate_json": true,
@@ -481,7 +488,7 @@ type Service interface {
 `
 	os.WriteFile(goFile, []byte(src), 0644)
 
-	tool := NewMockGeneratorTool(dir, false)
+	tool := mock_generator.NewMockGeneratorTool(dir, false)
 	args, _ := json.Marshal(map[string]interface{}{
 		"path":        "iface.go",
 		"output_path": "mock_service.go",
@@ -520,7 +527,7 @@ func Hello() string {
 `
 	os.WriteFile(goFile, []byte(src), 0644)
 
-	tool := NewComplexityReducerTool(dir, false)
+	tool := complexity_reducer.NewComplexityReducerTool(dir, false)
 	args, _ := json.Marshal(map[string]interface{}{
 		"path":      "simple.go",
 		"threshold": 15,
@@ -586,7 +593,7 @@ func ComplexFunc(x int) string {
 `
 	os.WriteFile(goFile, []byte(src), 0644)
 
-	tool := NewComplexityReducerTool(dir, false)
+	tool := complexity_reducer.NewComplexityReducerTool(dir, false)
 	args, _ := json.Marshal(map[string]interface{}{
 		"path":      "complex.go",
 		"threshold": 5,
@@ -631,7 +638,7 @@ func StartWorker() {
 `
 	os.WriteFile(goFile, []byte(src), 0644)
 
-	tool := NewMemoryLeakScannerTool(dir, false)
+	tool := memory_leak_scanner.NewMemoryLeakScannerTool(dir, false)
 	args, _ := json.Marshal(map[string]interface{}{
 		"path": "leak.go",
 	})
@@ -677,7 +684,7 @@ func StartWorkerSafe(ctx context.Context) {
 `
 	os.WriteFile(goFile, []byte(src), 0644)
 
-	tool := NewMemoryLeakScannerTool(dir, false)
+	tool := memory_leak_scanner.NewMemoryLeakScannerTool(dir, false)
 	args, _ := json.Marshal(map[string]interface{}{
 		"path": "safe.go",
 	})
@@ -711,7 +718,7 @@ func ProcessData() {
 `
 	os.WriteFile(goFile, []byte(src), 0644)
 
-	tool := NewMemoryLeakScannerTool(dir, false)
+	tool := memory_leak_scanner.NewMemoryLeakScannerTool(dir, false)
 	args, _ := json.Marshal(map[string]interface{}{
 		"path": "chan_leak.go",
 	})
@@ -736,7 +743,7 @@ func TestMemoryLeakScanner_RuntimeProfile(t *testing.T) {
 func Hello() {}
 `), 0644)
 
-	tool := NewMemoryLeakScannerTool(dir, false)
+	tool := memory_leak_scanner.NewMemoryLeakScannerTool(dir, false)
 	args, _ := json.Marshal(map[string]interface{}{
 		"path":            "app.go",
 		"runtime_profile": true,
@@ -776,7 +783,7 @@ func Multiply(a, b int) int {
 `
 	os.WriteFile(goFile, []byte(src), 0644)
 
-	tool := NewMemoryLeakScannerTool(dir, false)
+	tool := memory_leak_scanner.NewMemoryLeakScannerTool(dir, false)
 	args, _ := json.Marshal(map[string]interface{}{
 		"path": "clean.go",
 	})

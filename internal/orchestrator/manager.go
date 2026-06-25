@@ -18,6 +18,9 @@ import (
 	"github.com/crom/crom-agente/internal/permission"
 	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/tools"
+	"github.com/crom/crom-agente/internal/tools/browser"
+	"github.com/crom/crom-agente/internal/tools/browser_subagent"
+	"github.com/crom/crom-agente/internal/tools/registry"
 )
 
 // Workspace representa um projeto registrado no orquestrador
@@ -39,8 +42,8 @@ type RunningAgent struct {
 type MultiAgentManager struct {
 	mu               sync.RWMutex
 	runningAgents    map[string]*RunningAgent // chave: workspace name
-	activeBrowsers   map[string]*tools.BrowserTool
-	activeSubagents  map[string]*tools.BrowserSubagentTool
+	activeBrowsers   map[string]*browser.BrowserTool
+	activeSubagents  map[string]*browser_subagent.BrowserSubagentTool
 	MCPManager       *MCPManager // gerenciador de servidores MCP globais
 	OnSchedule       func(workspaceName, sessionName, task string, delaySecs int, provider, model string)
 	OnBackgroundExit func(workspaceName, sessionName, task string, provider, model string)
@@ -50,8 +53,8 @@ type MultiAgentManager struct {
 func NewMultiAgentManager() *MultiAgentManager {
 	return &MultiAgentManager{
 		runningAgents:   make(map[string]*RunningAgent),
-		activeBrowsers:  make(map[string]*tools.BrowserTool),
-		activeSubagents: make(map[string]*tools.BrowserSubagentTool),
+		activeBrowsers:  make(map[string]*browser.BrowserTool),
+		activeSubagents: make(map[string]*browser_subagent.BrowserSubagentTool),
 		MCPManager:      NewMCPManager(),
 	}
 }
@@ -304,47 +307,16 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 	// 8. Cria AgenticLoop
 	al := core.New(provider, sm, handler, resolved)
 
-	// Registrar ferramentas nativas e gerenciador de permissões
-	al.RegisterTool(tools.NewScheduleTimerTool(target.Path, func(task string, durationSeconds int) {
-		if m.OnSchedule != nil {
-			m.OnSchedule(workspaceName, sessionName, task, durationSeconds, resolved.Provider, resolved.Model)
-		}
-	}))
-	al.RegisterTool(tools.NewReadFileTool(target.Path, resolved.WorkspaceJail))
-	al.RegisterTool(tools.NewWriteFileTool(target.Path, resolved.WorkspaceJail))
-	termTool := tools.NewTerminalCommandTool(target.Path, resolved.BlockedCommands, nil)
-	termTool.SetOnBackgroundExit(func(bgID, cmdStr, logs string, success bool) {
-		if m.OnBackgroundExit != nil {
-			taskMsg := fmt.Sprintf("O comando em background '%s' (ID: %s) terminou com sucesso=%t. Verifique a saída e os logs de execução para responder ao usuário. Logs:\n%s", cmdStr, bgID, success, logs)
-			m.OnBackgroundExit(workspaceName, sessionName, taskMsg, resolved.Provider, resolved.Model)
-		}
-	})
-	al.RegisterTool(termTool)
-	al.RegisterTool(tools.NewDiffReplaceTool(target.Path, resolved.WorkspaceJail))
-	al.RegisterTool(tools.NewRenameFileTool(target.Path, resolved.WorkspaceJail))
-	al.RegisterTool(tools.NewDeleteFileTool(target.Path, resolved.WorkspaceJail))
-	al.RegisterTool(tools.NewTreeTool(target.Path, resolved.WorkspaceJail))
-	al.RegisterTool(tools.NewGrepTool(target.Path, resolved.WorkspaceJail))
-	al.RegisterTool(tools.NewPortMonitorTool(target.Path))
-	al.RegisterTool(tools.NewGitStatusTool(target.Path))
-	al.RegisterTool(tools.NewGitLogTool(target.Path))
-	al.RegisterTool(tools.NewGitDiffTool(target.Path))
-	al.RegisterTool(tools.NewGitAddTool(target.Path))
-	al.RegisterTool(tools.NewGitCommitTool(target.Path))
-	al.RegisterTool(tools.NewGitBranchTool(target.Path))
-	al.RegisterTool(tools.NewGitConflictTool(target.Path, resolved.WorkspaceJail))
-	al.RegisterTool(tools.NewHTTPClientTool(target.Path))
-	al.RegisterTool(tools.NewScraperTool(target.Path))
 	if m.activeBrowsers == nil {
-		m.activeBrowsers = make(map[string]*tools.BrowserTool)
+		m.activeBrowsers = make(map[string]*browser.BrowserTool)
 	}
 	if m.activeSubagents == nil {
-		m.activeSubagents = make(map[string]*tools.BrowserSubagentTool)
+		m.activeSubagents = make(map[string]*browser_subagent.BrowserSubagentTool)
 	}
 
 	browserTool, ok := m.activeBrowsers[wsName]
 	if !ok {
-		browserTool = tools.NewBrowserTool(target.Path, resolved.BrowserHeadless)
+		browserTool = browser.NewBrowserTool(target.Path, resolved.BrowserHeadless)
 		m.activeBrowsers[wsName] = browserTool
 	}
 	browserTool.SetOnNavigate(func(url string) {
@@ -362,11 +334,10 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 	browserTool.SetRestoreURL(func() string {
 		return sm.GetBrowserURL()
 	})
-	al.RegisterTool(browserTool)
 
 	browserSubagentTool, okSub := m.activeSubagents[wsName]
 	if !okSub {
-		browserSubagentTool = tools.NewBrowserSubagentTool(target.Path, resolved.BrowserHeadless)
+		browserSubagentTool = browser_subagent.NewBrowserSubagentTool(target.Path, resolved.BrowserHeadless)
 		m.activeSubagents[wsName] = browserSubagentTool
 	}
 	browserSubagentTool.SetOnNavigate(func(url string) {
@@ -384,18 +355,31 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 	browserSubagentTool.SetRestoreURL(func() string {
 		return sm.GetBrowserURL()
 	})
-	al.RegisterTool(browserSubagentTool)
-	al.RegisterTool(tools.NewComputerControlTool(target.Path))
-	al.RegisterTool(tools.NewDatabaseTesterTool(target.Path))
-	al.RegisterTool(tools.NewProxyTool(target.Path, resolved.WorkspaceJail))
-	al.RegisterTool(tools.NewRunTestsTool(target.Path))
 
-	al.RegisterTool(tools.NewStackTranslatorTool(target.Path, resolved.WorkspaceJail))
-	al.RegisterTool(tools.NewDocGeneratorTool(target.Path, resolved.WorkspaceJail))
-	al.RegisterTool(tools.NewCodeExplainerTool(target.Path, resolved.WorkspaceJail))
-	al.RegisterTool(tools.NewMockGeneratorTool(target.Path, resolved.WorkspaceJail))
-	al.RegisterTool(tools.NewComplexityReducerTool(target.Path, resolved.WorkspaceJail))
-	al.RegisterTool(tools.NewMemoryLeakScannerTool(target.Path, resolved.WorkspaceJail))
+	// Instanciar e registrar as ferramentas nativas unificadas via registro centralizado
+	builtinTools := registry.GetBuiltinTools(registry.RegistrationConfig{
+		WorkspacePath:   target.Path,
+		WorkspaceJail:   resolved.WorkspaceJail,
+		BlockedCommands: resolved.BlockedCommands,
+		TerminalOutput:  nil,
+		OnSchedule: func(task string, durationSeconds int) {
+			if m.OnSchedule != nil {
+				m.OnSchedule(workspaceName, sessionName, task, durationSeconds, resolved.Provider, resolved.Model)
+			}
+		},
+		OnBackgroundExit: func(bgID, cmdStr, logs string, success bool) {
+			if m.OnBackgroundExit != nil {
+				taskMsg := fmt.Sprintf("O comando em background '%s' (ID: %s) terminou com sucesso=%t. Verifique a saída e os logs de execução para responder ao usuário. Logs:\n%s", cmdStr, bgID, success, logs)
+				m.OnBackgroundExit(workspaceName, sessionName, taskMsg, resolved.Provider, resolved.Model)
+			}
+		},
+		BrowserTool:  browserTool,
+		SubagentTool: browserSubagentTool,
+	})
+
+	for _, t := range builtinTools {
+		al.RegisterTool(t)
+	}
 	if tp, ok := handler.(interface {
 		GetCustomTools() []tools.Tool
 	}); ok {

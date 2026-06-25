@@ -1,0 +1,5 @@
+{
+  "id": "terminal_command",
+  "name": "Terminal Command",
+  "description": "Executa um comando shell no workspace utilizando um terminal PTY controlado. Suporta execução assíncrona/background de comandos, streaming de saída e ações de controle (list, kill, logs)."
+}

@@ -1,4 +1,4 @@
-package tools
+package tools_test
 
 import (
 	"context"
@@ -7,6 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/crom/crom-agente/internal/tools/delete_file"
+	"github.com/crom/crom-agente/internal/tools/read_file"
+	"github.com/crom/crom-agente/internal/tools/rename_file"
+	"github.com/crom/crom-agente/internal/tools/write_file"
 )
 
 func TestFS_SandboxViolation(t *testing.T) {
@@ -18,7 +23,7 @@ func TestFS_SandboxViolation(t *testing.T) {
 
 	ctx := context.Background()
 
-	readTool := NewReadFileTool(ws, true)
+	readTool := read_file.NewReadFileTool(ws, true)
 	argsRead, _ := json.Marshal(map[string]interface{}{"path": "../outside_secret.txt"})
 	resRead, _ := readTool.Execute(ctx, argsRead)
 	if resRead.Success {
@@ -27,7 +32,7 @@ func TestFS_SandboxViolation(t *testing.T) {
 		t.Errorf("expected sandbox error, got %v", resRead.Error)
 	}
 
-	writeTool := NewWriteFileTool(ws, true)
+	writeTool := write_file.NewWriteFileTool(ws, true)
 	argsWrite, _ := json.Marshal(map[string]interface{}{
 		"path":    "../outside_secret.txt",
 		"content": "hacked",
@@ -37,7 +42,7 @@ func TestFS_SandboxViolation(t *testing.T) {
 		t.Error("expected WriteFile to fail on path traversal")
 	}
 
-	deleteTool := NewDeleteFileTool(ws, true)
+	deleteTool := delete_file.NewDeleteFileTool(ws, true)
 	argsDelete, _ := json.Marshal(map[string]interface{}{
 		"path": "../outside_secret.txt",
 	})
@@ -51,7 +56,7 @@ func TestFS_ValidOperations(t *testing.T) {
 	ws := t.TempDir()
 	ctx := context.Background()
 
-	writeTool := NewWriteFileTool(ws, true)
+	writeTool := write_file.NewWriteFileTool(ws, true)
 	argsWrite, _ := json.Marshal(map[string]interface{}{
 		"path":    "test.txt",
 		"content": "hello world",
@@ -61,7 +66,7 @@ func TestFS_ValidOperations(t *testing.T) {
 		t.Fatalf("WriteFile failed: %v", resWrite.Error)
 	}
 
-	readTool := NewReadFileTool(ws, true)
+	readTool := read_file.NewReadFileTool(ws, true)
 	argsRead, _ := json.Marshal(map[string]interface{}{
 		"path": "test.txt",
 	})
@@ -73,7 +78,7 @@ func TestFS_ValidOperations(t *testing.T) {
 		t.Errorf("Expected 'hello world', got '%s'", resRead.Data)
 	}
 
-	renameTool := NewRenameFileTool(ws, true)
+	renameTool := rename_file.NewRenameFileTool(ws, true)
 	argsRename, _ := json.Marshal(map[string]interface{}{
 		"src_path":  "test.txt",
 		"dest_path": "renamed.txt",
@@ -91,7 +96,7 @@ func TestFS_ValidOperations(t *testing.T) {
 		t.Fatalf("ReadFile on renamed file failed: %v", resReadRenamed.Error)
 	}
 
-	deleteTool := NewDeleteFileTool(ws, true)
+	deleteTool := delete_file.NewDeleteFileTool(ws, true)
 	argsDelete, _ := json.Marshal(map[string]interface{}{
 		"path": "renamed.txt",
 	})

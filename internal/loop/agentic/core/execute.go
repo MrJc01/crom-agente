@@ -41,7 +41,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		// se tiver + de 500 palavras
 		if al.config == nil || !al.config.DisablePromptOptimization || len(strings.Fields(intent)) > 500 {
 			// Otimização do prompt inicial via camada agêntica
-			optimized, err := prompting.OptimizePrompt(ctx, al.provider, intent)
+			optimized, err := prompting.OptimizePrompt(ctx, al.provider, al.promptManager, al.GetTools(), intent)
 			if err == nil && optimized != "" {
 				al.handler.OnMessage("system", i18n.Get("system.optimized_prompt_log", optimized))
 				intent = optimized
@@ -77,9 +77,13 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 	if !hasAgenticIdentity && workspaceDir != "" {
 		if al.promptManager != nil {
 			for _, p := range al.promptManager.GetAllEnabled() {
+				content := p.Content
+				if p.ID == "SYSTEM_AGENTIC_IDENTITY" {
+					content += "\n" + prompting.BuildToolsInstructions(al.promptManager, al.GetTools())
+				}
 				messages = append(messages, llm.Message{
 					Role:    "system",
-					Content: p.Content,
+					Content: content,
 				})
 			}
 		}

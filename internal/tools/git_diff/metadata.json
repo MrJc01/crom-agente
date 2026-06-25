@@ -1,0 +1,5 @@
+{
+  "id": "git_diff",
+  "name": "git_diff",
+  "description": "Retorna o diff atual do repositório Git. Aceita 'staged' (booleano) para mostrar apenas alterações no stage."
+}

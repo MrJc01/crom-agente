@@ -1,0 +1,5 @@
+{
+  "id": "grep",
+  "name": "Grep",
+  "description": "Busca por ocorrências de uma string ou expressão regular em arquivos de texto no workspace."
+}

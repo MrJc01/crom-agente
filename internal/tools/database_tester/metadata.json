@@ -1,0 +1,5 @@
+{
+  "id": "database_tester",
+  "name": "Database Tester",
+  "description": "Testa conexões e credenciais de bancos de dados. Suporta Postgres (connection URI), MySQL (DSN), SQLite (caminho de arquivo), e MongoDB (connection URI)."
+}

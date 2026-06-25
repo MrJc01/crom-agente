@@ -1,0 +1,5 @@
+{
+  "id": "proxy",
+  "name": "Proxy",
+  "description": "Inicia, para ou monitora um proxy TCP local temporário para interceptar tráfego e salvar payloads em arquivos de log."
+}

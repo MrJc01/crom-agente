@@ -1,0 +1,5 @@
+{
+  "id": "port_monitor",
+  "name": "Port Monitor",
+  "description": "Verifica se uma porta TCP específica está ativa e aceitando conexões no localhost."
+}

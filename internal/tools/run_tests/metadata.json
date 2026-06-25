@@ -1,0 +1,5 @@
+{
+  "id": "run_tests",
+  "name": "Run Tests",
+  "description": "Descobre e executa rotinas de teste no workspace com base na stack detectada (Go, Node, Rust, Python). Aceita opcionalmente um parâmetro \"command\" para customizar o comando de testes."
+}

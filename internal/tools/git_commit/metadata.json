@@ -1,0 +1,5 @@
+{
+  "id": "git_commit",
+  "name": "git_commit",
+  "description": "Cria um commit Git com a mensagem fornecida. A mensagem deve seguir o padrão Conventional Commits (ex: 'feat(cli): add port monitor tool')."
+}

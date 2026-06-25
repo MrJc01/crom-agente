@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"github.com/crom/crom-agente/internal/config"
+	"github.com/crom/crom-agente/internal/loop/agentic/tooling"
 	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/tools"
-	"github.com/crom/crom-agente/internal/loop/agentic/tooling"
+	"github.com/crom/crom-agente/internal/tools/spawn_subagent"
 )
 
 // SubagentConfig represents the configuration for a dynamic subagent
@@ -123,5 +124,5 @@ func (al *AgenticLoop) RegisterSpawnSubagentTool() {
 		}, nil
 	}
 
-	al.RegisterTool(tools.NewSpawnSubagentTool(spawner))
+	al.RegisterTool(spawn_subagent.NewSpawnSubagentTool(spawner))
 }

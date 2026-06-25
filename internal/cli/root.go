@@ -19,6 +19,8 @@ import (
 	"github.com/crom/crom-agente/internal/permission"
 	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/tools"
+	"github.com/crom/crom-agente/internal/tools/browser"
+	"github.com/crom/crom-agente/internal/tools/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -353,45 +355,28 @@ var runCmd = &cobra.Command{
 		handler := &cliEventHandler{out: cmd.OutOrStdout()}
 		al := core.New(provider, sm, handler, resolved)
 
-		// Registrar ferramentas nativas
-		al.RegisterTool(tools.NewScheduleTimerTool(workspacePath, nil))
-		al.RegisterTool(tools.NewReadFileTool(workspacePath, resolved.WorkspaceJail))
-		al.RegisterTool(tools.NewWriteFileTool(workspacePath, resolved.WorkspaceJail))
-		al.RegisterTool(tools.NewTerminalCommandTool(workspacePath, resolved.BlockedCommands, cmd.OutOrStdout()))
-		al.RegisterTool(tools.NewDiffReplaceTool(workspacePath, resolved.WorkspaceJail))
-		al.RegisterTool(tools.NewRenameFileTool(workspacePath, resolved.WorkspaceJail))
-		al.RegisterTool(tools.NewDeleteFileTool(workspacePath, resolved.WorkspaceJail))
-		al.RegisterTool(tools.NewTreeTool(workspacePath, resolved.WorkspaceJail))
-		al.RegisterTool(tools.NewGrepTool(workspacePath, resolved.WorkspaceJail))
-		al.RegisterTool(tools.NewPortMonitorTool(workspacePath))
-		al.RegisterTool(tools.NewGitStatusTool(workspacePath))
-		al.RegisterTool(tools.NewGitLogTool(workspacePath))
-		al.RegisterTool(tools.NewGitDiffTool(workspacePath))
-		al.RegisterTool(tools.NewGitAddTool(workspacePath))
-		al.RegisterTool(tools.NewGitCommitTool(workspacePath))
-		al.RegisterTool(tools.NewGitBranchTool(workspacePath))
-		al.RegisterTool(tools.NewGitConflictTool(workspacePath, resolved.WorkspaceJail))
-		al.RegisterTool(tools.NewHTTPClientTool(workspacePath))
-		al.RegisterTool(tools.NewScraperTool(workspacePath))
-		browserTool := tools.NewBrowserTool(workspacePath, resolved.BrowserHeadless)
+		// Instanciar e pré-configurar o navegador
+		browserTool := browser.NewBrowserTool(workspacePath, resolved.BrowserHeadless)
 		browserTool.SetOnNavigate(func(url string) {
 			_ = sm.SetBrowserURL(url)
 		})
 		browserTool.SetRestoreURL(func() string {
 			return sm.GetBrowserURL()
 		})
-		al.RegisterTool(browserTool)
-		al.RegisterTool(tools.NewComputerControlTool(workspacePath))
-		al.RegisterTool(tools.NewDatabaseTesterTool(workspacePath))
-		al.RegisterTool(tools.NewProxyTool(workspacePath, resolved.WorkspaceJail))
-		al.RegisterTool(tools.NewRunTestsTool(workspacePath))
 
-		al.RegisterTool(tools.NewStackTranslatorTool(workspacePath, resolved.WorkspaceJail))
-		al.RegisterTool(tools.NewDocGeneratorTool(workspacePath, resolved.WorkspaceJail))
-		al.RegisterTool(tools.NewCodeExplainerTool(workspacePath, resolved.WorkspaceJail))
-		al.RegisterTool(tools.NewMockGeneratorTool(workspacePath, resolved.WorkspaceJail))
-		al.RegisterTool(tools.NewComplexityReducerTool(workspacePath, resolved.WorkspaceJail))
-		al.RegisterTool(tools.NewMemoryLeakScannerTool(workspacePath, resolved.WorkspaceJail))
+		// Instanciar e registrar as ferramentas nativas unificadas via registro centralizado
+		builtinTools := registry.GetBuiltinTools(registry.RegistrationConfig{
+			WorkspacePath:   workspacePath,
+			WorkspaceJail:   resolved.WorkspaceJail,
+			BlockedCommands: resolved.BlockedCommands,
+			TerminalOutput:  cmd.OutOrStdout(),
+			OnSchedule:      nil,
+			BrowserTool:     browserTool,
+		})
+
+		for _, t := range builtinTools {
+			al.RegisterTool(t)
+		}
 
 		// Carrega ferramentas dinâmicas da pasta .crom/tools do workspace
 		dynamicToolsDir := filepath.Join(workspacePath, ".crom", "tools")

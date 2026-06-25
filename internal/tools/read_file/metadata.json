@@ -1,0 +1,5 @@
+{
+  "id": "read_file",
+  "name": "Read File",
+  "description": "Lê o conteúdo de um arquivo de texto dentro do workspace."
+}

@@ -1,4 +1,4 @@
-package tools
+package tools_test
 
 import (
 	"context"
@@ -13,12 +13,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/crom/crom-agente/internal/tools/database_tester"
+	"github.com/crom/crom-agente/internal/tools/http_client"
+	"github.com/crom/crom-agente/internal/tools/proxy"
+	"github.com/crom/crom-agente/internal/tools/scraper"
 	"golang.org/x/net/html"
 )
 
 func TestHTTPClient_NormalAndSSRF(t *testing.T) {
 	ws := t.TempDir()
-	tool := NewHTTPClientTool(ws)
+	tool := http_client.NewHTTPClientTool(ws)
 
 	// 1. Servidor HTTP de teste
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +60,7 @@ func TestHTTPClient_NormalAndSSRF(t *testing.T) {
 
 func TestScraper(t *testing.T) {
 	ws := t.TempDir()
-	tool := NewScraperTool(ws)
+	tool := scraper.NewScraperTool(ws)
 
 	// Validação de SSRF na URL local
 	argsLocal := json.RawMessage(`{"url": "http://localhost:8080"}`)
@@ -92,7 +96,7 @@ func TestScraper(t *testing.T) {
 		t.Fatalf("erro ao parsear html de teste: %v", err)
 	}
 
-	markdown := convertHTMLToMarkdown(doc)
+	markdown := scraper.ConvertHTMLToMarkdown(doc)
 	cleaned := strings.TrimSpace(markdown)
 
 	if !strings.Contains(cleaned, "# Titulo Principal") {
@@ -108,7 +112,7 @@ func TestScraper(t *testing.T) {
 
 func TestDatabaseTester_SQLite(t *testing.T) {
 	ws := t.TempDir()
-	tool := NewDatabaseTesterTool(ws)
+	tool := database_tester.NewDatabaseTesterTool(ws)
 
 	// 1. Testa criando e pingando SQLite real
 	args := json.RawMessage(`{"type": "sqlite", "dsn": "test.db"}`)
@@ -133,7 +137,7 @@ func TestDatabaseTester_SQLite(t *testing.T) {
 
 func TestProxy(t *testing.T) {
 	ws := t.TempDir()
-	tool := NewProxyTool(ws, true)
+	tool := proxy.NewProxyTool(ws, true)
 
 	// 1. Iniciar servidor TCP de destino mock
 	targetListener, err := net.Listen("tcp", "127.0.0.1:0")

@@ -1,0 +1,5 @@
+{
+  "id": "mock_generator",
+  "name": "Mock Generator",
+  "description": "Gera structs mock para interfaces Go e payloads JSON mock baseados em structs ou schemas encontrados."
+}

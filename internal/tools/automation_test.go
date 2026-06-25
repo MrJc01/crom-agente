@@ -1,4 +1,4 @@
-package tools
+package tools_test
 
 import (
 	"context"
@@ -8,6 +8,11 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/crom/crom-agente/internal/tools"
+	"github.com/crom/crom-agente/internal/tools/browser"
+	"github.com/crom/crom-agente/internal/tools/browser_subagent"
+	"github.com/crom/crom-agente/internal/tools/computer_control"
 )
 
 func TestScriptTool_LoadAndExecute(t *testing.T) {
@@ -32,7 +37,7 @@ func TestScriptTool_LoadAndExecute(t *testing.T) {
 	}
 
 	// 1. Carrega scripts do diretório
-	loadedTools, err := LoadScriptsFromDir(tempDir)
+	loadedTools, err := tools.LoadScriptsFromDir(tempDir)
 	if err != nil {
 		t.Fatalf("erro ao carregar scripts: %v", err)
 	}
@@ -69,7 +74,7 @@ func TestScriptTool_LoadAndExecute(t *testing.T) {
 
 func TestBrowserTool_ConstructAndMetadata(t *testing.T) {
 	tempDir := t.TempDir()
-	tool := NewBrowserTool(tempDir, true)
+	tool := browser.NewBrowserTool(tempDir, true)
 
 	if tool.ID() != "browser_action" {
 		t.Errorf("esperava ID 'browser_action', obteve %q", tool.ID())
@@ -96,7 +101,7 @@ func TestBrowserTool_ConstructAndMetadata(t *testing.T) {
 
 func TestComputerControlTool_ConstructAndMetadata(t *testing.T) {
 	tempDir := t.TempDir()
-	tool := NewComputerControlTool(tempDir)
+	tool := computer_control.NewComputerControlTool(tempDir)
 
 	if tool.ID() != "computer_control" {
 		t.Errorf("esperava ID 'computer_control', obteve %q", tool.ID())
@@ -119,7 +124,7 @@ func TestComputerControlTool_ConstructAndMetadata(t *testing.T) {
 
 func TestBrowserTool_ScreenshotPath(t *testing.T) {
 	tempDir := t.TempDir()
-	tool := NewBrowserTool(tempDir, true)
+	tool := browser.NewBrowserTool(tempDir, true)
 	defer tool.Close()
 
 	ctx := context.Background()
@@ -160,7 +165,7 @@ func TestBrowserTool_ScreenshotPath(t *testing.T) {
 
 func TestComputerControlTool_ScreenshotPath(t *testing.T) {
 	tempDir := t.TempDir()
-	tool := NewComputerControlTool(tempDir)
+	tool := computer_control.NewComputerControlTool(tempDir)
 
 	ctx := context.Background()
 	screenshotPath := "subfolder/comp_screenshot_test.png"
@@ -190,7 +195,7 @@ func TestComputerControlTool_ScreenshotPath(t *testing.T) {
 
 func TestBrowserSubagentTool_E2E(t *testing.T) {
 	tempDir := t.TempDir()
-	tool := NewBrowserSubagentTool(tempDir, true)
+	tool := browser_subagent.NewBrowserSubagentTool(tempDir, true)
 	defer tool.Close()
 
 	ctx := context.Background()

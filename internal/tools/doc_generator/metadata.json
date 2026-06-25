@@ -1,0 +1,5 @@
+{
+  "id": "doc_generator",
+  "name": "Doc Generator",
+  "description": "Analisa funções sem documentação em um arquivo Go e gera comentários GoDoc estruturados baseados no corpo da função."
+}

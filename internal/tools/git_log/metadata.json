@@ -1,0 +1,5 @@
+{
+  "id": "git_log",
+  "name": "git_log",
+  "description": "Retorna o histórico de commits do repositório Git em formato estruturado. Aceita parâmetro 'limit' para limitar a quantidade de commits retornados."
+}

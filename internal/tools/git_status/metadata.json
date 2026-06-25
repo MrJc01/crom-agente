@@ -1,0 +1,5 @@
+{
+  "id": "git_status",
+  "name": "git_status",
+  "description": "Retorna o status de arquivos modificados, adicionados e não rastreados no repositório Git do workspace, em formato estruturado."
+}

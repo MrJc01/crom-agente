@@ -1,0 +1,5 @@
+{
+  "id": "delete_file",
+  "name": "Delete File",
+  "description": "Deleta permanentemente um arquivo ou pasta dentro do workspace. Possui travas de segurança para arquivos vitais do repositório."
+}

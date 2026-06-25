@@ -1,0 +1,5 @@
+{
+  "id": "write_file",
+  "name": "Write File",
+  "description": "Escreve ou sobrescreve conteúdo textual em um arquivo."
+}

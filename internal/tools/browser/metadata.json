@@ -1,0 +1,5 @@
+{
+  "id": "browser_action",
+  "name": "Browser Action",
+  "description": "Controla e interage com uma instância de navegador de forma detalhada e granular (navegar, clicar, digitar, obter html, tirar print, scroll)."
+}

@@ -1,0 +1,5 @@
+{
+  "id": "complexity_reducer",
+  "name": "Complexity Reducer",
+  "description": "Calcula a complexidade ciclomática de funções Go e sinaliza aquelas que excedem o limiar configurável (default: 15)."
+}

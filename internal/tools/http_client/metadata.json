@@ -1,0 +1,5 @@
+{
+  "id": "http_client",
+  "name": "HTTP Client",
+  "description": "Executa requisições HTTP GET ou POST seguras para servidores externos. Protege contra SSRF (bloqueia IPs de redes privadas e locais) e possui limites rígidos de timeout e tamanho de resposta."
+}

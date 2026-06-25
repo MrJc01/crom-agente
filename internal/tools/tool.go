@@ -29,3 +29,17 @@ type Tool interface {
 	// Execute executa a ferramenta com os argumentos fornecidos
 	Execute(ctx context.Context, args json.RawMessage) (Result, error)
 }
+
+// ToolMetadata armazena os metadados estáticos carregados a partir do JSON de configuração de cada ferramenta
+type ToolMetadata struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// ParseMetadata analisa os bytes JSON de metadados embutidos e retorna a struct correspondente
+func ParseMetadata(data []byte) (ToolMetadata, error) {
+	var meta ToolMetadata
+	err := json.Unmarshal(data, &meta)
+	return meta, err
+}

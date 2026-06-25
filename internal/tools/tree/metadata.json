@@ -1,0 +1,5 @@
+{
+  "id": "tree",
+  "name": "Tree",
+  "description": "Mapeia a árvore de arquivos e subdiretórios a partir de uma pasta do workspace, ocultando pastas de controle (ex: .git, node_modules)."
+}

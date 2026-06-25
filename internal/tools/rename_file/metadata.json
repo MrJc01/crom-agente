@@ -1,0 +1,5 @@
+{
+  "id": "rename_file",
+  "name": "Rename File",
+  "description": "Renomeia ou move um arquivo ou diretório de um local para outro dentro do workspace."
+}

@@ -15,7 +15,8 @@ import (
 	"github.com/crom/crom-agente/internal/loop/agentic/core"
 	"github.com/crom/crom-agente/internal/permission"
 	"github.com/crom/crom-agente/internal/state"
-	"github.com/crom/crom-agente/internal/tools"
+	"github.com/crom/crom-agente/internal/tools/browser"
+	"github.com/crom/crom-agente/internal/tools/registry"
 )
 
 type Options struct {
@@ -186,11 +187,28 @@ func Start(opts Options) error {
 	handler := &tuiEventHandler{spinner: model.spinner}
 	al := core.New(provider, sm, handler, resolved)
 
-	// Registrar as ferramentas padrão
-	al.RegisterTool(tools.NewScheduleTimerTool(opts.WorkspacePath, nil))
-	al.RegisterTool(tools.NewReadFileTool(opts.WorkspacePath, resolved.WorkspaceJail))
-	al.RegisterTool(tools.NewWriteFileTool(opts.WorkspacePath, resolved.WorkspaceJail))
-	al.RegisterTool(tools.NewTerminalCommandTool(opts.WorkspacePath, resolved.BlockedCommands))
+	// Instanciar e pré-configurar o navegador
+	browserTool := browser.NewBrowserTool(opts.WorkspacePath, resolved.BrowserHeadless)
+	browserTool.SetOnNavigate(func(url string) {
+		_ = sm.SetBrowserURL(url)
+	})
+	browserTool.SetRestoreURL(func() string {
+		return sm.GetBrowserURL()
+	})
+
+	// Instanciar e registrar as ferramentas nativas unificadas via registro centralizado
+	builtinTools := registry.GetBuiltinTools(registry.RegistrationConfig{
+		WorkspacePath:   opts.WorkspacePath,
+		WorkspaceJail:   resolved.WorkspaceJail,
+		BlockedCommands: resolved.BlockedCommands,
+		TerminalOutput:  nil,
+		OnSchedule:      nil,
+		BrowserTool:     browserTool,
+	})
+
+	for _, t := range builtinTools {
+		al.RegisterTool(t)
+	}
 
 	// Configurar permission manager
 	askFunc := func(ctx context.Context, action, target string) (bool, bool) {
