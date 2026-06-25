@@ -59,4 +59,5 @@ tests/11_comprehensive_tests/test_results.json
 
 # Local build and simulations
 build/
-simulations/
+simulations/*
+!simulations/*.py
