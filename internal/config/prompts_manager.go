@@ -118,7 +118,7 @@ func (pm *PromptManager) GetAllEnabled() []PromptTemplate {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 	var enabled []PromptTemplate
-	keys := []string{"agentic_identity", "port_conflict", "planning_requirement", "tool_usage", "file_impact", "screenshot_path"}
+	keys := []string{"agentic_identity"}
 	for _, k := range keys {
 		if p, ok := pm.config.Prompts[k]; ok && p.Enabled {
 			enabled = append(enabled, p)
