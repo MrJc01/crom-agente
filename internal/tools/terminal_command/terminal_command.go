@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/tools"
 )
 
@@ -32,10 +33,12 @@ func init() {
 
 // ActiveProcess holds references to the currently running process under PTY
 type ActiveProcess struct {
-	Cmd      *exec.Cmd
-	PTY      *os.File
-	Cancel   context.CancelFunc
-	DoneChan chan struct{}
+	Cmd       *exec.Cmd
+	PTY       *os.File
+	Cancel    context.CancelFunc
+	DoneChan  chan struct{}
+	Command   string
+	StartedAt time.Time
 }
 
 // SafeBuffer é um buffer circular de bytes thread-safe
@@ -101,6 +104,7 @@ type TerminalCommandTool struct {
 	blockedCommands  []string
 	stream           io.Writer
 	onBackgroundExit func(bgID, cmdStr, logs string, success bool)
+	stateManager     *state.StateManager
 }
 
 // NewTerminalCommandTool cria a ferramenta terminal_command
@@ -127,6 +131,71 @@ func (t *TerminalCommandTool) SetJailDir(dir string) {
 // SetOnBackgroundExit define o callback chamado quando um processo em background finaliza
 func (t *TerminalCommandTool) SetOnBackgroundExit(cb func(bgID, cmdStr, logs string, success bool)) {
 	t.onBackgroundExit = cb
+}
+
+// SetStateManager define o StateManager para telemetria em tempo real
+func (t *TerminalCommandTool) SetStateManager(sm *state.StateManager) {
+	t.stateManager = sm
+}
+
+// GetActiveProcessesTelemetry retorna a telemetria consolidada de processos ativos
+func (t *TerminalCommandTool) GetActiveProcessesTelemetry() []state.ProcessTelemetry {
+	var list []state.ProcessTelemetry
+
+	// Foreground process
+	activeProcMu.Lock()
+	if activeProc != nil && activeProc.Cmd != nil && activeProc.Cmd.Process != nil {
+		pid := activeProc.Cmd.Process.Pid
+		list = append(list, state.ProcessTelemetry{
+			ID:           "fg",
+			Command:      activeProc.Command,
+			PID:          pid,
+			Status:       "running",
+			StartedAt:    activeProc.StartedAt,
+			IsBackground: false,
+		})
+	}
+	activeProcMu.Unlock()
+
+	// Background processes
+	backgroundProcsMu.Lock()
+	for _, p := range backgroundProcs {
+		pid := 0
+		if p.Cmd != nil && p.Cmd.Process != nil {
+			pid = p.Cmd.Process.Pid
+		}
+		status := "running"
+		if p.Cmd.ProcessState != nil && p.Cmd.ProcessState.Exited() {
+			if p.Cmd.ProcessState.Success() {
+				status = "completed"
+			} else {
+				status = "failed"
+			}
+		}
+		list = append(list, state.ProcessTelemetry{
+			ID:           p.ID,
+			Command:      p.Command,
+			PID:          pid,
+			Status:       status,
+			StartedAt:    p.StartedAt,
+			IsBackground: true,
+		})
+	}
+	backgroundProcsMu.Unlock()
+
+	// Evitar retornar nil para serialização JSON
+	if len(list) == 0 {
+		return []state.ProcessTelemetry{}
+	}
+	return list
+}
+
+func (t *TerminalCommandTool) updateStateManagerProcesses() {
+	if t.stateManager == nil {
+		return
+	}
+	procs := t.GetActiveProcessesTelemetry()
+	_ = t.stateManager.UpdateActiveProcesses(procs)
 }
 
 func (t *TerminalCommandTool) ID() string {
@@ -311,6 +380,7 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 		backgroundProcsMu.Lock()
 		backgroundProcs[bgID] = p
 		backgroundProcsMu.Unlock()
+		t.updateStateManagerProcesses()
 
 		var wg sync.WaitGroup
 		wg.Add(2)
@@ -362,6 +432,7 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 			backgroundProcsMu.Lock()
 			delete(backgroundProcs, bgID)
 			backgroundProcsMu.Unlock()
+			t.updateStateManagerProcesses()
 
 			success := false
 			if c.ProcessState != nil {
@@ -424,21 +495,25 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 	procCtx, procCancel := context.WithCancel(ctx)
 
 	p := &ActiveProcess{
-		Cmd:      c,
-		PTY:      f,
-		Cancel:   procCancel,
-		DoneChan: doneChan,
+		Cmd:       c,
+		PTY:       f,
+		Cancel:    procCancel,
+		DoneChan:  doneChan,
+		Command:   command,
+		StartedAt: time.Now(),
 	}
 
 	activeProcMu.Lock()
 	activeProc = p
 	activeProcMu.Unlock()
+	t.updateStateManagerProcesses()
 
 	shouldCleanup := true
 	defer func() {
 		activeProcMu.Lock()
 		activeProc = nil
 		activeProcMu.Unlock()
+		t.updateStateManagerProcesses()
 
 		if shouldCleanup {
 			f.Close()
@@ -490,6 +565,7 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 			backgroundProcsMu.Lock()
 			delete(backgroundProcs, bgID)
 			backgroundProcsMu.Unlock()
+			t.updateStateManagerProcesses()
 			_ = f.Close()
 			_ = c.Wait()
 

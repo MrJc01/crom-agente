@@ -90,6 +90,7 @@ type WorkspaceConfig struct {
 	ConsecutiveFailureRetryLimit *int  `json:"consecutive_failure_retry_limit,omitempty"`
 	ConsecutiveFailureRetryDelay *int  `json:"consecutive_failure_retry_delay,omitempty"`
 	DisablePlanCacheProtection   *bool `json:"disable_plan_cache_protection,omitempty"`
+	DisableTerminalAwareness     *bool `json:"disable_terminal_awareness,omitempty"`
 }
 
 // ResolvedConfig é o resultado do merge de todas as camadas de configuração
@@ -114,6 +115,7 @@ type ResolvedConfig struct {
 	ConsecutiveFailureRetryLimit int
 	ConsecutiveFailureRetryDelay int
 	DisablePlanCacheProtection   bool
+	DisableTerminalAwareness     bool
 }
 
 // CLIFlags contém flags passados via linha de comando (prioridade máxima)
@@ -130,6 +132,7 @@ type CLIFlags struct {
 	ConsecutiveFailureRetryLimit *int
 	ConsecutiveFailureRetryDelay *int
 	DisablePlanCacheProtection   *bool
+	DisableTerminalAwareness     *bool
 }
 
 // --- Defaults ---
@@ -393,6 +396,7 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 		ConsecutiveFailureRetryLimit: global.ConsecutiveFailureRetryLimitDefault,
 		ConsecutiveFailureRetryDelay: global.ConsecutiveFailureRetryDelayDefault,
 		DisablePlanCacheProtection:   global.DisablePlanCacheProtectionDefault,
+		DisableTerminalAwareness:     false,
 	}
 
 	// Camada 2: Workspace overrides
@@ -444,6 +448,9 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 		if workspace.DisablePlanCacheProtection != nil {
 			resolved.DisablePlanCacheProtection = *workspace.DisablePlanCacheProtection
 		}
+		if workspace.DisableTerminalAwareness != nil {
+			resolved.DisableTerminalAwareness = *workspace.DisableTerminalAwareness
+		}
 	}
 
 	// Camada 3: CLI Flags (prioridade máxima)
@@ -483,6 +490,8 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 	if flags.DisablePlanCacheProtection != nil {
 		resolved.DisablePlanCacheProtection = *flags.DisablePlanCacheProtection
 	}
-
+	if flags.DisableTerminalAwareness != nil {
+		resolved.DisableTerminalAwareness = *flags.DisableTerminalAwareness
+	}
 	return resolved
 }

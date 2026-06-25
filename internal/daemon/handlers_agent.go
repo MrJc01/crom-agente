@@ -21,6 +21,7 @@ import (
 
 	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/orchestrator"
+	"github.com/gorilla/websocket"
 )
 
 func (s *APIServer) handleNetwork(w http.ResponseWriter, r *http.Request) {
@@ -1612,4 +1613,108 @@ func cleanHTMLIntegrity(html string) string {
 	html = integrityRegex.ReplaceAllString(html, "")
 	html = crossoriginRegex.ReplaceAllString(html, "")
 	return html
+}
+
+func (s *APIServer) handleAgentTelemetry(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if !s.authorize(w, r) {
+		return
+	}
+
+	workspace := r.URL.Query().Get("workspace")
+	if workspace == "" {
+		http.Error(w, "parametro 'workspace' obrigatorio", http.StatusBadRequest)
+		return
+	}
+
+	telemetry, err := s.manager.GetAgentTelemetry(workspace)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(telemetry)
+}
+
+func (s *APIServer) handleAgentTelemetryWS(w http.ResponseWriter, r *http.Request) {
+	if !s.authorize(w, r) {
+		log.Printf("[APIServer Telemetry WS] Rejeitando conexao por falha na autorizacao")
+		return
+	}
+
+	workspace := r.URL.Query().Get("workspace")
+	if workspace == "" {
+		http.Error(w, "parametro 'workspace' obrigatorio", http.StatusBadRequest)
+		return
+	}
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("[APIServer Telemetry WS] Erro ao realizar upgrade: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	// Envia snapshot inicial
+	telemetry, err := s.manager.GetAgentTelemetry(workspace)
+	if err == nil {
+		_ = conn.WriteJSON(telemetry)
+	}
+
+	eventCh := make(chan IPCResponse, 100)
+	s.router.Register(workspace, eventCh)
+	defer s.router.Unregister(workspace, eventCh)
+
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	closeChan := make(chan struct{})
+
+	// Read loop (apenas para detectar desconexao ou mensagens do cliente)
+	go func() {
+		defer close(closeChan)
+		for {
+			_, _, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	var lastJSON string
+
+	sendUpdate := func() {
+		telemetry, err := s.manager.GetAgentTelemetry(workspace)
+		if err != nil {
+			return
+		}
+		data, err := json.Marshal(telemetry)
+		if err != nil {
+			return
+		}
+		currentJSON := string(data)
+		if currentJSON != lastJSON {
+			lastJSON = currentJSON
+			_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			_ = conn.WriteMessage(websocket.TextMessage, data)
+		}
+	}
+
+	for {
+		select {
+		case <-eventCh:
+			sendUpdate()
+		case <-ticker.C:
+			sendUpdate()
+		case <-closeChan:
+			return
+		}
+	}
 }

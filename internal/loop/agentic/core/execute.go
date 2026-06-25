@@ -272,6 +272,42 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			})
 		}
 
+		// Injetar ciência dos terminais e processos ativos
+		if al.config == nil || !al.config.DisableTerminalAwareness {
+			if al.stateManager != nil {
+				st := al.stateManager.GetState()
+				var termInfo []string
+				if len(st.ActiveTerminals) > 0 {
+					termInfo = append(termInfo, "--- Sessões de Terminal Interativo Abertas ---")
+					for _, term := range st.ActiveTerminals {
+						termInfo = append(termInfo, fmt.Sprintf("- ID: %s | PID: %d | Nome: %s | Fechado: %t", term.ID, term.PID, term.Name, term.Closed))
+					}
+				}
+				if len(st.ActiveProcesses) > 0 {
+					termInfo = append(termInfo, "--- Processos de Shell Foreground/Background Ativos ---")
+					for _, proc := range st.ActiveProcesses {
+						termInfo = append(termInfo, fmt.Sprintf("- ID: %s | Comando: %q | PID: %d | Status: %s | Background: %t", proc.ID, proc.Command, proc.PID, proc.Status, proc.IsBackground))
+					}
+				}
+				if len(termInfo) > 0 {
+					awarenessPrompt := "=== CIÊNCIA DOS TERMINAIS E PROCESSOS DO SISTEMA ===\n" +
+						"Você tem ciência dos seguintes processos e terminais ativos no seu ambiente:\n" +
+						strings.Join(termInfo, "\n") + "\n" +
+						"IMPORTANTE: Não inicie ou abra novos processos/servidores se o ID ou PID correspondente já estiver ativo."
+					
+					if !copied {
+						runMessages = make([]llm.Message, len(messages))
+						copy(runMessages, messages)
+						copied = true
+					}
+					runMessages = append(runMessages, llm.Message{
+						Role:    "system",
+						Content: awarenessPrompt,
+					})
+				}
+			}
+		}
+
 		// Injetar diretrizes do ModoCognitivo atual de forma dinâmica
 		if al.promptManager != nil {
 			if phasePrompt, ok := al.promptManager.GetPrompt("phase_" + modo); ok && phasePrompt.Enabled {
@@ -567,6 +603,8 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 
 			// Se o plano não estiver vazio e houver tarefas pendentes/em andamento,
 			// avisa o agente para continuar executando até terminar.
+			// PORÉM, se a resposta for conversacional (saudação, agradecimento, etc.)
+			// sem tool calls, limpa o plano e finaliza normalmente para evitar loop infinito.
 			hasPendingTasks := false
 			if al.stateManager != nil {
 				plan := al.stateManager.GetPlan()
@@ -577,19 +615,26 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 					}
 				}
 				if hasPendingTasks {
-					warning := loop.GeneratePendingTasksWarning(plan)
-					al.handler.OnMessage("system", "Aviso de tarefas pendentes no plano. Solicitando continuação.")
-					messages = append(messages, llm.Message{
-						Role:    "system",
-						Content: warning,
-					})
-					saveMsgs(messages)
-					lastIterFailed = false
-					lastToolWasValidation = false
-					if al.stateManager != nil {
-						_ = al.stateManager.SaveIterationLog(i+1, iterLog)
+					// Se a resposta é conversacional (sem tool calls e parece uma saudação/conversa),
+					// o plano foi gerado desnecessariamente. Limpa e finaliza.
+					if len(msg.ToolCalls) == 0 && isConversationalResponse(msg.Content, intent) {
+						_ = al.stateManager.SetPlan(nil)
+						al.handler.OnMessage("system", "Resposta conversacional detectada. Plano limpo automaticamente.")
+					} else {
+						warning := loop.GeneratePendingTasksWarning(plan)
+						al.handler.OnMessage("system", "Aviso de tarefas pendentes no plano. Solicitando continuação.")
+						messages = append(messages, llm.Message{
+							Role:    "system",
+							Content: warning,
+						})
+						saveMsgs(messages)
+						lastIterFailed = false
+						lastToolWasValidation = false
+						if al.stateManager != nil {
+							_ = al.stateManager.SaveIterationLog(i+1, iterLog)
+						}
+						continue
 					}
-					continue
 				}
 			}
 
@@ -1186,6 +1231,52 @@ func isSimpleIntent(intent string) bool {
 	return false
 }
 
+// isConversationalResponse detecta se a resposta do modelo é uma conversa simples
+// (saudação, agradecimento, etc.) que não deveria ter gerado um plano de tarefas.
+// Isso evita que o loop de auto-continuação rode infinitamente quando o modelo
+// gera checkboxes desnecessárias para respostas conversacionais.
+func isConversationalResponse(response string, originalIntent string) bool {
+	// Se o intent original era simples, qualquer resposta sem tool calls é conversacional
+	if isSimpleIntent(originalIntent) {
+		return true
+	}
+
+	// Verificar se a resposta é curta e parece conversacional
+	clean := strings.TrimSpace(response)
+	// Remove checkboxes markdown para avaliar o conteúdo real
+	lines := strings.Split(clean, "\n")
+	var contentLines []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		// Pula linhas de checkbox
+		if strings.HasPrefix(trimmed, "- [ ]") || strings.HasPrefix(trimmed, "- [x]") || strings.HasPrefix(trimmed, "- [/]") {
+			continue
+		}
+		if trimmed != "" {
+			contentLines = append(contentLines, trimmed)
+		}
+	}
+
+	// Se o conteúdo real (sem checkboxes) é curto e tem padrões de conversa
+	realContent := strings.Join(contentLines, " ")
+	if len(contentLines) <= 3 && len(realContent) < 200 {
+		conversationalPatterns := []string{
+			"como posso ajudar", "como posso te ajudar", "em que posso ajudar",
+			"olá", "oi!", "tudo bem", "como vai", "prazer",
+			"hello", "hi!", "how can i help", "how may i help",
+			"obrigado", "de nada", "até logo",
+		}
+		lowerContent := strings.ToLower(realContent)
+		for _, p := range conversationalPatterns {
+			if strings.Contains(lowerContent, p) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 func (al *AgenticLoop) generateSimpleResponse(ctx context.Context, intent string) (string, error) {
 	clean := strings.TrimSpace(strings.ToLower(intent))
 
@@ -1198,8 +1289,8 @@ func (al *AgenticLoop) generateSimpleResponse(ctx context.Context, intent string
 		return entry.response, nil
 	}
 
-	// 10.4. Definir timeout curto específico de 5 segundos
-	fastCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	// 10.4. Definir timeout para resposta rápida (15s para acomodar latência de gateways remotos + retries)
+	fastCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
 	prompt := []llm.Message{

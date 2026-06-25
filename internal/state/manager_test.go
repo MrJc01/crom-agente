@@ -350,4 +350,74 @@ func TestStateManager_Metrics(t *testing.T) {
 	}
 }
 
+func TestStateManager_Telemetry(t *testing.T) {
+	dir := t.TempDir()
+	sm := NewStateManager(dir)
+	if err := sm.LoadState(); err != nil {
+		t.Fatalf("LoadState falhou: %v", err)
+	}
+
+	// Testa SetCurrentStep
+	if err := sm.SetCurrentStep("Executando teste"); err != nil {
+		t.Fatalf("SetCurrentStep falhou: %v", err)
+	}
+	if err := sm.SetCurrentStepDurationMs(120); err != nil {
+		t.Fatalf("SetCurrentStepDurationMs falhou: %v", err)
+	}
+
+	terms := []TerminalTelemetry{
+		{ID: "term1", PID: 1234, Name: "bash", Closed: false},
+	}
+	if err := sm.UpdateActiveTerminals(terms); err != nil {
+		t.Fatalf("UpdateActiveTerminals falhou: %v", err)
+	}
+
+	procs := []ProcessTelemetry{
+		{ID: "bg-1", Command: "make build --api-key=sk-123456789012345678901234567890123456789012345678", PID: 4567, Status: "running", IsBackground: true},
+	}
+	if err := sm.UpdateActiveProcesses(procs); err != nil {
+		t.Fatalf("UpdateActiveProcesses falhou: %v", err)
+	}
+
+	// Valida no manager 2
+	sm2 := NewStateManager(dir)
+	if err := sm2.LoadState(); err != nil {
+		t.Fatalf("LoadState falhou: %v", err)
+	}
+
+	s := sm2.GetState()
+	if s.CurrentStep != "Executando teste" {
+		t.Errorf("esperava CurrentStep='Executando teste', obteve '%s'", s.CurrentStep)
+	}
+	if s.CurrentStepDurationMs != 120 {
+		t.Errorf("esperava CurrentStepDurationMs=120, obteve %d", s.CurrentStepDurationMs)
+	}
+	if len(s.ActiveTerminals) != 1 || s.ActiveTerminals[0].ID != "term1" {
+		t.Errorf("ActiveTerminals incorretos: %+v", s.ActiveTerminals)
+	}
+	if len(s.ActiveProcesses) != 1 || s.ActiveProcesses[0].ID != "bg-1" {
+		t.Errorf("ActiveProcesses incorretos: %+v", s.ActiveProcesses)
+	}
+	// A senha/segredo no comando deve ser redigida!
+	if s.ActiveProcesses[0].Command == "make build --api-key=sk-123456789012345678901234567890123456789012345678" {
+		t.Errorf("esperava que o comando do processo estivesse redigido, obteve '%s'", s.ActiveProcesses[0].Command)
+	}
+
+	// Testa limpeza
+	if err := sm.ClearActiveTerminals(); err != nil {
+		t.Fatalf("ClearActiveTerminals falhou: %v", err)
+	}
+	if err := sm.ClearActiveProcesses(); err != nil {
+		t.Fatalf("ClearActiveProcesses falhou: %v", err)
+	}
+
+	s2 := sm.GetState()
+	if len(s2.ActiveTerminals) != 0 {
+		t.Errorf("ActiveTerminals deveriam estar vazios, obteve %+v", s2.ActiveTerminals)
+	}
+	if len(s2.ActiveProcesses) != 0 {
+		t.Errorf("ActiveProcesses deveriam estar vazios, obteve %+v", s2.ActiveProcesses)
+	}
+}
+
 

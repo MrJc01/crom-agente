@@ -185,6 +185,8 @@ func (s *APIServer) Start(port int) error {
 	mux.HandleFunc("/api/mcp/status", s.handleMCPStatus)
 	mux.HandleFunc("/api/browser/proxy", s.handleBrowserProxy)
 	mux.HandleFunc("/api/reveal", s.handleReveal)
+	mux.HandleFunc("/api/agent/telemetry", s.handleAgentTelemetry)
+	mux.HandleFunc("/api/agent/telemetry/ws", s.handleAgentTelemetryWS)
 
 	// Load and register existing jobs on start
 	tasks, err := s.loadTasks()

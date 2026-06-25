@@ -70,6 +70,9 @@ func GetBuiltinTools(cfg RegistrationConfig) []tools.Tool {
 	if cfg.OnBackgroundExit != nil {
 		termTool.SetOnBackgroundExit(cfg.OnBackgroundExit)
 	}
+	if cfg.StateManager != nil {
+		termTool.SetStateManager(cfg.StateManager)
+	}
 	list = append(list, termTool)
 
 	// 4. Edição, renomeação, deleção e navegação de arquivos

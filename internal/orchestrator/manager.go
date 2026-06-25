@@ -633,3 +633,100 @@ func (m *MultiAgentManager) InjectUserMessage(workspaceName, content string) err
 	agent.Loop.QueueUserMessage(content)
 	return nil
 }
+
+// BrowserTelemetry representa o estado do navegador na telemetria
+type BrowserTelemetry struct {
+	Active bool   `json:"active"`
+	URL    string `json:"url"`
+}
+
+// AgentTelemetry encapsula a telemetria consolidada de um agente
+type AgentTelemetry struct {
+	WorkspaceName string             `json:"workspace_name"`
+	IsRunning     bool               `json:"is_running"`
+	AgentState    state.AgentState   `json:"agent_state"`
+	Browser       BrowserTelemetry   `json:"browser"`
+	MCPServers    []MCPServerStatus  `json:"mcp_servers"`
+}
+
+// GetAgentTelemetry consolida a telemetria do agente de um determinado workspace
+func (m *MultiAgentManager) GetAgentTelemetry(workspaceName string) (*AgentTelemetry, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	wsName := m.ResolveWorkspaceName(workspaceName)
+
+	// Localizar o workspace cadastrado para saber o caminho físico
+	workspaces, err := LoadWorkspaces()
+	if err != nil {
+		return nil, fmt.Errorf("erro ao carregar workspaces: %w", err)
+	}
+
+	var target *Workspace
+	for i := range workspaces {
+		if workspaces[i].Name == wsName {
+			target = &workspaces[i]
+			break
+		}
+	}
+
+	// Se não achou por nome, talvez o workspaceName passado seja o caminho do diretório
+	if target == nil {
+		for i := range workspaces {
+			if workspaces[i].Path == workspaceName {
+				target = &workspaces[i]
+				wsName = workspaces[i].Name
+				break
+			}
+		}
+	}
+
+	if target == nil {
+		return nil, fmt.Errorf("workspace '%s' não encontrado", workspaceName)
+	}
+
+	telemetry := &AgentTelemetry{
+		WorkspaceName: wsName,
+		MCPServers:    []MCPServerStatus{},
+	}
+
+	// 1. Verificar se está rodando no momento
+	agent, running := m.runningAgents[wsName]
+	telemetry.IsRunning = running
+
+	// 2. Obter estado do agente
+	if running && agent.Loop != nil {
+		sm := agent.Loop.GetStateManager()
+		if sm != nil {
+			telemetry.AgentState = sm.GetState()
+		}
+	} else {
+		// Se não está rodando, tenta carregar o último estado salvo
+		storageDir := filepath.Join(target.Path, ".crom")
+		sm := state.NewStateManager(storageDir)
+		if err := sm.LoadState(); err == nil {
+			telemetry.AgentState = sm.GetState()
+		}
+	}
+
+	// 3. Obter status do navegador
+	if b, ok := m.activeBrowsers[wsName]; ok {
+		telemetry.Browser.Active = true
+		_, url, err := b.GetCurrentPageContent()
+		if err == nil {
+			telemetry.Browser.URL = url
+		} else {
+			telemetry.Browser.URL = telemetry.AgentState.BrowserURL
+		}
+	} else {
+		telemetry.Browser.Active = false
+		telemetry.Browser.URL = telemetry.AgentState.BrowserURL
+	}
+
+	// 4. Obter status dos servidores MCP
+	if m.MCPManager != nil {
+		telemetry.MCPServers = m.MCPManager.GetServerStatus()
+	}
+
+	return telemetry, nil
+}

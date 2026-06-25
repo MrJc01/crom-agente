@@ -57,6 +57,11 @@ func (al *AgenticLoop) QueueUserMessage(content string) {
 	al.pendingUserMessages = append(al.pendingUserMessages, content)
 }
 
+// GetStateManager retorna o gerenciador de estado associado ao loop
+func (al *AgenticLoop) GetStateManager() *state.StateManager {
+	return al.stateManager
+}
+
 func (al *AgenticLoop) SetPermissionManager(pm interface {
 	Authorize(ctx context.Context, action, target string) (bool, error)
 }) {

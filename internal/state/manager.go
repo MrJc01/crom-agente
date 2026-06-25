@@ -47,6 +47,25 @@ type ToolTrace struct {
 	DurationMs int64  `json:"duration_ms"`
 }
 
+// TerminalTelemetry representa o estado de uma sessão de terminal ativa
+type TerminalTelemetry struct {
+	ID        string    `json:"id"`
+	PID       int       `json:"pid"`
+	Name      string    `json:"name"`
+	Closed    bool      `json:"closed"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ProcessTelemetry representa um processo em execução em foreground ou background
+type ProcessTelemetry struct {
+	ID           string    `json:"id"`
+	Command      string    `json:"command"`
+	PID          int       `json:"pid"`
+	Status       string    `json:"status"` // running, completed, failed, killed
+	StartedAt    time.Time `json:"started_at"`
+	IsBackground bool      `json:"is_background"`
+}
+
 // IterationLog contém todos os dados granulares de uma iteração do LLM
 type IterationLog struct {
 	Iteration         int           `json:"iteration"`
@@ -69,28 +88,32 @@ type TaskItem struct {
 
 // AgentState representa o estado completo e persistente de um agente
 type AgentState struct {
-	ID                string            `json:"id,omitempty"`
-	Name              string            `json:"name,omitempty"`
-	Status            string            `json:"status,omitempty"` // Mapeia para o status da UI do frontend (compatibilidade)
-	DiretorioAtual    string            `json:"diretorio_atual"`
-	ArquivosFocados   []string          `json:"arquivos_focados"`
-	TarefaEmAndamento string            `json:"tarefa_em_andamento"`
-	UltimoStatus      string            `json:"ultimo_status"` // Mapeia para StatusOperacional (compatibilidade)
-	StatusOperacional string            `json:"status_operacional"` // idle, thinking, reading, etc.
-	ModoCognitivo     string            `json:"modo_cognitivo"`     // planning, executing, etc.
-	LogsRelevantes    []string          `json:"logs_relevantes"`
-	TokensGastos      int               `json:"tokens_gastos"`
-	TotalTurnos       int               `json:"total_turnos"`
-	Timestamp         time.Time         `json:"timestamp"`
-	Messages          []llm.Message     `json:"messages,omitempty"`
-	Plan              []TaskItem        `json:"plan,omitempty"`
-	BrowserURL        string            `json:"browser_url,omitempty"`
-	SubagentsContext        map[string]string `json:"subagents_context,omitempty"`
-	FilesCreated            int               `json:"files_created"`
-	FilesValidated          int               `json:"files_validated"`
-	ToolCallsEmitted        int               `json:"tool_calls_emitted"`
-	ToolCallsFromTextParse  int               `json:"tool_calls_from_text_parse"`
-	CircuitBreakerTriggered bool              `json:"circuit_breaker_triggered"`
+	ID                      string              `json:"id,omitempty"`
+	Name                    string              `json:"name,omitempty"`
+	Status                  string              `json:"status,omitempty"` // Mapeia para o status da UI do frontend (compatibilidade)
+	DiretorioAtual          string              `json:"diretorio_atual"`
+	ArquivosFocados         []string            `json:"arquivos_focados"`
+	TarefaEmAndamento       string              `json:"tarefa_em_andamento"`
+	UltimoStatus            string              `json:"ultimo_status"` // Mapeia para StatusOperacional (compatibilidade)
+	StatusOperacional       string              `json:"status_operacional"` // idle, thinking, reading, etc.
+	ModoCognitivo           string              `json:"modo_cognitivo"`     // planning, executing, etc.
+	LogsRelevantes          []string            `json:"logs_relevantes"`
+	TokensGastos            int                 `json:"tokens_gastos"`
+	TotalTurnos             int                 `json:"total_turnos"`
+	Timestamp               time.Time           `json:"timestamp"`
+	Messages                []llm.Message       `json:"messages,omitempty"`
+	Plan                    []TaskItem          `json:"plan,omitempty"`
+	BrowserURL              string              `json:"browser_url,omitempty"`
+	SubagentsContext        map[string]string   `json:"subagents_context,omitempty"`
+	FilesCreated            int                 `json:"files_created"`
+	FilesValidated          int                 `json:"files_validated"`
+	ToolCallsEmitted        int                 `json:"tool_calls_emitted"`
+	ToolCallsFromTextParse  int                 `json:"tool_calls_from_text_parse"`
+	CircuitBreakerTriggered bool                `json:"circuit_breaker_triggered"`
+	ActiveTerminals         []TerminalTelemetry `json:"active_terminals"`
+	ActiveProcesses         []ProcessTelemetry  `json:"active_processes"`
+	CurrentStep             string              `json:"current_step"`
+	CurrentStepDurationMs   int64               `json:"current_step_duration_ms"`
 }
 
 // StateManager gerencia a leitura, escrita e acesso concorrente ao estado do agente
@@ -122,6 +145,8 @@ func NewSessionStateManager(storagePath, sessionName string) *StateManager {
 			ArquivosFocados:   []string{},
 			LogsRelevantes:    []string{},
 			Timestamp:         time.Now(),
+			ActiveTerminals:   []TerminalTelemetry{},
+			ActiveProcesses:   []ProcessTelemetry{},
 		},
 	}
 }
@@ -136,6 +161,8 @@ func newDefaultState() *AgentState {
 		ArquivosFocados:   []string{},
 		LogsRelevantes:    []string{},
 		Timestamp:         time.Now(),
+		ActiveTerminals:   []TerminalTelemetry{},
+		ActiveProcesses:   []ProcessTelemetry{},
 	}
 }
 
@@ -171,6 +198,12 @@ func (sm *StateManager) LoadState() error {
 	if sm.state.ModoCognitivo == "" {
 		sm.state.ModoCognitivo = ModoPlanning
 	}
+	if sm.state.ActiveTerminals == nil {
+		sm.state.ActiveTerminals = []TerminalTelemetry{}
+	}
+	if sm.state.ActiveProcesses == nil {
+		sm.state.ActiveProcesses = []ProcessTelemetry{}
+	}
 	// Garante consistência de campos legados
 	sm.state.UltimoStatus = sm.state.StatusOperacional
 	sm.state.Status = sm.state.StatusOperacional
@@ -196,6 +229,9 @@ func (sm *StateManager) saveStateLocked() error {
 	}
 	for i, m := range sm.state.Messages {
 		sm.state.Messages[i].Content = security.Redact(m.Content)
+	}
+	for i, p := range sm.state.ActiveProcesses {
+		sm.state.ActiveProcesses[i].Command = security.Redact(p.Command)
 	}
 
 	data, err := json.MarshalIndent(sm.state, "", "  ")
@@ -467,6 +503,62 @@ func (sm *StateManager) SetCircuitBreakerTriggered(triggered bool) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	sm.state.CircuitBreakerTriggered = triggered
+	return sm.saveStateLocked()
+}
+
+// UpdateActiveTerminals atualiza a lista de terminais interativos ativos e persiste o estado
+func (sm *StateManager) UpdateActiveTerminals(terminals []TerminalTelemetry) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	if terminals == nil {
+		sm.state.ActiveTerminals = []TerminalTelemetry{}
+	} else {
+		sm.state.ActiveTerminals = terminals
+	}
+	return sm.saveStateLocked()
+}
+
+// UpdateActiveProcesses atualiza a lista de processos ativos (foreground/background) e persiste o estado
+func (sm *StateManager) UpdateActiveProcesses(processes []ProcessTelemetry) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	if processes == nil {
+		sm.state.ActiveProcesses = []ProcessTelemetry{}
+	} else {
+		sm.state.ActiveProcesses = processes
+	}
+	return sm.saveStateLocked()
+}
+
+// SetCurrentStep define o passo/ação detalhado atual que o agente está fazendo e persiste
+func (sm *StateManager) SetCurrentStep(step string) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.state.CurrentStep = step
+	return sm.saveStateLocked()
+}
+
+// SetCurrentStepDurationMs define a duração em milissegundos da execução da ferramenta atual e persiste
+func (sm *StateManager) SetCurrentStepDurationMs(durationMs int64) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.state.CurrentStepDurationMs = durationMs
+	return sm.saveStateLocked()
+}
+
+// ClearActiveTerminals limpa a lista de terminais e persiste
+func (sm *StateManager) ClearActiveTerminals() error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.state.ActiveTerminals = []TerminalTelemetry{}
+	return sm.saveStateLocked()
+}
+
+// ClearActiveProcesses limpa a lista de processos ativos e persiste
+func (sm *StateManager) ClearActiveProcesses() error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.state.ActiveProcesses = []ProcessTelemetry{}
 	return sm.saveStateLocked()
 }
 
