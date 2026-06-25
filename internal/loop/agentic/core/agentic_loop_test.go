@@ -764,7 +764,7 @@ func TestAgenticLoop_CognitiveTransitions(t *testing.T) {
 
 	sm := state.NewStateManager(t.TempDir())
 	// Pré-popular o plano para que não comece em "planning"
-	_ = sm.SetPlan([]state.TaskItem{{Title: "Tarefa 1", Status: "pending"}})
+	_ = sm.SetPlan([]state.TaskItem{{Title: "Tarefa 1", Status: "completed"}})
 
 	handler := &testEventHandler{}
 	al := New(provider, sm, handler)
@@ -936,6 +936,83 @@ func TestAgenticLoop_ConsecutiveFailuresRetryLimit(t *testing.T) {
 	}
 	if retryCount != 2 {
 		t.Fatalf("esperado exatamente 2 eventos de retry, obteve %d", retryCount)
+	}
+}
+
+func TestDetectHallucinatedToolCalls(t *testing.T) {
+	toolsMap := map[string]tools.Tool{
+		"write_file":       &mockTool{id: "write_file"},
+		"terminal_command": &mockTool{id: "terminal_command"},
+	}
+
+	tests := []struct {
+		content  string
+		expected []string
+	}{
+		{"", nil},
+		{"vou usar write_file(foo, bar)", []string{"write_file"}},
+		{"chame terminal_command {cmd: ls}", []string{"terminal_command"}},
+		{"tool_call: write_file", []string{"write_file"}},
+		{"nada de especial aqui", nil},
+	}
+
+	for _, tc := range tests {
+		res := detectHallucinatedToolCalls(tc.content, toolsMap)
+		if len(res) != len(tc.expected) {
+			t.Errorf("para %q esperado %v, obteve %v", tc.content, tc.expected, res)
+			continue
+		}
+		for i, v := range res {
+			if v != tc.expected[i] {
+				t.Errorf("para %q esperado %v, obteve %v", tc.content, tc.expected, res)
+			}
+		}
+	}
+}
+
+func TestAgenticLoop_HallucinatedToolCallFormat(t *testing.T) {
+	// Primeiro MockResponse emite menção de tool call alucinada (formato texto),
+	// O segundo MockResponse emite uma resposta válida ou concluindo a execução.
+	responses := []providers.MockResponse{
+		providers.MockTextResponse("Eu gostaria de usar write_file(arquivo.txt, conteúdo).", 10),
+		providers.MockTextResponse("Tudo bem, a tarefa foi concluída.", 10),
+	}
+
+	provider := providers.NewMockProvider(responses...)
+	sm := state.NewStateManager(t.TempDir())
+	handler := &testEventHandler{}
+	cfg := &config.ResolvedConfig{
+		MaxIterations:             5,
+		MaxConsecutiveFail:        3,
+		DisablePromptOptimization: true,
+	}
+
+	al := New(provider, sm, handler, cfg)
+	al.RegisterTool(&mockTool{
+		id:          "write_file",
+		description: "Escreve em um arquivo",
+		executeFunc: func(ctx context.Context, args json.RawMessage) (tools.Result, error) {
+			return tools.Result{Success: true}, nil
+		},
+	})
+
+	err := al.Execute(context.Background(), "Escreva oi")
+	if err != nil {
+		t.Fatalf("erro inesperado no loop: %v", err)
+	}
+
+	// Verifica se a mensagem de correção do sistema foi gerada
+	msgs := sm.GetMessages()
+	hasWarning := false
+	for _, m := range msgs {
+		if m.Role == "system" && strings.Contains(m.Content, "[INVALID_TOOL_CALL_FORMAT]") {
+			hasWarning = true
+			break
+		}
+	}
+
+	if !hasWarning {
+		t.Fatal("esperava que a mensagem do sistema contivesse o aviso de formato de chamada de ferramenta inválido")
 	}
 }
 
