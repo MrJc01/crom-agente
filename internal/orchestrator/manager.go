@@ -169,9 +169,9 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 	}
 
 	var target *Workspace
-	for _, ws := range workspaces {
-		if ws.Name == workspaceName || ws.Path == workspaceName {
-			target = &ws
+	for i := range workspaces {
+		if workspaces[i].Name == workspaceName || workspaces[i].Path == workspaceName {
+			target = &workspaces[i]
 			break
 		}
 	}
@@ -184,16 +184,22 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 				name = "workspace-" + filepath.Base(filepath.Clean(workspaceName))
 			}
 			// Adiciona o workspace no registro
-			_ = m.AddWorkspace(name, workspaceName)
+			if err := m.AddWorkspace(name, workspaceName); err != nil {
+				return fmt.Errorf("falha ao auto-registrar workspace '%s': %w", workspaceName, err)
+			}
 			// Recarrega a lista
 			if updatedList, errLoad := LoadWorkspaces(); errLoad == nil {
-				for _, ws := range updatedList {
-					if ws.Path == workspaceName || ws.Name == name {
-						target = &ws
+				for i := range updatedList {
+					if updatedList[i].Path == workspaceName || updatedList[i].Name == name {
+						target = &updatedList[i]
 						break
 					}
 				}
+			} else {
+				return fmt.Errorf("falha ao recarregar workspaces após registro: %w", errLoad)
 			}
+		} else {
+			return fmt.Errorf("caminho do workspace não existe ou não é um diretório: %s", workspaceName)
 		}
 	}
 	if target == nil {
