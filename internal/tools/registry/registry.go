@@ -2,6 +2,7 @@ package registry
 
 import (
 	"io"
+	"os"
 
 	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/tools"
@@ -77,10 +78,11 @@ type RegistrationConfig struct {
 	OnBackgroundExit func(bgID, cmdStr, logs string, success bool)
 
 	// Instâncias pré-configuradas e opcionais de navegadores
-	BrowserTool  tools.Tool
-	SubagentTool tools.Tool
-	StateManager *state.StateManager
-	LLMProvider  llm.Provider
+	BrowserTool        tools.Tool
+	SubagentTool       tools.Tool
+	StateManager       *state.StateManager
+	LLMProvider        llm.Provider
+	DisableInteraction bool
 }
 
 // GetBuiltinTools retorna a lista completa de ferramentas nativas instanciadas e prontas para registro
@@ -89,7 +91,9 @@ func GetBuiltinTools(cfg RegistrationConfig) []tools.Tool {
 
 	// 1. Ferramenta de agendamento e interacao
 	list = append(list, schedule_timer.NewScheduleTimerTool(cfg.WorkspacePath, cfg.OnSchedule))
-	list = append(list, ask_user.NewAskUserTool(cfg.WorkspacePath))
+	if !cfg.DisableInteraction && os.Getenv("CROM_DISABLE_INTERACTION") != "true" && os.Getenv("CROM_DISABLE_INTERACTION") != "1" {
+		list = append(list, ask_user.NewAskUserTool(cfg.WorkspacePath))
+	}
 
 	// 2. Leitura e Escrita
 	list = append(list, read_file.NewReadFileTool(cfg.WorkspacePath, cfg.WorkspaceJail))

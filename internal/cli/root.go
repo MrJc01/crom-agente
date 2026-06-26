@@ -46,6 +46,7 @@ var cliRetry bool
 var cliRetryLimit int
 var cliRetryDelay int
 var cliReadOnly bool
+var cliDisableInteraction bool
 
 // rootCmd é o comando raiz do crom-agente
 var rootCmd = &cobra.Command{
@@ -412,13 +413,14 @@ var runCmd = &cobra.Command{
 
 		// Instanciar e registrar as ferramentas nativas unificadas via registro centralizado
 		builtinTools := registry.GetBuiltinTools(registry.RegistrationConfig{
-			WorkspacePath:   workspacePath,
-			WorkspaceJail:   resolved.WorkspaceJail,
-			BlockedCommands: resolved.BlockedCommands,
-			TerminalOutput:  cmd.OutOrStdout(),
-			OnSchedule:      nil,
-			BrowserTool:     browserTool,
-			StateManager:    sm,
+			WorkspacePath:      workspacePath,
+			WorkspaceJail:      resolved.WorkspaceJail,
+			BlockedCommands:    resolved.BlockedCommands,
+			TerminalOutput:     cmd.OutOrStdout(),
+			OnSchedule:         nil,
+			BrowserTool:        browserTool,
+			StateManager:       sm,
+			DisableInteraction: resolved.DisableInteraction,
 		})
 
 		for _, t := range builtinTools {
@@ -489,6 +491,9 @@ func getCLIFlags(cmd *cobra.Command) config.CLIFlags {
 	if cmd.Flags().Changed("readonly") {
 		flags.ReadOnly = &cliReadOnly
 	}
+	if cmd.Flags().Changed("disable-interaction") {
+		flags.DisableInteraction = &cliDisableInteraction
+	}
 	return flags
 }
 
@@ -509,6 +514,7 @@ func init() {
 	rootCmd.PersistentFlags().IntVar(&cliRetryLimit, "retry-limit", 0, "Override: Limite de retries automáticos (0 = infinito)")
 	rootCmd.PersistentFlags().IntVar(&cliRetryDelay, "retry-delay", 5, "Override: Tempo de espera entre retries (segundos)")
 	rootCmd.PersistentFlags().BoolVar(&cliReadOnly, "readonly", false, "Executa o agente em modo Read-Only (impede modificações e comandos bash)")
+	rootCmd.PersistentFlags().BoolVar(&cliDisableInteraction, "disable-interaction", false, "Desabilita a interação com o usuário (omite a ferramenta ask_user)")
 
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(stateCmd)

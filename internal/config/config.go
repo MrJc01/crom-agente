@@ -92,6 +92,7 @@ type WorkspaceConfig struct {
 	DisablePlanCacheProtection   *bool `json:"disable_plan_cache_protection,omitempty"`
 	DisableTerminalAwareness     *bool `json:"disable_terminal_awareness,omitempty"`
 	ReadOnly                     *bool `json:"readonly,omitempty"`
+	DisableInteraction           *bool `json:"disable_interaction,omitempty"`
 }
 
 // ResolvedConfig é o resultado do merge de todas as camadas de configuração
@@ -118,6 +119,7 @@ type ResolvedConfig struct {
 	DisablePlanCacheProtection   bool
 	DisableTerminalAwareness     bool
 	ReadOnly                     bool
+	DisableInteraction           bool
 }
 
 // CLIFlags contém flags passados via linha de comando (prioridade máxima)
@@ -136,6 +138,7 @@ type CLIFlags struct {
 	DisablePlanCacheProtection   *bool
 	DisableTerminalAwareness     *bool
 	ReadOnly                     *bool
+	DisableInteraction           *bool
 }
 
 // --- Defaults ---
@@ -404,6 +407,7 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 		ConsecutiveFailureRetryDelay: global.ConsecutiveFailureRetryDelayDefault,
 		DisablePlanCacheProtection:   global.DisablePlanCacheProtectionDefault,
 		DisableTerminalAwareness:     false,
+		DisableInteraction:           false,
 	}
 
 	// Camada 2: Workspace overrides
@@ -461,6 +465,9 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 		if workspace.ReadOnly != nil {
 			resolved.ReadOnly = *workspace.ReadOnly
 		}
+		if workspace.DisableInteraction != nil {
+			resolved.DisableInteraction = *workspace.DisableInteraction
+		}
 	}
 
 	// Camada 3: CLI Flags (prioridade máxima)
@@ -505,6 +512,9 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 	}
 	if flags.ReadOnly != nil {
 		resolved.ReadOnly = *flags.ReadOnly
+	}
+	if flags.DisableInteraction != nil {
+		resolved.DisableInteraction = *flags.DisableInteraction
 	}
 
 	return resolved

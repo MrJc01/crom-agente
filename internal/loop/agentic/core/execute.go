@@ -15,9 +15,9 @@ import (
 	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/llm"
 	"github.com/crom/crom-agente/internal/loop"
+	"github.com/crom/crom-agente/internal/security"
 	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/tools"
-	"github.com/crom/crom-agente/internal/security"
 
 	"github.com/crom/crom-agente/internal/i18n"
 	"github.com/crom/crom-agente/internal/loop/agentic/prompting"
@@ -196,7 +196,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 	circuitBreakerSoftTriggered := false
 	consecutiveFailures := 0
 	consecutiveRetryCount := 0
-	ineffectiveCorrectionCount := 0  // Contador de detecções de loop de correção ineficaz
+	ineffectiveCorrectionCount := 0 // Contador de detecções de loop de correção ineficaz
 	timerScheduled := false
 	lastIterFailed := false
 	lastToolWasValidation := false
@@ -323,6 +323,16 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			return fmt.Errorf("hard-stop: loop repetitivo detectado")
 		}
 
+		// Injetar aviso corretivo caso o modelo repita a mesma ação consecutiva 1x (A -> A)
+		if DetectRepetitiveWarning(messages) {
+			al.handler.OnMessage("system", "Detectado loop repetitivo. Injetando aviso de correção de rota.")
+			messages = append(messages, llm.Message{
+				Role:    "system",
+				Content: "[SYSTEM INTERVENTION] Você acabou de executar exatamente a mesma ação/chamada de ferramenta com os mesmos argumentos que no turno anterior. Se você repetir esta ação novamente, a tarefa será cancelada automaticamente por loop repetitivo. Mude sua abordagem de forma cirúrgica ou parta para testes/validação agora.",
+			})
+			saveMsgs(messages)
+		}
+
 		if DetectCommandLoop(messages) {
 			al.handler.OnMessage("system", "[EARLY-STOP] Loop repetitivo na execução de comandos detectado. O agente continuou executando o mesmo erro/comando sem mudança. Encerrando.")
 			al.handler.OnEvent(loop.AgentEvent{
@@ -416,7 +426,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 						"Você tem ciência dos seguintes processos e terminais ativos no seu ambiente:\n" +
 						strings.Join(termInfo, "\n") + "\n" +
 						"IMPORTANTE: Não inicie ou abra novos processos/servidores se o ID ou PID correspondente já estiver ativo."
-					
+
 					if !copied {
 						runMessages = make([]llm.Message, len(messages))
 						copy(runMessages, messages)
@@ -556,10 +566,10 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 
 		compactedMsgs := prompting.CompactMessages(ctx, al.provider, al.config.MaxMessageHistory, al.handler, runMessages)
 		finalMsgs := FormatMessagesForModel(compactedMsgs, al.provider)
-		
+
 		var resp *llm.Response
 		var err error
-		
+
 		if true { // Padrão: tentar usar streaming sempre
 			chunkChan := make(chan string, 100)
 			go func() {
@@ -646,8 +656,6 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				}
 			}
 		}
-
-
 
 		// Interceptar recusas do LLM (Task 9.7)
 		lowerContent := strings.ToLower(msg.Content)
@@ -1684,11 +1692,17 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		}
 
 		// Validar quota do disco do workspace (Task 6.13)
-		if workspaceDir != "" {
+		if workspaceDir != "" && os.Getenv("CROM_DISABLE_DISK_QUOTA") != "true" && os.Getenv("CROM_DISABLE_DISK_QUOTA") != "1" {
 			maxQuota := int64(200 * 1024 * 1024) // 200MB default
+			if envQuota := os.Getenv("CROM_MAX_DISK_QUOTA_MB"); envQuota != "" {
+				var mb int64
+				if _, err := fmt.Sscanf(envQuota, "%d", &mb); err == nil && mb > 0 {
+					maxQuota = mb * 1024 * 1024
+				}
+			}
 			exceeded, size, _ := workspace.CheckWorkspaceQuota(workspaceDir, maxQuota)
 			if exceeded {
-				al.handler.OnMessage("system", fmt.Sprintf("⚠️ ERRO CRÍTICO: Quota de disco excedida (%.2f MB / 200 MB). Abortando loop para proteger sistema.", float64(size)/1024/1024))
+				al.handler.OnMessage("system", fmt.Sprintf("⚠️ ERRO CRÍTICO: Quota de disco excedida (%.2f MB / %.2f MB). Abortando loop para proteger sistema.", float64(size)/1024/1024, float64(maxQuota)/1024/1024))
 				return fmt.Errorf("quota de disco excedida (%.2f MB). workspace bloqueado", float64(size)/1024/1024)
 			}
 		}
@@ -2272,10 +2286,10 @@ func (al *AgenticLoop) recordCostForResponse(resp *llm.Response) {
 	case strings.Contains(model, "claude-3-5-sonnet") || strings.Contains(model, "sonnet"):
 		promptPriceUSD = 3.00
 		completionPriceUSD = 15.00
-	case strings.Contains(model, "gemini-1.5-pro") || strings.Contains(model, "pro"):
+	case strings.Contains(model, "gemini-2.5-pro") || strings.Contains(model, "pro"):
 		promptPriceUSD = 1.25
 		completionPriceUSD = 5.00
-	case strings.Contains(model, "gemini-1.5-flash") || strings.Contains(model, "flash"):
+	case strings.Contains(model, "gemini-2.5-flash") || strings.Contains(model, "flash"):
 		promptPriceUSD = 0.075
 		completionPriceUSD = 0.30
 	default:

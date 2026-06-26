@@ -24,9 +24,11 @@ func DetectRepetitiveLoop(messages []llm.Message) bool {
 		return false
 	}
 
-	// 1. Detecção de repetição consecutiva direta (A -> A)
-	if assistantSigs[0] == assistantSigs[1] {
-		return true
+	// 1. Detecção de repetição consecutiva direta (A -> A -> A)
+	if len(assistantSigs) >= 3 {
+		if assistantSigs[0] == assistantSigs[1] && assistantSigs[1] == assistantSigs[2] {
+			return true
+		}
 	}
 
 	// 2. Detecção de oscilação repetida (A -> B -> A -> B)
@@ -37,6 +39,25 @@ func DetectRepetitiveLoop(messages []llm.Message) bool {
 	}
 
 	return false
+}
+
+// DetectRepetitiveWarning verifica se as últimas 2 assinaturas do assistant são idênticas (A -> A).
+func DetectRepetitiveWarning(messages []llm.Message) bool {
+	var assistantSigs []string
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "assistant" {
+			sig := assistantSignature(messages[i])
+			if sig != "" {
+				assistantSigs = append(assistantSigs, sig)
+			}
+		}
+	}
+
+	if len(assistantSigs) < 2 {
+		return false
+	}
+
+	return assistantSigs[0] == assistantSigs[1]
 }
 
 // assistantSignature gera uma string de assinatura para uma mensagem do assistant,

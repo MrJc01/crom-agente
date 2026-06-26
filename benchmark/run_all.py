@@ -6,6 +6,8 @@ e consolida os resultados para a análise de benchmark.
 Uso: python3 benchmark/run_all.py [--limit N] [--workers W]
 """
 import os
+os.environ["CROM_DISABLE_DISK_QUOTA"] = "true"
+os.environ["CROM_DISABLE_INTERACTION"] = "true"
 import sys
 import json
 import time
@@ -190,6 +192,8 @@ def run_agent(prompt, workspace, max_iter=MAX_ITER, timeout=TIMEOUT, use_docker=
             "-v", f"{workspace_path}:/workspace",
             "-v", f"{BINARY}:/crom-agente",
             "-e", f"{PROVIDER.upper()}_API_KEY={api_key}",
+            "-e", "CROM_DISABLE_DISK_QUOTA=true",
+            "-e", "CROM_DISABLE_INTERACTION=true",
             "python:3.10-slim",
             "/crom-agente", "run", prompt,
             "--provider", PROVIDER,
@@ -197,7 +201,8 @@ def run_agent(prompt, workspace, max_iter=MAX_ITER, timeout=TIMEOUT, use_docker=
             "--workspace", "/workspace",
             "--permission-mode", "total_access",
             "--max-iterations", str(max_iter),
-            "--disable-prompt-optimization"
+            "--disable-prompt-optimization",
+            "--disable-interaction"
         ]
     else:
         cmd = [
@@ -207,7 +212,8 @@ def run_agent(prompt, workspace, max_iter=MAX_ITER, timeout=TIMEOUT, use_docker=
             "--workspace", str(workspace_path),
             "--permission-mode", "total_access",
             "--max-iterations", str(max_iter),
-            "--disable-prompt-optimization"
+            "--disable-prompt-optimization",
+            "--disable-interaction"
         ]
     
     start = time.time()
@@ -463,90 +469,92 @@ def run_swebench(limit=3, workers=1):
         prog.start_task(iid)
         
         with tempfile.TemporaryDirectory() as tmpdir:
-            prompt = (
-                f"TAREFA DE ENGENHARIA DE SOFTWARE:\n\n"
-                f"Repositório: {task['repo']}\n"
-                f"Commit Base: {task['base_commit']}\n"
-                f"Issue ID: {iid}\n\n"
-                f"PROBLEMA:\n{task['problem_statement'][:2000]}\n\n"
-                f"INSTRUÇÕES CRÍTICAS:\n"
-                f"0. Você está em um diretório vazio. PRIMEIRA COISA A FAZER: execute um comando no terminal para clonar o repositório (git clone https://github.com/{task['repo']}.git repo) e fazer o checkout do commit base (cd repo && git checkout {task['base_commit']}).\n"
-                f"1. Analise o problema descrito acima lendo os arquivos do repositório clonado\n"
-                f"2. Identifique os arquivos relevantes que precisam ser alterados e faça as modificações necessárias neles\n"
-                f"3. Após testar suas alterações, gere um arquivo de diff executando 'git diff > ../fix.patch' de dentro do diretório do repositório clonado\n"
-                f"4. Escreva uma explicação da sua solução no arquivo '../analise.md'\n"
-                f"5. O arquivo fix.patch final DEVE ter o formato unificado de diff gerado pelo git e DEVE estar no diretório raiz do seu ambiente (junto com analise.md)."
-            )
-            
-            stats = run_agent(prompt, tmpdir, max_iter=MAX_ITER, timeout=TIMEOUT, use_docker=True, task_id=iid)
-            
-            # Validação honesta: patch precisa existir E conter marcadores de diff reais
-            has_patch = (Path(tmpdir) / "fix.patch").exists()
-            has_analysis = (Path(tmpdir) / "analise.md").exists()
-            
-            # Verificar se o patch é um diff válido (não apenas um arquivo vazio)
-            valid_patch = False
-            if has_patch:
-                patch_content = (Path(tmpdir) / "fix.patch").read_text()
-                valid_patch = ("---" in patch_content and "+++" in patch_content) or ("diff" in patch_content.lower())
-            if has_patch:
-                try:
-                    patch_content = (Path(tmpdir) / "fix.patch").read_text()
-                    pred = {
-                        "instance_id": iid,
-                        "model_name_or_path": "crom-agente",
-                        "model_patch": patch_content
-                    }
-                    pred_file = REPORTS_DIR / "predictions.jsonl"
-                    with open(pred_file, "a") as pf:
-                        import json
-                        pf.write(json.dumps(pred) + "\n")
-                except Exception as e:
-                    print(f"Error saving prediction for {iid}: {e}")
-
-            
-            success = valid_patch  # Só conta como sucesso se produziu um patch válido
-            if valid_patch:
-                status = "valid_patch"
-            elif has_patch:
-                status = "invalid_patch"  # Arquivo existe mas não é um diff real
-            elif has_analysis:
-                status = "analysis_only"  # Só fez análise, sem patch
-            else:
-                status = "no_output"
-            
-            if not stats.get("exit_ok"):
-                success = False
-                status = "crashed"
-            
-            if stats.get("limit_exceeded"):
-                success = False
-                status = "failed_token_limit"
-            
-            sym = "✅" if success else "❌"
-            prog.update_task(iid, success, stats, sym, f"patch={has_patch} analysis={has_analysis}")
-            
-            res = {
-                "task_id": iid,
-                "success": success,
-                "turns": stats["turns"],
-                "tokens": stats["tokens"],
-                "elapsed": stats["elapsed_seconds"],
-                "tool_calls": stats["tool_calls"],
-                "status": status,
-                "has_patch": has_patch,
-                "has_analysis": has_analysis
-            }
-            progress.save_result("swe-bench", iid, res)
-            # Limpa arquivos criados como root pelo Docker para evitar erro de permissão no context manager
             try:
-                subprocess.run([
-                    "docker", "run", "--rm",
-                    "-v", f"{tmpdir}:/workspace",
-                    "alpine", "rm", "-rf", "/workspace/.crom"
-                ], capture_output=True)
-            except Exception:
-                pass
+                prompt = (
+                    f"TAREFA DE ENGENHARIA DE SOFTWARE:\n\n"
+                    f"Repositório: {task['repo']}\n"
+                    f"Commit Base: {task['base_commit']}\n"
+                    f"Issue ID: {iid}\n\n"
+                    f"PROBLEMA:\n{task['problem_statement'][:2000]}\n\n"
+                    f"INSTRUÇÕES CRÍTICAS:\n"
+                    f"0. Você está em um diretório vazio (raiz do workspace, `/workspace`). PRIMEIRA COISA A FAZER: execute um comando no terminal para clonar o repositório (git clone https://github.com/{task['repo']}.git repo) e fazer o checkout do commit base (cd repo && git checkout {task['base_commit']}).\n"
+                    f"1. Analise o problema descrito acima lendo os arquivos do repositório clonado.\n"
+                    f"2. Identifique os arquivos relevantes que precisam ser alterados e faça as modificações necessárias neles.\n"
+                    f"3. Após testar suas alterações, gere o arquivo de diff 'fix.patch' e a explicação da solução 'analise.md' na raiz do workspace.\n"
+                    f"4. IMPORTANTE: Se usar a ferramenta 'write_file' ou 'edit_file' para criar o diff ou a análise, passe o caminho simplesmente como 'fix.patch' e 'analise.md' (sem '../'). Se usar comandos de shell dentro da pasta 'repo', use '../fix.patch' e '../analise.md' para salvar na raiz do workspace.\n"
+                    f"5. O arquivo fix.patch final DEVE ter o formato unificado de diff gerado pelo git e DEVE estar localizado na raiz do seu ambiente (raiz do workspace, junto com analise.md)."
+                )
+                
+                stats = run_agent(prompt, tmpdir, max_iter=MAX_ITER, timeout=TIMEOUT, use_docker=True, task_id=iid)
+                
+                # Validação honesta: patch precisa existir E conter marcadores de diff reais
+                has_patch = (Path(tmpdir) / "fix.patch").exists()
+                has_analysis = (Path(tmpdir) / "analise.md").exists()
+                
+                # Verificar se o patch é um diff válido (não apenas um arquivo vazio)
+                valid_patch = False
+                if has_patch:
+                    patch_content = (Path(tmpdir) / "fix.patch").read_text()
+                    valid_patch = ("---" in patch_content and "+++" in patch_content) or ("diff" in patch_content.lower())
+                if has_patch:
+                    try:
+                        patch_content = (Path(tmpdir) / "fix.patch").read_text()
+                        pred = {
+                            "instance_id": iid,
+                            "model_name_or_path": "crom-agente",
+                            "model_patch": patch_content
+                        }
+                        pred_file = REPORTS_DIR / "predictions.jsonl"
+                        with open(pred_file, "a") as pf:
+                            import json
+                            pf.write(json.dumps(pred) + "\n")
+                    except Exception as e:
+                        print(f"Error saving prediction for {iid}: {e}")
+    
+                
+                success = valid_patch  # Só conta como sucesso se produziu um patch válido
+                if valid_patch:
+                    status = "valid_patch"
+                elif has_patch:
+                    status = "invalid_patch"  # Arquivo existe mas não é um diff real
+                elif has_analysis:
+                    status = "analysis_only"  # Só fez análise, sem patch
+                else:
+                    status = "no_output"
+                
+                if not stats.get("exit_ok"):
+                    success = False
+                    status = "crashed"
+                
+                if stats.get("limit_exceeded"):
+                    success = False
+                    status = "failed_token_limit"
+                
+                sym = "✅" if success else "❌"
+                prog.update_task(iid, success, stats, sym, f"patch={has_patch} analysis={has_analysis}")
+                
+                res = {
+                    "task_id": iid,
+                    "success": success,
+                    "turns": stats["turns"],
+                    "tokens": stats["tokens"],
+                    "elapsed": stats["elapsed_seconds"],
+                    "tool_calls": stats["tool_calls"],
+                    "status": status,
+                    "has_patch": has_patch,
+                    "has_analysis": has_analysis
+                }
+                progress.save_result("swe-bench", iid, res)
+            finally:
+                # Limpa arquivos criados como root pelo Docker para evitar erro de permissão no context manager
+                try:
+                    subprocess.run([
+                        "docker", "run", "--rm",
+                        "-v", f"{tmpdir}:/workspace",
+                        "alpine", "sh", "-c", "find /workspace -mindepth 1 -delete"
+                    ], capture_output=True)
+                except Exception:
+                    pass
             return res
 
     with BenchProgress("EvalPlus (HumanEval)") as prog:
