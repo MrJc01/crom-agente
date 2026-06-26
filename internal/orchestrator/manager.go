@@ -15,6 +15,7 @@ import (
 	agentscore "github.com/crom/crom-agente/internal/agents/core"
 	browserSpecialist "github.com/crom/crom-agente/internal/agents/specialists/browser"
 	"github.com/crom/crom-agente/internal/agents/specialists/external"
+	_ "github.com/crom/crom-agente/internal/agents/specialists/finalizer"
 	_ "github.com/crom/crom-agente/internal/agents/specialists/reasoning"
 	_ "github.com/crom/crom-agente/internal/agents/specialists/spawn"
 	"github.com/crom/crom-agente/internal/config"

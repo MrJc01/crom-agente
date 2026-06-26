@@ -78,6 +78,12 @@ func GetDefaultTopology() *TopologyConfig {
 				Description: "Especialista em raciocínio lógico avançado e loop de pensamento sequencial puro (no-tools)",
 				ToolIDs:     []string{},
 			},
+			{
+				Name:        "finalizer",
+				Type:        "native",
+				Description: "Especialista em consolidação de tarefas e geração de respostas explicativas finais",
+				ToolIDs:     []string{},
+			},
 		},
 	}
 }

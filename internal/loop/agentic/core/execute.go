@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/crom/crom-agente/internal/agents"
 	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/llm"
 	"github.com/crom/crom-agente/internal/loop"
@@ -659,6 +660,62 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 					}
 					continue
 				}
+			}
+
+			// Chamar o finalizer para gerar a resposta consolidada explicada usando o LLM
+			var finalResponse string
+			if finalizerInst, ok := agents.GetAgentInst("finalizer", agents.Config{
+				WorkspacePath: workspaceDir,
+				LLMProvider:   al.provider,
+			}); ok {
+				// Coletar as mensagens relevantes desde a última mensagem do usuário
+				var relevantMsgs []llm.Message
+				lastUserIdx := -1
+				for idx := len(messages) - 1; idx >= 0; idx-- {
+					if messages[idx].Role == "user" {
+						lastUserIdx = idx
+						break
+					}
+				}
+				if lastUserIdx != -1 {
+					relevantMsgs = messages[lastUserIdx:]
+				} else {
+					relevantMsgs = messages
+				}
+
+				// Formatar histórico em texto para o Finalizer processar
+				var historyLines []string
+				for _, m := range relevantMsgs {
+					if m.Role == "user" {
+						historyLines = append(historyLines, fmt.Sprintf("Usuário solicitou: %s", m.Content))
+					} else if m.Role == "assistant" && m.Content != "" {
+						historyLines = append(historyLines, fmt.Sprintf("Agente respondeu: %s", m.Content))
+					} else if len(m.ToolCalls) > 0 {
+						for _, tc := range m.ToolCalls {
+							historyLines = append(historyLines, fmt.Sprintf("Agente executou a ferramenta: %s com argumentos %s", tc.Function.Name, tc.Function.Arguments))
+						}
+					} else if m.Role == "tool" {
+						historyLines = append(historyLines, fmt.Sprintf("Resultado da ferramenta (%s): %s", m.Name, m.Content))
+					}
+				}
+				historyText := strings.Join(historyLines, "\n")
+
+				res, err := finalizerInst.Execute(ctx, fmt.Sprintf("Histórico recente da execução da tarefa:\n\n%s", historyText), "")
+				if err == nil && res.Output != "" {
+					finalResponse = res.Output
+				}
+			}
+
+			if finalResponse != "" {
+				// Adiciona a resposta finalizada ao histórico de mensagens
+				messages = append(messages, llm.Message{
+					Role:    "assistant",
+					Content: finalResponse,
+				})
+				saveMsgs(messages)
+
+				// Dispara mensagem final para o frontend exibir
+				al.handler.OnMessage("assistant", finalResponse)
 			}
 
 			// Finaliza o loop ReAct normalmente.
