@@ -15,6 +15,7 @@ import (
 	agentscore "github.com/crom/crom-agente/internal/agents/core"
 	browserSpecialist "github.com/crom/crom-agente/internal/agents/specialists/browser"
 	"github.com/crom/crom-agente/internal/agents/specialists/external"
+	_ "github.com/crom/crom-agente/internal/agents/specialists/reasoning"
 	_ "github.com/crom/crom-agente/internal/agents/specialists/spawn"
 	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/config/topology"
@@ -258,6 +259,21 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 	}
 	if modelOverride, ok := ctx.Value("model_override").(string); ok && modelOverride != "" {
 		resolved.Model = modelOverride
+	}
+	if maxIterOverride, ok := ctx.Value("max_iterations_override").(int); ok {
+		resolved.MaxIterations = maxIterOverride
+	}
+	if maxConsecutiveFailOverride, ok := ctx.Value("max_consecutive_fail_override").(int); ok {
+		resolved.MaxConsecutiveFail = maxConsecutiveFailOverride
+	}
+	if toolTimeoutOverride, ok := ctx.Value("tool_timeout_seconds_override").(int); ok {
+		resolved.ToolTimeoutSeconds = toolTimeoutOverride
+	}
+	if headlessOverride, ok := ctx.Value("browser_headless_override").(bool); ok {
+		resolved.BrowserHeadless = headlessOverride
+	}
+	if disableOptOverride, ok := ctx.Value("disable_prompt_optimization_override").(bool); ok {
+		resolved.DisablePromptOptimization = disableOptOverride
 	}
 
 	// 4. Instancia LLM Provider

@@ -1,0 +1,5 @@
+{
+  "id": "read_session_messages",
+  "name": "Read Session Messages",
+  "description": "Lê o histórico completo de mensagens de uma sessão de execução específica a partir do ID da sessão."
+}

@@ -186,6 +186,21 @@ func (s *APIServer) handleWS(w http.ResponseWriter, r *http.Request) {
 				if msg.Model != "" {
 					ctx = context.WithValue(ctx, "model_override", msg.Model)
 				}
+				if msg.MaxIterations != nil {
+					ctx = context.WithValue(ctx, "max_iterations_override", *msg.MaxIterations)
+				}
+				if msg.MaxConsecutiveFail != nil {
+					ctx = context.WithValue(ctx, "max_consecutive_fail_override", *msg.MaxConsecutiveFail)
+				}
+				if msg.ToolTimeoutSeconds != nil {
+					ctx = context.WithValue(ctx, "tool_timeout_seconds_override", *msg.ToolTimeoutSeconds)
+				}
+				if msg.BrowserHeadless != nil {
+					ctx = context.WithValue(ctx, "browser_headless_override", *msg.BrowserHeadless)
+				}
+				if msg.DisablePromptOptimization != nil {
+					ctx = context.WithValue(ctx, "disable_prompt_optimization_override", *msg.DisablePromptOptimization)
+				}
 
 				// Notifica inicio
 				startedPayload, _ := json.Marshal(map[string]string{"type": "started"})

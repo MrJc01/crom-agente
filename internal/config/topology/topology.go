@@ -72,6 +72,12 @@ func GetDefaultTopology() *TopologyConfig {
 				Description: "Especialista em executar tarefas assíncronas isoladas e scripts locais",
 				ToolIDs:     []string{"terminal_command", "read_file", "write_file"},
 			},
+			{
+				Name:        "reasoning",
+				Type:        "native",
+				Description: "Especialista em raciocínio lógico avançado e loop de pensamento sequencial puro (no-tools)",
+				ToolIDs:     []string{},
+			},
 		},
 	}
 }

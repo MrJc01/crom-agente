@@ -36,14 +36,19 @@ func PIDPath() (string, error) {
 
 // IPCMessage eh o protocolo de comunicacao enviado pelo cliente
 type IPCMessage struct {
-	Type        string          `json:"type"`                // "run", "status", "stop", "ping", "permission_response"
-	Workspace   string          `json:"workspace,omitempty"` // nome do workspace
-	Task        string          `json:"task,omitempty"`
-	Session     string          `json:"session,omitempty"` // ID ou nome da sessão
-	Payload     json.RawMessage `json:"payload,omitempty"`
-	Provider    string          `json:"provider,omitempty"`
-	Model       string          `json:"model,omitempty"`
-	AutoApprove bool            `json:"auto_approve,omitempty"`
+	Type                      string          `json:"type"`                // "run", "status", "stop", "ping", "permission_response"
+	Workspace                 string          `json:"workspace,omitempty"` // nome do workspace
+	Task                      string          `json:"task,omitempty"`
+	Session                   string          `json:"session,omitempty"` // ID ou nome da sessão
+	Payload                   json.RawMessage `json:"payload,omitempty"`
+	Provider                  string          `json:"provider,omitempty"`
+	Model                     string          `json:"model,omitempty"`
+	AutoApprove               bool            `json:"auto_approve,omitempty"`
+	MaxIterations             *int            `json:"max_iterations,omitempty"`
+	MaxConsecutiveFail        *int            `json:"max_consecutive_fail,omitempty"`
+	ToolTimeoutSeconds        *int            `json:"tool_timeout_seconds,omitempty"`
+	BrowserHeadless           *bool           `json:"browser_headless,omitempty"`
+	DisablePromptOptimization *bool           `json:"disable_prompt_optimization,omitempty"`
 }
 
 // IPCResponse eh a resposta enviada do daemon para o cliente
@@ -341,6 +346,21 @@ func (s *IPCServer) handleConnection(conn net.Conn) {
 				}
 				if msg.Model != "" {
 					ctx = context.WithValue(ctx, "model_override", msg.Model)
+				}
+				if msg.MaxIterations != nil {
+					ctx = context.WithValue(ctx, "max_iterations_override", *msg.MaxIterations)
+				}
+				if msg.MaxConsecutiveFail != nil {
+					ctx = context.WithValue(ctx, "max_consecutive_fail_override", *msg.MaxConsecutiveFail)
+				}
+				if msg.ToolTimeoutSeconds != nil {
+					ctx = context.WithValue(ctx, "tool_timeout_seconds_override", *msg.ToolTimeoutSeconds)
+				}
+				if msg.BrowserHeadless != nil {
+					ctx = context.WithValue(ctx, "browser_headless_override", *msg.BrowserHeadless)
+				}
+				if msg.DisablePromptOptimization != nil {
+					ctx = context.WithValue(ctx, "disable_prompt_optimization_override", *msg.DisablePromptOptimization)
 				}
 
 				// Loop de streaming

@@ -23,6 +23,11 @@ import (
 // Execute roda o loop ReAct completo para a tarefa dada
 func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 	al.textOnlyMode = false
+	if al.handler != nil {
+		ctx = context.WithValue(ctx, "telemetry_callback", func(event loop.AgentEvent) {
+			al.handler.OnEvent(event)
+		})
+	}
 	al.handler.OnStatusChange("thinking")
 	if al.stateManager != nil {
 		_ = al.stateManager.SetActiveTask(intent)

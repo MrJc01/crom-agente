@@ -28,6 +28,7 @@ import (
 	"github.com/crom/crom-agente/internal/tools/port_monitor"
 	"github.com/crom/crom-agente/internal/tools/proxy"
 	"github.com/crom/crom-agente/internal/tools/read_file"
+	"github.com/crom/crom-agente/internal/tools/read_session_messages"
 	"github.com/crom/crom-agente/internal/tools/rename_file"
 	"github.com/crom/crom-agente/internal/tools/run_tests"
 	"github.com/crom/crom-agente/internal/tools/schedule_timer"
@@ -119,6 +120,8 @@ func GetBuiltinTools(cfg RegistrationConfig) []tools.Tool {
 	if cfg.StateManager != nil {
 		list = append(list, manage_plan.NewManagePlanTool(cfg.WorkspacePath, cfg.StateManager))
 	}
+
+	list = append(list, read_session_messages.NewReadSessionMessagesTool(cfg.WorkspacePath))
 
 	return list
 }
