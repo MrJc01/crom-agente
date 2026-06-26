@@ -173,6 +173,8 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 	}
 
 	consecutiveNoToolCallTurns := 0
+	consecutiveReadOnlyTurns := 0
+	circuitBreakerSoftTriggered := false
 	consecutiveFailures := 0
 	consecutiveRetryCount := 0
 	timerScheduled := false
@@ -297,9 +299,10 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		opts := tooling.BuildRequestOptions(al.tools, intent)
 
 		// Backoff de Temperatura Dinâmico (Item 18)
-		if DetectRepetitiveLoop(messages) || DetectCommandLoop(messages) {
+		if DetectRepetitiveLoop(messages) || DetectCommandLoop(messages) || circuitBreakerSoftTriggered {
 			temp := 0.8
 			opts.Temperature = &temp
+			circuitBreakerSoftTriggered = false
 		}
 
 		// Injetar plano de trabalho atualizado de forma dinâmica no contexto
@@ -497,61 +500,53 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			consecutiveNoToolCallTurns++
 		}
 
+		hasWriteOrExec := false
+		for _, tc := range msg.ToolCalls {
+			name := tc.Function.Name
+			if name == "write_file" || name == "diff_replace" || name == "terminal_command" || name == "run_command" {
+				hasWriteOrExec = true
+				break
+			}
+		}
+		if hasWriteOrExec {
+			consecutiveReadOnlyTurns = 0
+		} else {
+			consecutiveReadOnlyTurns++
+		}
+
 		threshold := 3
 		if al.config != nil && al.config.MaxConsecutiveFail > 0 {
 			threshold = al.config.MaxConsecutiveFail
 		}
 
+		messages = append(messages, msg)
+		saveMsgs(messages)
+
 		if consecutiveNoToolCallTurns >= threshold && taskRequiresFiles(intent) {
 			if al.stateManager != nil {
 				_ = al.stateManager.SetCircuitBreakerTriggered(true)
 			}
-			al.handler.OnMessage("system", fmt.Sprintf("⚠️ [CIRCUIT_BREAKER] Abortando execução: O modelo executou %d turnos sem chamadas de ferramentas em uma tarefa que requer criação/edição de arquivos.", consecutiveNoToolCallTurns))
+			al.handler.OnMessage("system", fmt.Sprintf("⚠️ [CIRCUIT_BREAKER] Alerta de inatividade: O modelo executou %d turnos sem chamadas de ferramentas.", consecutiveNoToolCallTurns))
 			al.handler.OnEvent(loop.AgentEvent{
 				Timestamp: time.Now(),
-				Event:     "error",
+				Event:     "warning",
 				Iteration: i + 1,
 				Data: map[string]interface{}{
-					"error": loop.AgentError{
-						Code:    loop.ErrToolExecution,
-						Message: fmt.Sprintf("circuit breaker triggered: model is unable to use tools after %d turns", consecutiveNoToolCallTurns),
-						Details: map[string]interface{}{"consecutive_no_tool_calls": consecutiveNoToolCallTurns},
-					},
+					"message":                   fmt.Sprintf("circuit breaker triggered: model is unable to use tools after %d turns", consecutiveNoToolCallTurns),
+					"consecutive_no_tool_calls": consecutiveNoToolCallTurns,
 				},
 			})
-			al.handler.OnStatusChange("idle")
+			warning := fmt.Sprintf("⚠️ [SYSTEM WARNING] Você está há %d turnos sem chamar ferramentas em uma tarefa que requer criação/edição de arquivos. Mude sua abordagem ou verifique se a tarefa foi concluída.", consecutiveNoToolCallTurns)
+			messages = append(messages, llm.Message{Role: "system", Content: warning})
+			saveMsgs(messages)
+
+			consecutiveNoToolCallTurns = 0
+			circuitBreakerSoftTriggered = true
 			if al.stateManager != nil {
 				_ = al.stateManager.SaveIterationLog(i+1, iterLog)
 			}
-			return fmt.Errorf("abortando: o modelo executou %d turnos sem ações em tarefa que requer arquivos", consecutiveNoToolCallTurns)
+			continue
 		}
-
-		// Circuit Breaker de Arquivos Inalterados (Item 21)
-		if countConsecutiveReadOnlyTurns(messages) >= 4 && taskRequiresFiles(intent) {
-			if al.stateManager != nil {
-				_ = al.stateManager.SetCircuitBreakerTriggered(true)
-			}
-			al.handler.OnMessage("system", "⚠️ [CIRCUIT_BREAKER] Abortando: O agente realizou 4 turnos seguidos sem modificar o workspace (apenas leituras ou nenhuma ação).")
-			al.handler.OnEvent(loop.AgentEvent{
-				Timestamp: time.Now(),
-				Event:     "error",
-				Iteration: i + 1,
-				Data: map[string]interface{}{
-					"error": loop.AgentError{
-						Code:    loop.ErrToolExecution,
-						Message: "circuit breaker triggered: no workspace modifications in 4 turns",
-					},
-				},
-			})
-			al.handler.OnStatusChange("idle")
-			if al.stateManager != nil {
-				_ = al.stateManager.SaveIterationLog(i+1, iterLog)
-			}
-			return fmt.Errorf("abortando: 4 turnos sem alteração de arquivos")
-		}
-
-		messages = append(messages, msg)
-		saveMsgs(messages)
 
 		// Atualiza o plano a partir do conteúdo textual da mensagem do assistente
 		disablePlanCache := false
@@ -1310,6 +1305,28 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 
 		if al.stateManager != nil {
 			_ = al.stateManager.SaveIterationLog(i+1, iterLog)
+		}
+
+		// Circuit Breaker de Arquivos Inalterados (Intervenção Soft)
+		if consecutiveReadOnlyTurns >= 3 && taskRequiresFiles(intent) {
+			if al.stateManager != nil {
+				_ = al.stateManager.SetCircuitBreakerTriggered(true)
+			}
+			warning := fmt.Sprintf("⚠️ [SYSTEM WARNING] Você está há %d turnos sem modificar arquivos ou chamar ferramentas de escrita/execução. Mude sua abordagem ou verifique se a tarefa foi concluída.", consecutiveReadOnlyTurns)
+			al.handler.OnMessage("system", warning)
+			al.handler.OnEvent(loop.AgentEvent{
+				Timestamp: time.Now(),
+				Event:     "warning",
+				Iteration: i + 1,
+				Data: map[string]interface{}{
+					"message":                     fmt.Sprintf("circuit breaker triggered: no workspace modifications in %d turns", consecutiveReadOnlyTurns),
+					"consecutive_read_only_turns": consecutiveReadOnlyTurns,
+				},
+			})
+			messages = append(messages, llm.Message{Role: "system", Content: warning})
+			saveMsgs(messages)
+			consecutiveReadOnlyTurns = 0
+			circuitBreakerSoftTriggered = true
 		}
 
 		if askUserCalled {

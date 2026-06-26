@@ -1192,7 +1192,7 @@ func TestAgenticLoop_CircuitBreaker(t *testing.T) {
 	})
 	handler := &testEventHandler{}
 	cfg := &config.ResolvedConfig{
-		MaxIterations:             10,
+		MaxIterations:             5, // Limit iterations to 5 so it finishes quickly
 		MaxConsecutiveFail:        3,
 		DisablePromptOptimization: true,
 	}
@@ -1201,30 +1201,94 @@ func TestAgenticLoop_CircuitBreaker(t *testing.T) {
 
 	err := al.Execute(context.Background(), "Crie o arquivo script.py")
 	if err == nil {
-		t.Fatal("esperava que o circuit breaker disparasse e retornasse um erro, mas o loop concluiu com sucesso")
+		t.Fatal("esperava erro de limite de iterações atingido, mas o loop concluiu com sucesso")
 	}
 
-	if !strings.Contains(err.Error(), "abortando: o modelo executou") {
+	if !strings.Contains(err.Error(), "limite de 5 iterações atingido") {
 		t.Errorf("mensagem de erro inesperada: %v", err)
 	}
 
-	// Verifica se o evento de erro contendo o circuit breaker foi emitido
-	hasCircuitBreakerError := false
+	// Verifica se o evento de aviso (warning) do circuit breaker foi emitido
+	hasCircuitBreakerWarning := false
 	for _, ev := range handler.Events {
-		if ev.Event == "error" {
+		if ev.Event == "warning" {
 			dataMap := ev.Data
-			errObj, ok := dataMap["error"].(loop.AgentError)
-			if ok && strings.Contains(errObj.Message, "circuit breaker triggered") {
-				hasCircuitBreakerError = true
+			msgStr, ok := dataMap["message"].(string)
+			if ok && strings.Contains(msgStr, "circuit breaker triggered") {
+				hasCircuitBreakerWarning = true
 				break
 			}
 		}
 	}
 
-	if !hasCircuitBreakerError {
-		t.Fatal("esperava que o handler recebesse o evento de erro correspondente ao circuit breaker")
+	if !hasCircuitBreakerWarning {
+		t.Fatal("esperava que o handler recebesse o evento de aviso (warning) correspondente ao circuit breaker")
+	}
+
+	// Verifica se a mensagem de aviso do sistema foi adicionada ao histórico
+	foundSystemWarning := false
+	for _, msg := range sm.GetMessages() {
+		if msg.Role == "system" && strings.Contains(msg.Content, "Você está há 3 turnos sem chamar ferramentas") {
+			foundSystemWarning = true
+			break
+		}
+	}
+
+	if !foundSystemWarning {
+		t.Fatal("esperava que o histórico de mensagens contivesse o aviso de inatividade de ferramentas")
 	}
 }
+
+func TestAgenticLoop_CircuitBreaker_ReadOnly(t *testing.T) {
+	// 3 responses with tool calls, but they are all read-only (e.g. read_file)
+	resp1 := providers.MockToolCallResponse("read_file", `{"path":"somefile.txt"}`, 10)
+	resp2 := providers.MockToolCallResponse("read_file", `{"path":"somefile.txt"}`, 10)
+	resp3 := providers.MockToolCallResponse("read_file", `{"path":"somefile.txt"}`, 10)
+
+	provider := providers.NewMockProvider(resp1, resp2, resp3)
+	sm := state.NewStateManager(t.TempDir())
+	_ = sm.SetPlan([]state.TaskItem{
+		{
+			Title:  "Modificar arquivo.py",
+			Status: "pending",
+		},
+	})
+	handler := &testEventHandler{}
+	cfg := &config.ResolvedConfig{
+		MaxIterations:             5, // Limit iterations to 5 so it finishes quickly
+		MaxConsecutiveFail:        3,
+		DisablePromptOptimization: true,
+	}
+
+	al := New(provider, sm, handler, cfg)
+	
+	// mock read_file tool to succeed
+	al.RegisterTool(&mockTool{
+		id: "read_file",
+		executeFunc: func(ctx context.Context, args json.RawMessage) (tools.Result, error) {
+			return tools.Result{Success: true, Data: "file content"}, nil
+		},
+	})
+
+	err := al.Execute(context.Background(), "Modifique o arquivo.py")
+	if err == nil {
+		t.Fatal("esperava erro de limite de iterações atingido, mas o loop concluiu com sucesso")
+	}
+
+	// Verifica se a mensagem de aviso de arquivos inalterados foi adicionada ao histórico
+	foundSystemWarning := false
+	for _, msg := range sm.GetMessages() {
+		if msg.Role == "system" && strings.Contains(msg.Content, "Você está há 3 turnos sem modificar arquivos ou chamar ferramentas de escrita/execução") {
+			foundSystemWarning = true
+			break
+		}
+	}
+
+	if !foundSystemWarning {
+		t.Fatal("esperava que o histórico de mensagens contivesse o aviso de inatividade de escrita de arquivos")
+	}
+}
+
 
 func TestAgenticLoop_FileValidationFail(t *testing.T) {
 	tempDir := t.TempDir()
