@@ -61,3 +61,13 @@ tests/11_comprehensive_tests/test_results.json
 build/
 simulations/*
 !simulations/*.py
+
+# Benchmark: cloned harness repos (heavy, downloaded on demand)
+benchmark/swe_bench/SWE-bench/
+benchmark/swe_bench/SWE-bench-docker/
+benchmark/evalplus/evalplus/
+benchmark/bigcode_bench/bigcodebench/
+benchmark/livecode_bench/LiveCodeBench/
+
+# Benchmark: generated reports and cache
+benchmark/reports/

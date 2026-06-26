@@ -1,0 +1,44 @@
+{
+  "default_provider": "openrouter",
+  "default_model": "meta-llama/llama-3.1-8b-instruct",
+  "max_iterations": 30,
+  "timeout_seconds": 180,
+  "datasets_cache_dir": "~/.crom/cache/benchmarks",
+  "docker_base_images": {
+    "python": "python:3.10-slim",
+    "node": "node:20-slim",
+    "go": "golang:1.22-bookworm",
+    "swe_bench": "python:3.9-slim",
+    "terminal_bench": "ubuntu:22.04"
+  },
+  "token_prices_per_million": {
+    "gemini-3.5-flash": {
+      "input": 0.075,
+      "output": 0.3
+    },
+    "gemini-3.1-pro": {
+      "input": 1.25,
+      "output": 5.00
+    },
+    "claude-3-7-sonnet": {
+      "input": 3.00,
+      "output": 15.00
+    },
+    "gpt-4o": {
+      "input": 5.00,
+      "output": 15.00
+    },
+    "gpt-4o-mini": {
+      "input": 0.150,
+      "output": 0.600
+    },
+    "deepseek-chat": {
+      "input": 0.14,
+      "output": 0.28
+    },
+    "deepseek-coder": {
+      "input": 0.14,
+      "output": 0.28
+    }
+  }
+}
