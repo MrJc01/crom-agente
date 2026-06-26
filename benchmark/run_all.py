@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Runner unificado que executa TODOS os benchmarks do crom-agente sequencialmente
+Runner unificado que executa TODOS os benchmarks do crom-agente sequencialmente ou em paralelo
 e consolida os resultados para a análise de benchmark.
 
-Uso: python3 benchmark/run_all.py [--limit N]
+Uso: python3 benchmark/run_all.py [--limit N] [--workers W]
 """
 import os
 import sys
@@ -14,6 +14,7 @@ import subprocess
 import re
 from pathlib import Path
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 
 # Configuração
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -141,7 +142,7 @@ def extract_code(output, entry_point):
 # ============================================================
 # BENCHMARK 1: EvalPlus (HumanEval)
 # ============================================================
-def run_evalplus(limit=5):
+def run_evalplus(limit=5, workers=1):
     print("\n" + "=" * 60)
     print("📋 BENCHMARK 1/5: EvalPlus (HumanEval)")
     print("=" * 60)
@@ -166,10 +167,9 @@ def run_evalplus(limit=5):
             {"task_id": "HumanEval/0", "prompt": 'from typing import List\n\n\ndef has_close_elements(numbers: List[float], threshold: float) -> bool:\n    """ Check if in given list of numbers, are any two numbers closer to each other than\n    given threshold.\n    >>> has_close_elements([1.0, 2.0, 3.9, 4.0, 5.0, 2.2], 0.3)\n    True\n    >>> has_close_elements([1.0, 2.0, 3.9, 4.0, 5.0, 2.2], 0.05)\n    False\n    """\n', "test": "def check(candidate):\n    assert candidate([1.0, 2.0, 3.9, 4.0, 5.0, 2.2], 0.3) == True\n    assert candidate([1.0, 2.0, 3.9, 4.0, 5.0, 2.2], 0.05) == False\n    assert candidate([1.0, 2.0, 5.9, 4.0, 5.0], 0.95) == True\n    assert candidate([1.0, 2.0, 5.9, 4.0, 5.0], 0.8) == False\n    assert candidate([1.0, 2.0, 3.0, 4.0, 5.0, 2.0], 0.1) == True\n    assert candidate([1.1, 2.2, 3.1, 4.1, 5.1], 1.0) == True\n    assert candidate([1.1, 2.2, 3.1, 4.1, 5.1], 0.5) == False\n", "entry_point": "has_close_elements"},
         ][:limit]
     
-    results = []
-    for idx, task in enumerate(tasks):
+    def process_task(task, idx):
         tid = task["task_id"]
-        print(f"\n  [{idx+1}/{len(tasks)}] {tid}...")
+        print(f"  [START] {tid}...")
         
         with tempfile.TemporaryDirectory() as tmpdir:
             prompt = (
@@ -229,15 +229,15 @@ def run_evalplus(limit=5):
                         status = "success"
                     else:
                         status = "failed_tests"
-                        if r.stderr:
+                        if r.stderr and workers == 1:
                             print(f"    stderr: {r.stderr[:200]}")
                 except Exception as e:
                     status = f"error: {e}"
             
             sym = "✅" if success else "❌"
-            print(f"    {sym} turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s status={status}")
+            print(f"  [DONE] {sym} {tid} | turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s status={status}")
             
-            results.append({
+            return {
                 "task_id": tid,
                 "success": success,
                 "turns": stats["turns"],
@@ -245,7 +245,11 @@ def run_evalplus(limit=5):
                 "elapsed": stats["elapsed_seconds"],
                 "tool_calls": stats["tool_calls"],
                 "status": status
-            })
+            }
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(process_task, task, idx) for idx, task in enumerate(tasks)]
+        results = [f.result() for f in futures]
     
     return {"benchmark": "evalplus", "results": results}
 
@@ -253,7 +257,7 @@ def run_evalplus(limit=5):
 # ============================================================
 # BENCHMARK 2: SWE-bench Lite (Local, sem Docker)
 # ============================================================
-def run_swebench(limit=3):
+def run_swebench(limit=3, workers=1):
     print("\n" + "=" * 60)
     print("📋 BENCHMARK 2/5: SWE-bench Lite (Local)")
     print("=" * 60)
@@ -279,10 +283,9 @@ def run_swebench(limit=3):
              "problem_statement": "Modeling compound model with shared parameters raises error.", "patch": ""},
         ][:limit]
     
-    results = []
-    for idx, task in enumerate(tasks):
+    def process_task(task, idx):
         iid = task["instance_id"]
-        print(f"\n  [{idx+1}/{len(tasks)}] {iid}...")
+        print(f"  [START] {iid}...")
         
         with tempfile.TemporaryDirectory() as tmpdir:
             prompt = (
@@ -310,9 +313,9 @@ def run_swebench(limit=3):
             status = "produced_output" if success else "no_output"
             
             sym = "✅" if success else "❌"
-            print(f"    {sym} turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s patch={has_patch} analysis={has_analysis}")
+            print(f"  [DONE] {sym} {iid} | turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s patch={has_patch} analysis={has_analysis}")
             
-            results.append({
+            return {
                 "task_id": iid,
                 "success": success,
                 "turns": stats["turns"],
@@ -322,7 +325,11 @@ def run_swebench(limit=3):
                 "status": status,
                 "has_patch": has_patch,
                 "has_analysis": has_analysis
-            })
+            }
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(process_task, task, idx) for idx, task in enumerate(tasks)]
+        results = [f.result() for f in futures]
     
     return {"benchmark": "swe-bench", "results": results}
 
@@ -330,7 +337,7 @@ def run_swebench(limit=3):
 # ============================================================
 # BENCHMARK 3: Terminal-Bench (Tarefas de Terminal)
 # ============================================================
-def run_terminalbench(limit=3):
+def run_terminalbench(limit=3, workers=1):
     print("\n" + "=" * 60)
     print("📋 BENCHMARK 3/5: Terminal-Bench (Tarefas de Terminal)")
     print("=" * 60)
@@ -354,9 +361,9 @@ def run_terminalbench(limit=3):
          "validation": lambda d: (Path(d) / "report.txt").exists() and "192.168" in (Path(d) / "report.txt").read_text()},
     ][:limit]
     
-    results = []
-    for idx, task in enumerate(tasks):
-        print(f"\n  [{idx+1}/{len(tasks)}] {task['task_id']} ({task['name']})...")
+    def process_task(task, idx):
+        tid = task["task_id"]
+        print(f"  [START] {tid} ({task['name']})...")
         
         with tempfile.TemporaryDirectory() as tmpdir:
             stats = run_agent(task["instruction"], tmpdir, max_iter=MAX_ITER, timeout=TIMEOUT)
@@ -368,10 +375,10 @@ def run_terminalbench(limit=3):
             
             status = "success" if success else "failed_validation"
             sym = "✅" if success else "❌"
-            print(f"    {sym} turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s")
+            print(f"  [DONE] {sym} {tid} | turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s status={status}")
             
-            results.append({
-                "task_id": task["task_id"],
+            return {
+                "task_id": tid,
                 "name": task["name"],
                 "success": success,
                 "turns": stats["turns"],
@@ -379,7 +386,11 @@ def run_terminalbench(limit=3):
                 "elapsed": stats["elapsed_seconds"],
                 "tool_calls": stats["tool_calls"],
                 "status": status
-            })
+            }
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(process_task, task, idx) for idx, task in enumerate(tasks)]
+        results = [f.result() for f in futures]
     
     return {"benchmark": "terminal-bench", "results": results}
 
@@ -387,7 +398,7 @@ def run_terminalbench(limit=3):
 # ============================================================
 # BENCHMARK 4: LiveCodeBench (Problemas Algorítmicos)
 # ============================================================
-def run_livecodebench(limit=3):
+def run_livecodebench(limit=3, workers=1):
     print("\n" + "=" * 60)
     print("📋 BENCHMARK 4/5: LiveCodeBench (Algoritmos)")
     print("=" * 60)
@@ -415,9 +426,9 @@ def run_livecodebench(limit=3):
          "entry_point": "merge"},
     ][:limit]
     
-    results = []
-    for idx, task in enumerate(tasks):
-        print(f"\n  [{idx+1}/{len(tasks)}] {task['task_id']} ({task['name']})...")
+    def process_task(task, idx):
+        tid = task["task_id"]
+        print(f"  [START] {tid} ({task['name']})...")
         
         with tempfile.TemporaryDirectory() as tmpdir:
             prompt = (
@@ -465,10 +476,10 @@ def run_livecodebench(limit=3):
                     status = f"error: {e}"
             
             sym = "✅" if success else "❌"
-            print(f"    {sym} turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s")
+            print(f"  [DONE] {sym} {tid} | turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s status={status}")
             
-            results.append({
-                "task_id": task["task_id"],
+            return {
+                "task_id": tid,
                 "name": task["name"],
                 "success": success,
                 "turns": stats["turns"],
@@ -476,15 +487,14 @@ def run_livecodebench(limit=3):
                 "elapsed": stats["elapsed_seconds"],
                 "tool_calls": stats["tool_calls"],
                 "status": status
-            })
+            }
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(process_task, task, idx) for idx, task in enumerate(tasks)]
+        results = [f.result() for f in futures]
     
     return {"benchmark": "livecode-bench", "results": results}
-
-
-# ============================================================
-# BENCHMARK 5: BigCodeBench (APIs complexas)
-# ============================================================
-def run_bigcodebench(limit=3):
+def run_bigcodebench(limit=3, workers=1):
     print("\n" + "=" * 60)
     print("📋 BENCHMARK 5/5: BigCodeBench (APIs Complexas)")
     print("=" * 60)
@@ -504,9 +514,9 @@ def run_bigcodebench(limit=3):
          "entry_point": "extract_emails"},
     ][:limit]
     
-    results = []
-    for idx, task in enumerate(tasks):
-        print(f"\n  [{idx+1}/{len(tasks)}] {task['task_id']} ({task['name']})...")
+    def process_task(task, idx):
+        tid = task["task_id"]
+        print(f"  [START] {tid} ({task['name']})...")
         
         with tempfile.TemporaryDirectory() as tmpdir:
             prompt = (
@@ -555,10 +565,10 @@ def run_bigcodebench(limit=3):
                     status = f"error: {e}"
             
             sym = "✅" if success else "❌"
-            print(f"    {sym} turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s")
+            print(f"  [DONE] {sym} {tid} | turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s status={status}")
             
-            results.append({
-                "task_id": task["task_id"],
+            return {
+                "task_id": tid,
                 "name": task["name"],
                 "success": success,
                 "turns": stats["turns"],
@@ -566,12 +576,14 @@ def run_bigcodebench(limit=3):
                 "elapsed": stats["elapsed_seconds"],
                 "tool_calls": stats["tool_calls"],
                 "status": status
-            })
+            }
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(process_task, task, idx) for idx, task in enumerate(tasks)]
+        results = [f.result() for f in futures]
     
     return {"benchmark": "bigcodebench", "results": results}
 
-
-# ============================================================
 # CONSOLIDAÇÃO
 # ============================================================
 def calculate_costs(tokens, price_input=0.075, price_output=0.3):
@@ -648,6 +660,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description="Runner de todos os benchmarks")
     parser.add_argument("--limit", type=int, default=5, help="Limite de tarefas por benchmark")
+    parser.add_argument("--workers", type=int, default=3, help="Número de threads/workers para execução paralela")
     args = parser.parse_args()
     
     if not build_agent():
@@ -656,12 +669,12 @@ def main():
     start_total = time.time()
     all_results = []
     
-    # Roda todos os benchmarks sequencialmente
-    all_results.append(run_evalplus(limit=args.limit))
-    all_results.append(run_swebench(limit=min(args.limit, 3)))
-    all_results.append(run_terminalbench(limit=args.limit))
-    all_results.append(run_livecodebench(limit=args.limit))
-    all_results.append(run_bigcodebench(limit=min(args.limit, 3)))
+    # Roda todos os benchmarks
+    all_results.append(run_evalplus(limit=args.limit, workers=args.workers))
+    all_results.append(run_swebench(limit=min(args.limit, 3), workers=args.workers))
+    all_results.append(run_terminalbench(limit=args.limit, workers=args.workers))
+    all_results.append(run_livecodebench(limit=args.limit, workers=args.workers))
+    all_results.append(run_bigcodebench(limit=min(args.limit, 3), workers=args.workers))
     
     elapsed_total = time.time() - start_total
     consolidate(all_results, elapsed_total)
