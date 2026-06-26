@@ -35,8 +35,9 @@ if ENV_FILE.exists():
 
 PROVIDER = "openrouter"
 MODEL = "meta-llama/llama-3.1-8b-instruct"
-MAX_ITER = 0
-TIMEOUT = 1800
+MAX_ITER = 30   # Limite máximo de turnos (evita loops infinitos)
+TIMEOUT = 1800  # 30 minutos por tarefa
+MAX_TOKENS_PER_TASK = 200_000  # Hard-cap de tokens para evitar desperdício extremo
 
 
 class ProgressManager:
@@ -123,7 +124,7 @@ def run_agent(prompt, workspace, max_iter=MAX_ITER, timeout=TIMEOUT):
         exit_ok = False
     
     # Lê telemetria do .crom_state.json
-    state = {"turns": 0, "tokens": 0, "tool_calls": 0}
+    state = {"turns": 0, "tokens": 0, "tool_calls": 0, "limit_exceeded": False}
     state_file = workspace_path / ".crom" / ".crom_state.json"
     if state_file.exists():
         try:
@@ -132,6 +133,8 @@ def run_agent(prompt, workspace, max_iter=MAX_ITER, timeout=TIMEOUT):
                 state["turns"] = data.get("total_turnos", data.get("TotalTurnos", 0))
                 state["tokens"] = data.get("tokens_gastos", data.get("TokensGastos", 0))
                 state["tool_calls"] = data.get("tool_calls_emitted", data.get("ToolCallsEmitted", 0))
+                if state["tokens"] > MAX_TOKENS_PER_TASK:
+                    state["limit_exceeded"] = True
         except Exception:
             pass
     else:
@@ -274,6 +277,10 @@ def run_evalplus(limit=5, workers=1):
                 except Exception as e:
                     status = f"error: {e}"
             
+            if stats.get("limit_exceeded"):
+                success = False
+                status = "failed_token_limit"
+            
             sym = "✅" if success else "❌"
             print(f"  [DONE] {sym} {tid} | turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s status={status}")
             
@@ -338,26 +345,43 @@ def run_swebench(limit=3, workers=1):
             prompt = (
                 f"TAREFA DE ENGENHARIA DE SOFTWARE:\n\n"
                 f"Repositório: {task['repo']}\n"
+                f"Commit Base: {task['base_commit']}\n"
                 f"Issue ID: {iid}\n\n"
                 f"PROBLEMA:\n{task['problem_statement'][:2000]}\n\n"
-                f"INSTRUÇÕES:\n"
-                f"1. Analise o problema descrito acima\n"
-                f"2. Identifique os arquivos relevantes que precisam ser alterados\n"
-                f"3. Proponha as correções necessárias\n"
-                f"4. Salve suas correções em um arquivo 'fix.patch' com formato diff unificado\n"
-                f"5. Explique sua solução em 'analise.md'\n\n"
-                f"Crie os arquivos fix.patch e analise.md no diretório atual."
+                f"INSTRUÇÕES CRÍTICAS:\n"
+                f"0. Você está em um diretório vazio. PRIMEIRA COISA A FAZER: execute um comando no terminal para clonar o repositório (git clone https://github.com/{task['repo']}.git repo) e fazer o checkout do commit base (cd repo && git checkout {task['base_commit']}).\n"
+                f"1. Analise o problema descrito acima lendo os arquivos do repositório clonado\n"
+                f"2. Identifique os arquivos relevantes que precisam ser alterados e faça as modificações necessárias neles\n"
+                f"3. Após testar suas alterações, gere um arquivo de diff executando 'git diff > ../fix.patch' de dentro do diretório do repositório clonado\n"
+                f"4. Escreva uma explicação da sua solução no arquivo '../analise.md'\n"
+                f"5. O arquivo fix.patch final DEVE ter o formato unificado de diff gerado pelo git e DEVE estar no diretório raiz do seu ambiente (junto com analise.md)."
             )
             
             stats = run_agent(prompt, tmpdir, max_iter=MAX_ITER, timeout=TIMEOUT)
             
-            # Verifica se o agente produziu alguma saída razoável
+            # Validação honesta: patch precisa existir E conter marcadores de diff reais
             has_patch = (Path(tmpdir) / "fix.patch").exists()
             has_analysis = (Path(tmpdir) / "analise.md").exists()
-            any_files = len(list(Path(tmpdir).glob("*"))) > 1  # mais que .crom
             
-            success = has_patch or has_analysis or any_files
-            status = "produced_output" if success else "no_output"
+            # Verificar se o patch é um diff válido (não apenas um arquivo vazio)
+            valid_patch = False
+            if has_patch:
+                patch_content = (Path(tmpdir) / "fix.patch").read_text()
+                valid_patch = ("---" in patch_content and "+++" in patch_content) or ("diff" in patch_content.lower())
+            
+            success = valid_patch  # Só conta como sucesso se produziu um patch válido
+            if valid_patch:
+                status = "valid_patch"
+            elif has_patch:
+                status = "invalid_patch"  # Arquivo existe mas não é um diff real
+            elif has_analysis:
+                status = "analysis_only"  # Só fez análise, sem patch
+            else:
+                status = "no_output"
+            
+            if stats.get("limit_exceeded"):
+                success = False
+                status = "failed_token_limit"
             
             sym = "✅" if success else "❌"
             print(f"  [DONE] {sym} {iid} | turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s patch={has_patch} analysis={has_analysis}")
@@ -384,11 +408,11 @@ def run_swebench(limit=3, workers=1):
 
 
 # ============================================================
-# BENCHMARK 3: Terminal-Bench (Tarefas de Terminal)
+# BENCHMARK 3: Terminal-Tasks (Custom/Interno — NÃO é benchmark público)
 # ============================================================
 def run_terminalbench(limit=3, workers=1):
     print("\n" + "=" * 60)
-    print("📋 BENCHMARK 3/5: Terminal-Bench (Tarefas de Terminal)")
+    print("📋 BENCHMARK 3/5: Terminal-Tasks (Custom)")
     print("=" * 60)
     
     # Tarefas realistas de terminal (baseadas no formato Terminal-Bench)
@@ -428,6 +452,10 @@ def run_terminalbench(limit=3, workers=1):
                 success = False
             
             status = "success" if success else "failed_validation"
+            if stats.get("limit_exceeded"):
+                success = False
+                status = "failed_token_limit"
+            
             sym = "✅" if success else "❌"
             print(f"  [DONE] {sym} {tid} | turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s status={status}")
             
@@ -452,39 +480,53 @@ def run_terminalbench(limit=3, workers=1):
 
 
 # ============================================================
-# BENCHMARK 4: LiveCodeBench (Problemas Algorítmicos)
+# BENCHMARK 4: MBPP Sanitized (Substitui LiveCodeBench fake)
+# Dataset real: google-research-datasets/mbpp (257 tasks)
 # ============================================================
 def run_livecodebench(limit=3, workers=1):
     print("\n" + "=" * 60)
-    print("📋 BENCHMARK 4/5: LiveCodeBench (Algoritmos)")
+    print("📋 BENCHMARK 4/5: MBPP Sanitized (Código Real)")
     print("=" * 60)
     
-    tasks = [
-        {"task_id": "lcb-001", "name": "two_sum",
-         "prompt": "def two_sum(nums: list, target: int) -> list:\n    \"\"\"Given an array of integers nums and an integer target, return indices of the two numbers that add up to target. Each input has exactly one solution.\n    >>> two_sum([2, 7, 11, 15], 9)\n    [0, 1]\n    >>> two_sum([3, 2, 4], 6)\n    [1, 2]\n    \"\"\"\n",
-         "test": "def check(candidate):\n    assert candidate([2, 7, 11, 15], 9) == [0, 1]\n    assert candidate([3, 2, 4], 6) == [1, 2]\n    assert candidate([3, 3], 6) == [0, 1]\n",
-         "entry_point": "two_sum"},
-        {"task_id": "lcb-002", "name": "is_palindrome",
-         "prompt": "def is_palindrome(s: str) -> bool:\n    \"\"\"Check if a string is a palindrome, considering only alphanumeric characters and ignoring cases.\n    >>> is_palindrome('A man, a plan, a canal: Panama')\n    True\n    >>> is_palindrome('race a car')\n    False\n    \"\"\"\n",
-         "test": "def check(candidate):\n    assert candidate('A man, a plan, a canal: Panama') == True\n    assert candidate('race a car') == False\n    assert candidate('') == True\n    assert candidate(' ') == True\n",
-         "entry_point": "is_palindrome"},
-        {"task_id": "lcb-003", "name": "max_subarray",
-         "prompt": "def max_subarray(nums: list) -> int:\n    \"\"\"Find the contiguous subarray which has the largest sum and return its sum.\n    >>> max_subarray([-2,1,-3,4,-1,2,1,-5,4])\n    6\n    >>> max_subarray([1])\n    1\n    >>> max_subarray([5,4,-1,7,8])\n    23\n    \"\"\"\n",
-         "test": "def check(candidate):\n    assert candidate([-2,1,-3,4,-1,2,1,-5,4]) == 6\n    assert candidate([1]) == 1\n    assert candidate([5,4,-1,7,8]) == 23\n    assert candidate([-1]) == -1\n",
-         "entry_point": "max_subarray"},
-        {"task_id": "lcb-004", "name": "valid_parentheses",
-         "prompt": "def is_valid(s: str) -> bool:\n    \"\"\"Given a string s containing just the characters '(', ')', '{', '}', '[' and ']', determine if the input string is valid.\n    >>> is_valid('()')\n    True\n    >>> is_valid('()[]{}')\n    True\n    >>> is_valid('(]')\n    False\n    \"\"\"\n",
-         "test": "def check(candidate):\n    assert candidate('()') == True\n    assert candidate('()[]{}') == True\n    assert candidate('(]') == False\n    assert candidate('([)]') == False\n    assert candidate('{[]}') == True\n",
-         "entry_point": "is_valid"},
-        {"task_id": "lcb-005", "name": "merge_sorted",
-         "prompt": "def merge(nums1: list, m: int, nums2: list, n: int) -> list:\n    \"\"\"Merge nums2 into nums1 as one sorted array. nums1 has enough space. Return the merged result.\n    >>> merge([1,2,3,0,0,0], 3, [2,5,6], 3)\n    [1, 2, 2, 3, 5, 6]\n    \"\"\"\n",
-         "test": "def check(candidate):\n    assert candidate([1,2,3,0,0,0], 3, [2,5,6], 3) == [1, 2, 2, 3, 5, 6]\n    assert candidate([1], 1, [], 0) == [1]\n",
-         "entry_point": "merge"},
-    ][:limit]
+    tasks = []
+    try:
+        from datasets import load_dataset
+        ds = load_dataset("google-research-datasets/mbpp", "sanitized", split="test")
+        for i in range(min(limit, len(ds))):
+            item = ds[i]
+            # Extrair nome da função do código de referência
+            entry_point = "solution"
+            import re as _re
+            fn_match = _re.search(r'def (\w+)\(', item.get("code", ""))
+            if fn_match:
+                entry_point = fn_match.group(1)
+            
+            # Construir teste executável a partir da test_list
+            test_assertions = "\n".join(item.get("test_list", []))
+            test_code = f"def check(candidate):\n"
+            # Substituir nome da função real por 'candidate' nos asserts
+            for assertion in item.get("test_list", []):
+                test_code += f"    {assertion.replace(entry_point, 'candidate')}\n"
+            
+            tasks.append({
+                "task_id": f"MBPP/{item['task_id']}",
+                "name": entry_point,
+                "prompt": item["prompt"],
+                "test": test_code,
+                "test_raw": test_assertions,
+                "entry_point": entry_point,
+            })
+        print(f"✓ {len(tasks)} tarefas MBPP carregadas do Hugging Face")
+    except Exception as e:
+        print(f"⚠️ Erro ao carregar MBPP: {e}")
+        tasks = []
+    
+    if not tasks:
+        return {"benchmark": "mbpp", "results": []}
     
     def process_task(task, idx):
         tid = task["task_id"]
-        cached = progress.get_result("livecode-bench", tid)
+        cached = progress.get_result("mbpp", tid)
         if cached:
             print(f"  [SKIP] {tid} (already processed)")
             return cached
@@ -493,12 +535,12 @@ def run_livecodebench(limit=3, workers=1):
         
         with tempfile.TemporaryDirectory() as tmpdir:
             prompt = (
-                f"TAREFA: Complete a função Python e salve em 'solucao.py'.\n\n"
+                f"TAREFA: Escreva uma função Python e salve em 'solucao.py'.\n\n"
+                f"DESCRIÇÃO:\n{task['prompt']}\n\n"
                 f"INSTRUÇÕES:\n"
                 f"1. Use: cat > solucao.py << 'PYEOF'\n"
-                f"2. Escreva APENAS a função com corpo implementado\n"
+                f"2. A função deve se chamar '{task['entry_point']}'\n"
                 f"3. Verifique com: cat solucao.py\n\n"
-                f"```python\n{task['prompt']}```\n\n"
                 f"Salve em solucao.py."
             )
             
@@ -523,11 +565,12 @@ def run_livecodebench(limit=3, workers=1):
             if sol_file.exists():
                 try:
                     gen_code = sol_file.read_text()
-                    test_script = f"{gen_code}\n\n{task['test']}\n\nif __name__ == '__main__':\n    check({task['entry_point']})\n    print('PASS')\n"
+                    # Usar os asserts originais do MBPP (sem wrapper check())
+                    test_script = f"{gen_code}\n\n{task['test_raw']}\nprint('PASS')\n"
                     test_file = Path(tmpdir) / "run_test.py"
                     test_file.write_text(test_script)
                     
-                    r = subprocess.run([sys.executable, str(test_file)], capture_output=True, text=True, timeout=10)
+                    r = subprocess.run([sys.executable, str(test_file)], capture_output=True, text=True, timeout=15)
                     if r.returncode == 0 and "PASS" in r.stdout:
                         success = True
                         status = "success"
@@ -535,6 +578,10 @@ def run_livecodebench(limit=3, workers=1):
                         status = "failed_tests"
                 except Exception as e:
                     status = f"error: {e}"
+            
+            if stats.get("limit_exceeded"):
+                success = False
+                status = "failed_token_limit"
             
             sym = "✅" if success else "❌"
             print(f"  [DONE] {sym} {tid} | turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s status={status}")
@@ -549,33 +596,46 @@ def run_livecodebench(limit=3, workers=1):
                 "tool_calls": stats["tool_calls"],
                 "status": status
             }
-            progress.save_result("livecode-bench", tid, res)
+            progress.save_result("mbpp", tid, res)
             return res
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = [executor.submit(process_task, task, idx) for idx, task in enumerate(tasks)]
         results = [f.result() for f in futures]
     
-    return {"benchmark": "livecode-bench", "results": results}
+    return {"benchmark": "mbpp", "results": results}
+
+
+# ============================================================
+# BENCHMARK 5: BigCodeBench (Dataset Real)
+# Dataset real: bigcode/bigcodebench (1140 tasks)
+# ============================================================
 def run_bigcodebench(limit=3, workers=1):
     print("\n" + "=" * 60)
-    print("📋 BENCHMARK 5/5: BigCodeBench (APIs Complexas)")
+    print("📋 BENCHMARK 5/5: BigCodeBench (Dataset Real)")
     print("=" * 60)
     
-    tasks = [
-        {"task_id": "bcb-001", "name": "file_stats",
-         "prompt": "import os\nimport json\n\ndef file_stats(directory: str) -> dict:\n    \"\"\"Walk through a directory and return a dict with 'total_files', 'total_dirs', and 'total_size_bytes' keys.\n    >>> result = file_stats('/tmp/test')\n    >>> 'total_files' in result\n    True\n    \"\"\"\n",
-         "test": "import tempfile, os\ndef check(candidate):\n    with tempfile.TemporaryDirectory() as d:\n        with open(os.path.join(d, 'a.txt'), 'w') as f: f.write('hello')\n        os.makedirs(os.path.join(d, 'sub'))\n        with open(os.path.join(d, 'sub', 'b.txt'), 'w') as f: f.write('world')\n        r = candidate(d)\n        assert r['total_files'] == 2\n        assert r['total_dirs'] >= 1\n        assert r['total_size_bytes'] == 10\n",
-         "entry_point": "file_stats"},
-        {"task_id": "bcb-002", "name": "csv_aggregate",
-         "prompt": "import csv\nimport io\n\ndef csv_aggregate(csv_string: str, group_col: str, agg_col: str) -> dict:\n    \"\"\"Parse a CSV string and return a dict mapping each unique value in group_col to the sum of agg_col values.\n    >>> csv_aggregate('name,score\\nAlice,10\\nBob,20\\nAlice,30', 'name', 'score')\n    {'Alice': 40, 'Bob': 20}\n    \"\"\"\n",
-         "test": "def check(candidate):\n    assert candidate('name,score\\nAlice,10\\nBob,20\\nAlice,30', 'name', 'score') == {'Alice': 40, 'Bob': 20}\n    assert candidate('city,pop\\nNYC,100\\nSF,50\\nNYC,200', 'city', 'pop') == {'NYC': 300, 'SF': 50}\n",
-         "entry_point": "csv_aggregate"},
-        {"task_id": "bcb-003", "name": "regex_extract",
-         "prompt": "import re\n\ndef extract_emails(text: str) -> list:\n    \"\"\"Extract all valid email addresses from a text string and return them as a sorted list.\n    >>> extract_emails('Contact alice@example.com or bob@test.org')\n    ['alice@example.com', 'bob@test.org']\n    \"\"\"\n",
-         "test": "def check(candidate):\n    assert candidate('Contact alice@example.com or bob@test.org') == ['alice@example.com', 'bob@test.org']\n    assert candidate('no emails here') == []\n    assert candidate('a@b.com and c@d.co') == ['a@b.com', 'c@d.co']\n",
-         "entry_point": "extract_emails"},
-    ][:limit]
+    tasks = []
+    try:
+        from datasets import load_dataset
+        ds = load_dataset("bigcode/bigcodebench", split="v0.1.2")
+        for i in range(min(limit, len(ds))):
+            item = ds[i]
+            tasks.append({
+                "task_id": item["task_id"],
+                "name": item["entry_point"],
+                "prompt": item["instruct_prompt"],
+                "code_prompt": item.get("code_prompt", ""),
+                "test": item["test"],
+                "entry_point": item["entry_point"],
+            })
+        print(f"✓ {len(tasks)} tarefas BigCodeBench carregadas do Hugging Face")
+    except Exception as e:
+        print(f"⚠️ Erro ao carregar BigCodeBench: {e}")
+        tasks = []
+    
+    if not tasks:
+        return {"benchmark": "bigcodebench", "results": []}
     
     def process_task(task, idx):
         tid = task["task_id"]
@@ -588,13 +648,13 @@ def run_bigcodebench(limit=3, workers=1):
         
         with tempfile.TemporaryDirectory() as tmpdir:
             prompt = (
-                f"TAREFA: Complete a função Python e salve em 'solucao.py'.\n\n"
+                f"TAREFA: Escreva uma função Python e salve em 'solucao.py'.\n\n"
+                f"DESCRIÇÃO:\n{task['prompt'][:2000]}\n\n"
                 f"INSTRUÇÕES:\n"
                 f"1. Use: cat > solucao.py << 'PYEOF'\n"
                 f"2. Inclua todos os imports necessários\n"
-                f"3. Escreva a função completa\n"
+                f"3. A função deve se chamar '{task['entry_point']}'\n"
                 f"4. Verifique com: cat solucao.py\n\n"
-                f"```python\n{task['prompt']}```\n\n"
                 f"Salve em solucao.py."
             )
             
@@ -619,18 +679,22 @@ def run_bigcodebench(limit=3, workers=1):
             if sol_file.exists():
                 try:
                     gen_code = sol_file.read_text()
-                    test_script = f"{gen_code}\n\n{task['test']}\n\nif __name__ == '__main__':\n    check({task['entry_point']})\n    print('PASS')\n"
+                    test_script = f"{gen_code}\n\n{task['test']}\n\nif __name__ == '__main__':\n    import unittest\n    unittest.main()\n"
                     test_file = Path(tmpdir) / "run_test.py"
                     test_file.write_text(test_script)
                     
-                    r = subprocess.run([sys.executable, str(test_file)], capture_output=True, text=True, timeout=10)
-                    if r.returncode == 0 and "PASS" in r.stdout:
+                    r = subprocess.run([sys.executable, str(test_file)], capture_output=True, text=True, timeout=30)
+                    if r.returncode == 0:
                         success = True
                         status = "success"
                     else:
                         status = "failed_tests"
                 except Exception as e:
                     status = f"error: {e}"
+            
+            if stats.get("limit_exceeded"):
+                success = False
+                status = "failed_token_limit"
             
             sym = "✅" if success else "❌"
             print(f"  [DONE] {sym} {tid} | turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s status={status}")
@@ -653,6 +717,7 @@ def run_bigcodebench(limit=3, workers=1):
         results = [f.result() for f in futures]
     
     return {"benchmark": "bigcodebench", "results": results}
+
 
 # CONSOLIDAÇÃO
 # ============================================================
@@ -746,10 +811,10 @@ def main():
     
     # Roda todos os benchmarks
     all_results.append(run_evalplus(limit=args.limit, workers=args.workers))
-    all_results.append(run_swebench(limit=min(args.limit, 3), workers=args.workers))
+    all_results.append(run_swebench(limit=args.limit, workers=args.workers))
     all_results.append(run_terminalbench(limit=args.limit, workers=args.workers))
     all_results.append(run_livecodebench(limit=args.limit, workers=args.workers))
-    all_results.append(run_bigcodebench(limit=min(args.limit, 3), workers=args.workers))
+    all_results.append(run_bigcodebench(limit=args.limit, workers=args.workers))
     
     elapsed_total = time.time() - start_total
     consolidate(all_results, elapsed_total)

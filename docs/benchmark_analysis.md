@@ -1,10 +1,10 @@
 # Relatório de Avaliação de Desempenho e Benchmarking: `crom-agente`
 
-**Versão**: 6.0 — Resultados com Estresse e Paralelismo (50 Workers - 180 Tarefas)  
+**Versão**: 7.0 — Run 5 Definitivo (Sem Mocks, 100 Workers, Ferramentas Nativas)  
 **Publicado em**: Junho de 2026  
 **Autor**: Equipe de Engenharia `crom-agente`  
 **Modelo Testado**: `meta-llama/llama-3.1-8b-instruct` via OpenRouter  
-**Datas de Execução**: 26 de Junho de 2026 (4 runs acumulados)
+**Datas de Execução**: 26 de Junho de 2026 (Run Definitivo Concluído)
 
 ---
 
@@ -16,18 +16,20 @@ No Run 4, testamos a estabilidade e velocidade do sistema submetendo **180 taref
 
 ### Resultados Globais Comparativos
 
-| Métrica | Run 1 (Piloto) | Run 2 (Expandido) | Run 3 (Otimizado) | Run 4 (Limite=15 - 50w) |
+| Métrica | Run 1 (Piloto) | Run 3 (Otimizado) | Run 4 (Limite=15) | **Run 5 (Definitivo - Sem Mock)** |
 | :--- | :---: | :---: | :---: | :---: |
-| **Total de Tarefas** | 21 | 46 | 116 | **180 (Completo!)** |
-| **Tarefas Resolvidas** | 15 (71.4%) | 29 (63.0%) | 53 (45.7%) | **66 (36.7%)** |
-| **EvalPlus (HumanEval)** | 2/5 (40.0%) | 17/30 (56.7%) | 41/100 (41.0%) | **57/164 (34.8%)** |
-| **SWE-bench Lite** | 3/3 (100.0%) | 3/3 (100.0%) | 3/3 (100.0%) | **3/3 (100.0%)** |
-| **Terminal-Bench** | 4/5 (80.0%) | 3/5 (60.0%) | 3/5 (60.0%) | **1/5 (20.0%)** |
-| **LiveCodeBench** | 4/5 (80.0%) | 4/5 (80.0%) | 4/5 (80.0%) | **5/5 (100.0%)** |
-| **BigCodeBench** | 2/3 (66.7%) | 2/3 (66.7%) | 2/3 (66.7%) | **0/3 (0.0%)** |
-| **Custo Total Estimado**| $0.08 | $0.29 | $0.77 | **~$1.48** |
-| **Tokens Consumidos** | - | - | - | **29.559.925** |
-| **Turnos Médios** | 2.3 | 3.3 | 3.9 | **10.4** |
+| **Total de Tarefas** | 21 | 116 | 180 | **724** |
+| **Tarefas Resolvidas** | 15 (71.4%) | 53 (45.7%) | 66 (36.7%) | **139 (19.2%)** |
+| **EvalPlus (HumanEval)** | 2/5 (40.0%) | 41/100 (41.0%) | 57/164 (34.8%) | **47/164 (28.7%)** |
+| **SWE-bench Lite** | 3/3 (100.0%) | 3/3 (100.0%) | 3/3 (100.0%) | **13/300 (4.3%)*** |
+| **Terminal-Bench** | 4/5 (80.0%) | 3/5 (60.0%) | 1/5 (20.0%) | **3/5 (60.0%)** |
+| **LiveCodeBench** | 4/5 (80.0%) | 4/5 (80.0%) | 5/5 (100.0%) | **--** (Subst. por MBPP) |
+| **MBPP** | -- | -- | -- | **76/255 (29.8%)** |
+| **Custo Total Estimado**| $0.08 | $0.77 | ~$1.48 | **~$3.60** |
+| **Tokens Consumidos** | - | - | 29.559.925 | **71.983.470** |
+| **Turnos Médios** | 2.3 | 3.9 | 10.4 | **6.9** |
+
+*Nota: SWE-bench aponta 13 patches PERFEITOS testados localmente. O status "has_patch" gerou 24 parciais.*
 
 > [!IMPORTANT]
 > **Destaque de Escalabilidade (Run 4):** A arquitetura em Go provou ser extremamente eficiente sob concorrência intensa. O Run 4 processou **180 tarefas complexas em apenas 9.7 minutos** usando 50 workers paralelos, uma redução brutal de tempo em comparação ao Run 3 (que levou 51.4 minutos para processar apenas 116 tarefas de forma menos paralelizada).

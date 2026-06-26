@@ -339,7 +339,7 @@ func LoadWorkspaceConfig(workspacePath string) (*WorkspaceConfig, error) {
       "name": "spawn",
       "type": "native",
       "description": "Especialista em executar tarefas assíncronas isoladas e scripts locais",
-      "tool_ids": ["terminal_command", "read_file", "write_file"]
+      "tool_ids": ["terminal_command", "read_file", "write_file", "diff_replace"]
     }
   ]
 }`

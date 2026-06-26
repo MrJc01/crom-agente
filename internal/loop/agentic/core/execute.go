@@ -179,11 +179,26 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 	circuitBreakerSoftTriggered := false
 	consecutiveFailures := 0
 	consecutiveRetryCount := 0
+	ineffectiveCorrectionCount := 0  // Contador de detecções de loop de correção ineficaz
 	timerScheduled := false
 	lastIterFailed := false
 	lastToolWasValidation := false
 
 	for i := 0; ; i++ {
+		if al.config != nil && al.config.MaxTokensPerTask > 0 {
+			if al.stateManager != nil && al.stateManager.GetState().TokensGastos > al.config.MaxTokensPerTask {
+				al.handler.OnMessage("system", fmt.Sprintf("[EARLY-STOP] Limite de %d tokens excedido. Encerrando para evitar desperdício.", al.config.MaxTokensPerTask))
+				al.handler.OnEvent(loop.AgentEvent{
+					Timestamp: time.Now(),
+					Event:     "finished",
+					Iteration: i,
+					Data:      map[string]interface{}{"reason": "token_limit", "tokens_gastos": al.stateManager.GetState().TokensGastos},
+				})
+				al.handler.OnStatusChange("idle")
+				return fmt.Errorf("hard-cap de tokens excedido")
+			}
+		}
+
 		if i >= maxIterations {
 			al.handler.OnMessage("system", "Limite de iterações atingido.")
 			al.handler.OnEvent(loop.AgentEvent{
@@ -289,6 +304,21 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		}
 
 		if DetectIneffectiveCorrectionLoop(messages) {
+			ineffectiveCorrectionCount++
+			if ineffectiveCorrectionCount >= 2 {
+				// Hard-stop: o modelo tentou a mesma correção ineficaz repetidamente.
+				// Modelos pequenos (8B) não conseguem "mudar de estratégia" via instrução textual.
+				al.handler.OnMessage("system", "[EARLY-STOP] Loop de correção ineficaz detectado 2x consecutivas. Encerrando para evitar desperdício de tokens.")
+				al.handler.OnEvent(loop.AgentEvent{
+					Timestamp: time.Now(),
+					Event:     "finished",
+					Iteration: i + 1,
+					Data:      map[string]interface{}{"reason": "ineffective_correction_loop", "total_iterations": i + 1},
+				})
+				al.handler.OnStatusChange("idle")
+				saveMsgs(messages)
+				return fmt.Errorf("loop de correção ineficaz detectado após %d iterações", i+1)
+			}
 			al.handler.OnMessage("system", "Detectado loop de correção ineficaz (mesmo arquivo modificado com a mesma falha de teste 3 vezes).")
 			messages = append(messages, llm.Message{
 				Role:    "system",
