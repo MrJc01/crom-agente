@@ -16,18 +16,18 @@ No Run 4, testamos a estabilidade e velocidade do sistema submetendo **180 taref
 
 ### Resultados Globais Comparativos
 
-| Métrica | Run 1 (Piloto) | Run 2 (Expandido) | Run 3 (Otimizado) | Run 4 (Estresse - 50w) |
+| Métrica | Run 1 (Piloto) | Run 2 (Expandido) | Run 3 (Otimizado) | Run 4 (Limite=15 - 50w) |
 | :--- | :---: | :---: | :---: | :---: |
-| **Total de Tarefas** | 21 | 46 | 116 | **180** |
+| **Total de Tarefas** | 21 | 46 | 116 | **180 (Completo!)** |
 | **Tarefas Resolvidas** | 15 (71.4%) | 29 (63.0%) | 53 (45.7%) | **66 (36.7%)** |
 | **EvalPlus (HumanEval)** | 2/5 (40.0%) | 17/30 (56.7%) | 41/100 (41.0%) | **57/164 (34.8%)** |
 | **SWE-bench Lite** | 3/3 (100.0%) | 3/3 (100.0%) | 3/3 (100.0%) | **3/3 (100.0%)** |
 | **Terminal-Bench** | 4/5 (80.0%) | 3/5 (60.0%) | 3/5 (60.0%) | **1/5 (20.0%)** |
-| **LiveCodeBench** | 4/5 (80.0%) | 4/5 (80.0%) | 4/5 (80.0%) | **4/5 (80.0%)** |
-| **BigCodeBench** | 2/3 (66.7%) | 2/3 (66.7%) | 2/3 (66.7%) | **1/3 (33.3%)** |
-| **Custo Total** | $0.08 | $0.29 | $0.77 | **$2.12** |
-| **Tempo Total** | 9.1 min | 22.4 min | 51.4 min | **9.7 min** 🚀 |
-| **Turnos Médios** | 2.3 | 3.3 | 3.9 | **5.5** |
+| **LiveCodeBench** | 4/5 (80.0%) | 4/5 (80.0%) | 4/5 (80.0%) | **5/5 (100.0%)** |
+| **BigCodeBench** | 2/3 (66.7%) | 2/3 (66.7%) | 2/3 (66.7%) | **0/3 (0.0%)** |
+| **Custo Total Estimado**| $0.08 | $0.29 | $0.77 | **~$1.48** |
+| **Tokens Consumidos** | - | - | - | **29.559.925** |
+| **Turnos Médios** | 2.3 | 3.3 | 3.9 | **10.4** |
 
 > [!IMPORTANT]
 > **Destaque de Escalabilidade (Run 4):** A arquitetura em Go provou ser extremamente eficiente sob concorrência intensa. O Run 4 processou **180 tarefas complexas em apenas 9.7 minutos** usando 50 workers paralelos, uma redução brutal de tempo em comparação ao Run 3 (que levou 51.4 minutos para processar apenas 116 tarefas de forma menos paralelizada).

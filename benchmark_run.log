@@ -1,1 +1,770 @@
 Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+🗑️ Progresso anterior limpo.
+🔨 Compilando crom-agente...
+✓ Compilado com sucesso
+
+============================================================
+📋 BENCHMARK 1/5: EvalPlus (HumanEval)
+============================================================
+✓ 164 tarefas HumanEval carregadas do Hugging Face
+  [START] HumanEval/0...
+  [START] HumanEval/1...
+  [START] HumanEval/2...
+  [START] HumanEval/3...
+  [START] HumanEval/4...
+  [START] HumanEval/5...
+  [START] HumanEval/6...
+  [START] HumanEval/7...
+  [START] HumanEval/8...
+  [START] HumanEval/9...
+  [START] HumanEval/10...
+  [START] HumanEval/11...
+  [START] HumanEval/12...
+  [START] HumanEval/13...
+  [START] HumanEval/14...
+  [START] HumanEval/15...
+  [START] HumanEval/16...
+  [START] HumanEval/17...
+  [START] HumanEval/18...
+  [START] HumanEval/19...
+  [START] HumanEval/20...
+  [START] HumanEval/21...
+  [START] HumanEval/22...
+  [START] HumanEval/23...
+  [START] HumanEval/24...
+  [START] HumanEval/25...
+  [START] HumanEval/26...
+  [START] HumanEval/27...
+  [START] HumanEval/28...
+  [START] HumanEval/29...
+  [START] HumanEval/30...
+  [START] HumanEval/31...
+  [START] HumanEval/32...
+  [START] HumanEval/33...
+  [START] HumanEval/34...
+  [START] HumanEval/35...
+  [START] HumanEval/36...
+  [START] HumanEval/37...
+  [START] HumanEval/38...
+  [START] HumanEval/39...
+  [START] HumanEval/40...
+  [START] HumanEval/41...
+  [START] HumanEval/42...
+  [START] HumanEval/43...
+  [START] HumanEval/44...
+  [START] HumanEval/45...
+  [START] HumanEval/46...
+  [START] HumanEval/47...
+  [START] HumanEval/48...
+  [START] HumanEval/49...
+  [DONE] ❌ HumanEval/15 | turns=1 tokens=14605 time=2.7s status=failed_tests
+  [START] HumanEval/50...
+  [DONE] ❌ HumanEval/47 | turns=1 tokens=16103 time=20.1s status=failed_tests
+  [START] HumanEval/51...
+  [DONE] ❌ HumanEval/8 | turns=17 tokens=267797 time=40.4s status=failed_tests
+  [START] HumanEval/52...
+  [DONE] ✅ HumanEval/21 | turns=1 tokens=14633 time=41.6s status=success
+  [START] HumanEval/53...
+  [DONE] ✅ HumanEval/36 | turns=2 tokens=28641 time=44.0s status=success
+  [START] HumanEval/54...
+  [DONE] ✅ HumanEval/42 | turns=4 tokens=66145 time=46.5s status=success
+  [START] HumanEval/55...
+  [DONE] ✅ HumanEval/7 | turns=3 tokens=50342 time=47.0s status=success
+  [START] HumanEval/56...
+  [DONE] ✅ HumanEval/46 | turns=3 tokens=48117 time=47.3s status=success
+  [START] HumanEval/57...
+  [DONE] ❌ HumanEval/33 | turns=3 tokens=46909 time=48.6s status=failed_tests
+  [START] HumanEval/58...
+  [DONE] ✅ HumanEval/18 | turns=2 tokens=31244 time=49.6s status=success
+  [START] HumanEval/59...
+  [DONE] ❌ HumanEval/34 | turns=4 tokens=63261 time=58.3s status=failed_tests
+  [START] HumanEval/60...
+  [DONE] ❌ HumanEval/25 | turns=4 tokens=65802 time=58.8s status=failed_tests
+  [START] HumanEval/61...
+  [DONE] ✅ HumanEval/2 | turns=20 tokens=335917 time=79.1s status=success
+  [START] HumanEval/62...
+  [DONE] ❌ HumanEval/28 | turns=6 tokens=93473 time=79.6s status=failed_tests
+  [START] HumanEval/63...
+  [DONE] ✅ HumanEval/27 | turns=4 tokens=65312 time=80.2s status=success
+  [START] HumanEval/64...
+  [DONE] ❌ HumanEval/55 | turns=2 tokens=27541 time=25.5s status=error: Command '['/usr/bin/python3', '/tmp/tmpepzr4__r/run_test.py']' timed out after 10 seconds
+  [START] HumanEval/65...
+  [DONE] ✅ HumanEval/4 | turns=2 tokens=31416 time=84.9s status=success
+  [START] HumanEval/66...
+  [DONE] ❌ HumanEval/48 | turns=10 tokens=157154 time=87.7s status=failed_tests
+  [START] HumanEval/67...
+  [DONE] ❌ HumanEval/39 | turns=2 tokens=31552 time=79.8s status=error: Command '['/usr/bin/python3', '/tmp/tmpk75kc0em/run_test.py']' timed out after 10 seconds
+  [START] HumanEval/68...
+  [DONE] ✅ HumanEval/53 | turns=8 tokens=126516 time=48.2s status=success
+  [START] HumanEval/69...
+  [DONE] ✅ HumanEval/30 | turns=4 tokens=62270 time=92.6s status=success
+  [START] HumanEval/70...
+  [DONE] ❌ HumanEval/65 | turns=3 tokens=41300 time=14.4s status=failed_tests
+  [START] HumanEval/71...
+  [DONE] ✅ HumanEval/66 | turns=4 tokens=55910 time=12.8s status=success
+  [START] HumanEval/72...
+  [DONE] ✅ HumanEval/13 | turns=5 tokens=76984 time=102.7s status=success
+  [START] HumanEval/73...
+  [DONE] ✅ HumanEval/52 | turns=2 tokens=30302 time=63.8s status=success
+  [START] HumanEval/74...
+  [DONE] ❌ HumanEval/20 | turns=6 tokens=91580 time=106.6s status=failed_tests
+  [START] HumanEval/75...
+  [DONE] ❌ HumanEval/68 | turns=4 tokens=62116 time=18.5s status=failed_tests
+  [START] HumanEval/76...
+  [DONE] ✅ HumanEval/37 | turns=10 tokens=161632 time=111.0s status=success
+  [START] HumanEval/77...
+  [DONE] ❌ HumanEval/72 | turns=2 tokens=30855 time=14.4s status=failed_tests
+  [START] HumanEval/78...
+  [DONE] ✅ HumanEval/44 | turns=8 tokens=122326 time=116.8s status=success
+  [START] HumanEval/79...
+  [DONE] ❌ HumanEval/22 | turns=8 tokens=125499 time=118.2s status=failed_tests
+  [START] HumanEval/80...
+  [DONE] ✅ HumanEval/35 | turns=7 tokens=91558 time=118.4s status=success
+  [START] HumanEval/81...
+  [DONE] ❌ HumanEval/73 | turns=3 tokens=42275 time=18.4s status=failed_tests
+  [START] HumanEval/82...
+  [DONE] ❌ HumanEval/58 | turns=3 tokens=45098 time=72.8s status=failed_tests
+  [START] HumanEval/83...
+  [DONE] ✅ HumanEval/50 | turns=4 tokens=56648 time=118.9s status=success
+  [START] HumanEval/84...
+  [DONE] ❌ HumanEval/11 | turns=5 tokens=78094 time=121.9s status=failed_tests
+  [START] HumanEval/85...
+  [DONE] ✅ HumanEval/51 | turns=5 tokens=76843 time=102.1s status=success
+  [START] HumanEval/86...
+  [DONE] ✅ HumanEval/45 | turns=20 tokens=201780 time=122.7s status=success
+  [START] HumanEval/87...
+  [DONE] ✅ HumanEval/23 | turns=5 tokens=73206 time=124.0s status=success
+  [START] HumanEval/88...
+  [DONE] ❌ HumanEval/79 | turns=2 tokens=29338 time=11.0s status=failed_tests
+  [START] HumanEval/89...
+  [DONE] ❌ HumanEval/6 | turns=5 tokens=78501 time=128.4s status=failed_tests
+  [START] HumanEval/90...
+  [DONE] ❌ HumanEval/14 | turns=4 tokens=62310 time=129.3s status=failed_tests
+  [START] HumanEval/91...
+  [DONE] ❌ HumanEval/74 | turns=3 tokens=48284 time=30.3s status=failed_tests
+  [START] HumanEval/92...
+  [DONE] ❌ HumanEval/29 | turns=20 tokens=314227 time=140.0s status=failed_tests
+  [START] HumanEval/93...
+  [DONE] ❌ HumanEval/67 | turns=6 tokens=91835 time=54.2s status=failed_tests
+  [START] HumanEval/94...
+  [DONE] ❌ HumanEval/76 | turns=2 tokens=33882 time=33.5s status=failed_tests
+  [START] HumanEval/95...
+  [DONE] ❌ HumanEval/81 | turns=20 tokens=312681 time=35.8s status=failed_tests
+  [START] HumanEval/96...
+  [DONE] ✅ HumanEval/49 | turns=9 tokens=149774 time=155.5s status=success
+  [START] HumanEval/97...
+  [DONE] ❌ HumanEval/84 | turns=5 tokens=73507 time=42.6s status=failed_tests
+  [START] HumanEval/98...
+  [DONE] ❌ HumanEval/90 | turns=5 tokens=79041 time=35.9s status=failed_tests
+  [START] HumanEval/99...
+  [DONE] ❌ HumanEval/93 | turns=2 tokens=29897 time=25.6s status=failed_tests
+  [START] HumanEval/100...
+  [DONE] ✅ HumanEval/31 | turns=20 tokens=314384 time=167.0s status=success
+  [START] HumanEval/101...
+  [DONE] ❌ HumanEval/56 | turns=6 tokens=98112 time=120.1s status=failed_tests
+  [START] HumanEval/102...
+  [DONE] ❌ HumanEval/88 | turns=2 tokens=18674 time=43.7s status=failed_tests
+  [START] HumanEval/103...
+  [DONE] ❌ HumanEval/97 | turns=3 tokens=49786 time=13.5s status=failed_tests
+  [START] HumanEval/104...
+  [DONE] ❌ HumanEval/86 | turns=3 tokens=46667 time=52.2s status=failed_tests
+  [START] HumanEval/105...
+  [DONE] ❌ HumanEval/71 | turns=6 tokens=86615 time=79.7s status=failed_tests
+  [START] HumanEval/106...
+  [DONE] ❌ HumanEval/104 | turns=1 tokens=14996 time=21.1s status=failed_tests
+  [START] HumanEval/107...
+  [DONE] ❌ HumanEval/100 | turns=3 tokens=46964 time=32.3s status=failed_tests
+  [START] HumanEval/108...
+  [DONE] ❌ HumanEval/59 | turns=18 tokens=294902 time=149.2s status=failed_tests
+  [START] HumanEval/109...
+  [DONE] ❌ HumanEval/92 | turns=4 tokens=59084 time=64.7s status=failed_tests
+  [START] HumanEval/110...
+  [DONE] ❌ HumanEval/5 | turns=20 tokens=315845 time=200.1s status=failed_tests
+  [START] HumanEval/111...
+  [DONE] ✅ HumanEval/54 | turns=20 tokens=319099 time=155.7s status=success
+  [DONE] ❌ HumanEval/64 | turns=4 tokens=58929 time=119.9s status=failed_tests
+  [START] HumanEval/112...
+  [START] HumanEval/113...
+  [DONE] ✅ HumanEval/105 | turns=3 tokens=44521 time=28.4s status=success
+  [START] HumanEval/114...
+  [DONE] ❌ HumanEval/70 | turns=6 tokens=95613 time=112.2s status=failed_tests
+  [START] HumanEval/115...
+  [DONE] ❌ HumanEval/85 | turns=4 tokens=60282 time=88.0s status=failed_tests
+  [START] HumanEval/116...
+  [DONE] ❌ HumanEval/24 | turns=21 tokens=330414 time=211.4s status=failed_tests
+  [START] HumanEval/117...
+  [DONE] ✅ HumanEval/82 | turns=2 tokens=31061 time=102.6s status=success
+  [START] HumanEval/118...
+  [DONE] ✅ HumanEval/112 | turns=3 tokens=50160 time=24.1s status=success
+  [START] HumanEval/119...
+  [DONE] ✅ HumanEval/114 | turns=2 tokens=30286 time=24.6s status=success
+  [START] HumanEval/120...
+  [DONE] ✅ HumanEval/9 | turns=18 tokens=183270 time=228.7s status=success
+  [START] HumanEval/121...
+  [DONE] ✅ HumanEval/12 | turns=22 tokens=380887 time=229.4s status=success
+  [START] HumanEval/122...
+  [DONE] ✅ HumanEval/43 | turns=19 tokens=308464 time=230.5s status=success
+  [START] HumanEval/123...
+  [DONE] ❌ HumanEval/87 | turns=5 tokens=82992 time=108.3s status=failed_tests
+  [START] HumanEval/124...
+  [DONE] ✅ HumanEval/89 | turns=18 tokens=344655 time=103.0s status=success
+  [START] HumanEval/125...
+  [DONE] ✅ HumanEval/106 | turns=3 tokens=45362 time=56.2s status=success
+  [START] HumanEval/126...
+  [DONE] ✅ HumanEval/60 | turns=24 tokens=382440 time=175.0s status=success
+  [START] HumanEval/127...
+  [DONE] ✅ HumanEval/118 | turns=2 tokens=28662 time=11.0s status=success
+  [START] HumanEval/128...
+  [DONE] ✅ HumanEval/117 | turns=2 tokens=18576 time=24.0s status=success
+  [START] HumanEval/129...
+  [DONE] ❌ HumanEval/122 | turns=1 tokens=13647 time=9.5s status=failed_tests
+  [START] HumanEval/130...
+  [DONE] ❌ HumanEval/98 | turns=1 tokens=14849 time=74.7s status=failed_tests
+  [START] HumanEval/131...
+  [DONE] ❌ HumanEval/63 | turns=21 tokens=193814 time=162.9s status=failed_tests
+  [START] HumanEval/132...
+  [DONE] ❌ HumanEval/109 | turns=5 tokens=81567 time=43.9s status=failed_tests
+  [START] HumanEval/133...
+  [DONE] ✅ HumanEval/96 | turns=9 tokens=140891 time=89.6s status=success
+  [START] HumanEval/134...
+  [DONE] ❌ HumanEval/132 | turns=2 tokens=28181 time=5.8s status=failed_tests
+  [START] HumanEval/135...
+  [DONE] ❌ HumanEval/120 | turns=2 tokens=31209 time=20.6s status=failed_tests
+  [START] HumanEval/136...
+  [DONE] ❌ HumanEval/111 | turns=2 tokens=31451 time=50.3s status=failed_tests
+  [START] HumanEval/137...
+  [DONE] ❌ HumanEval/123 | turns=4 tokens=57205 time=24.2s status=failed_tests
+  [START] HumanEval/138...
+  [DONE] ❌ HumanEval/0 | turns=17 tokens=277137 time=262.6s status=failed_tests
+  [START] HumanEval/139...
+  [DONE] ❌ HumanEval/108 | turns=8 tokens=126299 time=67.0s status=failed_tests
+  [START] HumanEval/140...
+  [DONE] ❌ HumanEval/115 | turns=10 tokens=160224 time=60.7s status=failed_tests
+  [START] HumanEval/141...
+  [DONE] ❌ HumanEval/1 | turns=24 tokens=410339 time=275.6s status=failed_tests
+  [START] HumanEval/142...
+  [DONE] ❌ HumanEval/121 | turns=8 tokens=120780 time=48.8s status=failed_tests
+  [START] HumanEval/143...
+  [DONE] ✅ HumanEval/69 | turns=21 tokens=345770 time=187.9s status=success
+  [START] HumanEval/144...
+  [DONE] ✅ HumanEval/133 | turns=5 tokens=75873 time=37.4s status=success
+  [START] HumanEval/145...
+  [DONE] ❌ HumanEval/38 | turns=20 tokens=245783 time=282.0s status=failed_tests
+  [START] HumanEval/146...
+  [DONE] ❌ HumanEval/135 | turns=4 tokens=59522 time=35.3s status=failed_tests
+  [START] HumanEval/147...
+  [DONE] ❌ HumanEval/141 | turns=1 tokens=15049 time=23.0s status=failed_tests
+  [START] HumanEval/148...
+  [DONE] ❌ HumanEval/130 | turns=3 tokens=42574 time=51.1s status=failed_tests
+  [START] HumanEval/149...
+  [DONE] ❌ HumanEval/116 | turns=5 tokens=76406 time=83.9s status=failed_tests
+  [START] HumanEval/150...
+  [DONE] ❌ HumanEval/134 | turns=6 tokens=93142 time=50.4s status=failed_tests
+  [START] HumanEval/151...
+  [DONE] ✅ HumanEval/61 | turns=24 tokens=392908 time=237.7s status=success
+  [START] HumanEval/152...
+  [DONE] ❌ HumanEval/110 | turns=7 tokens=112538 time=97.5s status=failed_tests
+  [START] HumanEval/153...
+  [DONE] ✅ HumanEval/113 | turns=22 tokens=371473 time=97.0s status=success
+  [START] HumanEval/154...
+  [DONE] ❌ HumanEval/80 | turns=20 tokens=335803 time=182.6s status=failed_tests
+  [START] HumanEval/155...
+  [DONE] ❌ HumanEval/78 | turns=20 tokens=353099 time=192.3s status=failed_tests
+  [START] HumanEval/156...
+  [DONE] ❌ HumanEval/151 | turns=2 tokens=28436 time=11.5s status=failed_tests
+  [START] HumanEval/157...
+  [DONE] ❌ HumanEval/139 | turns=18 tokens=276529 time=45.4s status=failed_tests
+  [START] HumanEval/158...
+  [DONE] ✅ HumanEval/153 | turns=3 tokens=26074 time=15.0s status=success
+  [START] HumanEval/159...
+  [DONE] ❌ HumanEval/129 | turns=8 tokens=92668 time=81.7s status=failed_tests
+  [START] HumanEval/160...
+  [DONE] ✅ HumanEval/150 | turns=2 tokens=28499 time=25.5s status=success
+  [START] HumanEval/161...
+  [DONE] ❌ HumanEval/126 | turns=8 tokens=129408 time=87.4s status=failed_tests
+  [START] HumanEval/162...
+  [DONE] ❌ HumanEval/154 | turns=2 tokens=21519 time=23.9s status=failed_tests
+  [START] HumanEval/163...
+  [DONE] ❌ HumanEval/158 | turns=2 tokens=30117 time=13.5s status=failed_tests
+  [DONE] ❌ HumanEval/99 | turns=25 tokens=414208 time=166.1s status=failed_tests
+  [DONE] ✅ HumanEval/155 | turns=2 tokens=29245 time=32.9s status=success
+  [DONE] ❌ HumanEval/146 | turns=4 tokens=32482 time=53.6s status=failed_tests
+  [DONE] ❌ HumanEval/41 | turns=25 tokens=423096 time=347.0s status=failed_tests
+  [DONE] ❌ HumanEval/163 | turns=7 tokens=103303 time=26.9s status=failed_tests
+  [DONE] ❌ HumanEval/26 | turns=27 tokens=440232 time=348.7s status=failed_tests
+  [DONE] ❌ HumanEval/94 | turns=13 tokens=234988 time=207.2s status=failed_tests
+  [DONE] ✅ HumanEval/131 | turns=14 tokens=221549 time=110.9s status=success
+  [DONE] ❌ HumanEval/157 | turns=6 tokens=90972 time=45.6s status=failed_tests
+  [DONE] ❌ HumanEval/19 | turns=27 tokens=449591 time=353.4s status=failed_tests
+  [DONE] ✅ HumanEval/136 | turns=10 tokens=160256 time=106.0s status=success
+  [DONE] ✅ HumanEval/149 | turns=8 tokens=123698 time=68.2s status=success
+  [DONE] ❌ HumanEval/156 | turns=7 tokens=110301 time=54.5s status=failed_tests
+  [DONE] ❌ HumanEval/17 | turns=21 tokens=341900 time=362.8s status=failed_tests
+  [DONE] ✅ HumanEval/143 | turns=19 tokens=283064 time=86.3s status=success
+  [DONE] ❌ HumanEval/160 | turns=3 tokens=46785 time=49.9s status=failed_tests
+  [DONE] ❌ HumanEval/159 | turns=4 tokens=64293 time=55.4s status=failed_tests
+  [DONE] ❌ HumanEval/95 | turns=16 tokens=273633 time=233.9s status=failed_tests
+  [DONE] ❌ HumanEval/91 | turns=20 tokens=239194 time=250.9s status=failed_tests
+  [DONE] ✅ HumanEval/138 | turns=21 tokens=343482 time=126.4s status=success
+  [DONE] ❌ HumanEval/147 | turns=20 tokens=356426 time=100.9s status=failed_tests
+  [DONE] ❌ HumanEval/128 | turns=18 tokens=291575 time=150.7s status=failed_tests
+  [DONE] ❌ HumanEval/124 | turns=29 tokens=492939 time=158.3s status=failed_tests
+  [DONE] ❌ HumanEval/103 | turns=26 tokens=430501 time=222.8s status=failed_tests
+  [DONE] ❌ HumanEval/145 | turns=9 tokens=142120 time=115.7s status=failed_tests
+  [DONE] ❌ HumanEval/140 | turns=10 tokens=119449 time=137.5s status=failed_tests
+  [DONE] ❌ HumanEval/10 | turns=28 tokens=486223 time=405.4s status=failed_tests
+  [DONE] ✅ HumanEval/57 | turns=20 tokens=244830 time=361.8s status=success
+  [DONE] ❌ HumanEval/144 | turns=17 tokens=284369 time=134.8s status=failed_tests
+  [DONE] ❌ HumanEval/161 | turns=21 tokens=349805 time=104.8s status=failed_tests
+  [DONE] ❌ HumanEval/148 | turns=22 tokens=243248 time=137.6s status=failed_testsWarning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+🔨 Compilando crom-agente...
+✓ Compilado com sucesso
+
+============================================================
+📋 BENCHMARK 1/5: EvalPlus (HumanEval)
+============================================================
+✓ 164 tarefas HumanEval carregadas do Hugging Face
+  [SKIP] HumanEval/0 (already processed)
+  [SKIP] HumanEval/1 (already processed)
+  [SKIP] HumanEval/2 (already processed)
+  [SKIP] HumanEval/3 (already processed)
+  [SKIP] HumanEval/4 (already processed)
+  [SKIP] HumanEval/5 (already processed)
+  [SKIP] HumanEval/6 (already processed)
+  [SKIP] HumanEval/7 (already processed)
+  [SKIP] HumanEval/8 (already processed)
+  [SKIP] HumanEval/9 (already processed)
+  [SKIP] HumanEval/10 (already processed)
+  [SKIP] HumanEval/11 (already processed)
+  [SKIP] HumanEval/12 (already processed)
+  [SKIP] HumanEval/13 (already processed)
+  [SKIP] HumanEval/14 (already processed)
+  [SKIP] HumanEval/15 (already processed)
+  [SKIP] HumanEval/16 (already processed)
+  [SKIP] HumanEval/17 (already processed)
+  [SKIP] HumanEval/18 (already processed)
+  [SKIP] HumanEval/19 (already processed)
+  [SKIP] HumanEval/20 (already processed)
+  [SKIP] HumanEval/21 (already processed)
+  [SKIP] HumanEval/22 (already processed)
+  [SKIP] HumanEval/23 (already processed)
+  [SKIP] HumanEval/24 (already processed)
+  [SKIP] HumanEval/25 (already processed)
+  [SKIP] HumanEval/26 (already processed)
+  [SKIP] HumanEval/27 (already processed)
+  [SKIP] HumanEval/28 (already processed)
+  [SKIP] HumanEval/29 (already processed)
+  [SKIP] HumanEval/30 (already processed)
+  [SKIP] HumanEval/31 (already processed)
+  [SKIP] HumanEval/32 (already processed)
+  [SKIP] HumanEval/33 (already processed)
+  [SKIP] HumanEval/34 (already processed)
+  [SKIP] HumanEval/35 (already processed)
+  [SKIP] HumanEval/36 (already processed)
+  [SKIP] HumanEval/37 (already processed)
+  [SKIP] HumanEval/38 (already processed)
+  [SKIP] HumanEval/39 (already processed)
+  [SKIP] HumanEval/40 (already processed)
+  [SKIP] HumanEval/41 (already processed)
+  [SKIP] HumanEval/42 (already processed)
+  [SKIP] HumanEval/43 (already processed)
+  [SKIP] HumanEval/44 (already processed)
+  [SKIP] HumanEval/45 (already processed)
+  [SKIP] HumanEval/46 (already processed)
+  [SKIP] HumanEval/47 (already processed)
+  [SKIP] HumanEval/48 (already processed)
+  [SKIP] HumanEval/49 (already processed)
+  [SKIP] HumanEval/50 (already processed)
+  [SKIP] HumanEval/51 (already processed)
+  [SKIP] HumanEval/52 (already processed)
+  [SKIP] HumanEval/53 (already processed)
+  [SKIP] HumanEval/54 (already processed)
+  [SKIP] HumanEval/55 (already processed)
+  [SKIP] HumanEval/56 (already processed)
+  [SKIP] HumanEval/57 (already processed)
+  [SKIP] HumanEval/58 (already processed)
+  [SKIP] HumanEval/59 (already processed)
+  [SKIP] HumanEval/60 (already processed)
+  [SKIP] HumanEval/61 (already processed)
+  [SKIP] HumanEval/62 (already processed)
+  [SKIP] HumanEval/63 (already processed)
+  [SKIP] HumanEval/64 (already processed)
+  [SKIP] HumanEval/65 (already processed)
+  [SKIP] HumanEval/66 (already processed)
+  [SKIP] HumanEval/67 (already processed)
+  [SKIP] HumanEval/68 (already processed)
+  [SKIP] HumanEval/69 (already processed)
+  [SKIP] HumanEval/70 (already processed)
+  [SKIP] HumanEval/71 (already processed)
+  [SKIP] HumanEval/72 (already processed)
+  [SKIP] HumanEval/73 (already processed)
+  [SKIP] HumanEval/74 (already processed)
+  [SKIP] HumanEval/75 (already processed)
+  [SKIP] HumanEval/76 (already processed)
+  [SKIP] HumanEval/77 (already processed)
+  [SKIP] HumanEval/78 (already processed)
+  [SKIP] HumanEval/79 (already processed)
+  [SKIP] HumanEval/80 (already processed)
+  [SKIP] HumanEval/81 (already processed)
+  [SKIP] HumanEval/82 (already processed)
+  [SKIP] HumanEval/83 (already processed)
+  [SKIP] HumanEval/84 (already processed)
+  [SKIP] HumanEval/85 (already processed)
+  [SKIP] HumanEval/86 (already processed)
+  [SKIP] HumanEval/87 (already processed)
+  [SKIP] HumanEval/88 (already processed)
+  [SKIP] HumanEval/89 (already processed)
+  [SKIP] HumanEval/90 (already processed)
+  [SKIP] HumanEval/91 (already processed)
+  [SKIP] HumanEval/92 (already processed)
+  [SKIP] HumanEval/93 (already processed)
+  [SKIP] HumanEval/94 (already processed)
+  [SKIP] HumanEval/95 (already processed)
+  [SKIP] HumanEval/96 (already processed)
+  [SKIP] HumanEval/97 (already processed)
+  [SKIP] HumanEval/98 (already processed)
+  [SKIP] HumanEval/99 (already processed)
+  [SKIP] HumanEval/100 (already processed)
+  [SKIP] HumanEval/101 (already processed)
+  [SKIP] HumanEval/102 (already processed)
+  [SKIP] HumanEval/103 (already processed)
+  [SKIP] HumanEval/104 (already processed)
+  [SKIP] HumanEval/105 (already processed)
+  [SKIP] HumanEval/106 (already processed)
+  [SKIP] HumanEval/107 (already processed)
+  [SKIP] HumanEval/108 (already processed)
+  [SKIP] HumanEval/109 (already processed)
+  [SKIP] HumanEval/110 (already processed)
+  [SKIP] HumanEval/111 (already processed)
+  [SKIP] HumanEval/112 (already processed)
+  [SKIP] HumanEval/113 (already processed)
+  [SKIP] HumanEval/114 (already processed)
+  [SKIP] HumanEval/115 (already processed)
+  [SKIP] HumanEval/116 (already processed)
+  [SKIP] HumanEval/117 (already processed)
+  [SKIP] HumanEval/118 (already processed)
+  [SKIP] HumanEval/119 (already processed)
+  [SKIP] HumanEval/120 (already processed)
+  [SKIP] HumanEval/121 (already processed)
+  [SKIP] HumanEval/122 (already processed)
+  [SKIP] HumanEval/123 (already processed)
+  [SKIP] HumanEval/124 (already processed)
+  [SKIP] HumanEval/125 (already processed)
+  [SKIP] HumanEval/126 (already processed)
+  [SKIP] HumanEval/127 (already processed)
+  [SKIP] HumanEval/128 (already processed)
+  [SKIP] HumanEval/129 (already processed)
+  [SKIP] HumanEval/130 (already processed)
+  [SKIP] HumanEval/131 (already processed)
+  [SKIP] HumanEval/132 (already processed)
+  [SKIP] HumanEval/133 (already processed)
+  [SKIP] HumanEval/134 (already processed)
+  [SKIP] HumanEval/135 (already processed)
+  [SKIP] HumanEval/136 (already processed)
+  [SKIP] HumanEval/137 (already processed)
+  [SKIP] HumanEval/138 (already processed)
+  [SKIP] HumanEval/139 (already processed)
+  [SKIP] HumanEval/140 (already processed)
+  [SKIP] HumanEval/141 (already processed)
+  [SKIP] HumanEval/142 (already processed)
+  [SKIP] HumanEval/143 (already processed)
+  [SKIP] HumanEval/144 (already processed)
+  [SKIP] HumanEval/145 (already processed)
+  [SKIP] HumanEval/146 (already processed)
+  [SKIP] HumanEval/147 (already processed)
+  [SKIP] HumanEval/148 (already processed)
+  [SKIP] HumanEval/149 (already processed)
+  [SKIP] HumanEval/150 (already processed)
+  [SKIP] HumanEval/151 (already processed)
+  [SKIP] HumanEval/152 (already processed)
+  [SKIP] HumanEval/153 (already processed)
+  [SKIP] HumanEval/154 (already processed)
+  [SKIP] HumanEval/155 (already processed)
+  [SKIP] HumanEval/156 (already processed)
+  [SKIP] HumanEval/157 (already processed)
+  [SKIP] HumanEval/158 (already processed)
+  [SKIP] HumanEval/159 (already processed)
+  [SKIP] HumanEval/160 (already processed)
+  [SKIP] HumanEval/161 (already processed)
+  [SKIP] HumanEval/162 (already processed)
+  [SKIP] HumanEval/163 (already processed)
+
+============================================================
+📋 BENCHMARK 2/5: SWE-bench Lite (Local)
+============================================================
+✓ 3 tarefas SWE-bench carregadas
+  [SKIP] astropy__astropy-12907 (already processed)
+  [SKIP] astropy__astropy-14182 (already processed)
+  [SKIP] astropy__astropy-14365 (already processed)
+
+============================================================
+📋 BENCHMARK 3/5: Terminal-Bench (Tarefas de Terminal)
+============================================================
+  [SKIP] tb-001 (already processed)
+  [SKIP] tb-002 (already processed)
+  [START] tb-003 (git_operations)...
+  [SKIP] tb-004 (already processed)
+  [SKIP] tb-005 (already processed)
+  [DONE] ❌ tb-003 | turns=0 tokens=0 time=88.5s status=failed_validation
+
+============================================================
+📋 BENCHMARK 4/5: LiveCodeBench (Algoritmos)
+============================================================
+  [START] lcb-001 (two_sum)...Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+🔨 Compilando crom-agente...
+✓ Compilado com sucesso
+
+============================================================
+📋 BENCHMARK 1/5: EvalPlus (HumanEval)
+============================================================
+✓ 164 tarefas HumanEval carregadas do Hugging Face
+  [SKIP] HumanEval/0 (already processed)
+  [SKIP] HumanEval/1 (already processed)
+  [SKIP] HumanEval/2 (already processed)
+  [SKIP] HumanEval/3 (already processed)
+  [SKIP] HumanEval/4 (already processed)
+  [SKIP] HumanEval/5 (already processed)
+  [SKIP] HumanEval/6 (already processed)
+  [SKIP] HumanEval/7 (already processed)
+  [SKIP] HumanEval/8 (already processed)
+  [SKIP] HumanEval/9 (already processed)
+  [SKIP] HumanEval/10 (already processed)
+  [SKIP] HumanEval/11 (already processed)
+  [SKIP] HumanEval/12 (already processed)
+  [SKIP] HumanEval/13 (already processed)
+  [SKIP] HumanEval/14 (already processed)
+  [SKIP] HumanEval/15 (already processed)
+  [SKIP] HumanEval/16 (already processed)
+  [SKIP] HumanEval/17 (already processed)
+  [SKIP] HumanEval/18 (already processed)
+  [SKIP] HumanEval/19 (already processed)
+  [SKIP] HumanEval/20 (already processed)
+  [SKIP] HumanEval/21 (already processed)
+  [SKIP] HumanEval/22 (already processed)
+  [SKIP] HumanEval/23 (already processed)
+  [SKIP] HumanEval/24 (already processed)
+  [SKIP] HumanEval/25 (already processed)
+  [SKIP] HumanEval/26 (already processed)
+  [SKIP] HumanEval/27 (already processed)
+  [SKIP] HumanEval/28 (already processed)
+  [SKIP] HumanEval/29 (already processed)
+  [SKIP] HumanEval/30 (already processed)
+  [SKIP] HumanEval/31 (already processed)
+  [SKIP] HumanEval/32 (already processed)
+  [SKIP] HumanEval/33 (already processed)
+  [SKIP] HumanEval/34 (already processed)
+  [SKIP] HumanEval/35 (already processed)
+  [SKIP] HumanEval/36 (already processed)
+  [SKIP] HumanEval/37 (already processed)
+  [SKIP] HumanEval/38 (already processed)
+  [SKIP] HumanEval/39 (already processed)
+  [SKIP] HumanEval/40 (already processed)
+  [SKIP] HumanEval/41 (already processed)
+  [SKIP] HumanEval/42 (already processed)
+  [SKIP] HumanEval/43 (already processed)
+  [SKIP] HumanEval/44 (already processed)
+  [SKIP] HumanEval/45 (already processed)
+  [SKIP] HumanEval/46 (already processed)
+  [SKIP] HumanEval/47 (already processed)
+  [SKIP] HumanEval/48 (already processed)
+  [SKIP] HumanEval/49 (already processed)
+  [SKIP] HumanEval/50 (already processed)
+  [SKIP] HumanEval/51 (already processed)
+  [SKIP] HumanEval/52 (already processed)
+  [SKIP] HumanEval/53 (already processed)
+  [SKIP] HumanEval/54 (already processed)
+  [SKIP] HumanEval/55 (already processed)
+  [SKIP] HumanEval/56 (already processed)
+  [SKIP] HumanEval/57 (already processed)
+  [SKIP] HumanEval/58 (already processed)
+  [SKIP] HumanEval/59 (already processed)
+  [SKIP] HumanEval/60 (already processed)
+  [SKIP] HumanEval/61 (already processed)
+  [SKIP] HumanEval/62 (already processed)
+  [SKIP] HumanEval/63 (already processed)
+  [SKIP] HumanEval/64 (already processed)
+  [SKIP] HumanEval/65 (already processed)
+  [SKIP] HumanEval/66 (already processed)
+  [SKIP] HumanEval/67 (already processed)
+  [SKIP] HumanEval/68 (already processed)
+  [SKIP] HumanEval/69 (already processed)
+  [SKIP] HumanEval/70 (already processed)
+  [SKIP] HumanEval/71 (already processed)
+  [SKIP] HumanEval/72 (already processed)
+  [SKIP] HumanEval/73 (already processed)
+  [SKIP] HumanEval/74 (already processed)
+  [SKIP] HumanEval/75 (already processed)
+  [SKIP] HumanEval/76 (already processed)
+  [SKIP] HumanEval/77 (already processed)
+  [SKIP] HumanEval/78 (already processed)
+  [SKIP] HumanEval/79 (already processed)
+  [SKIP] HumanEval/80 (already processed)
+  [SKIP] HumanEval/81 (already processed)
+  [SKIP] HumanEval/82 (already processed)
+  [SKIP] HumanEval/83 (already processed)
+  [SKIP] HumanEval/84 (already processed)
+  [SKIP] HumanEval/85 (already processed)
+  [SKIP] HumanEval/86 (already processed)
+  [SKIP] HumanEval/87 (already processed)
+  [SKIP] HumanEval/88 (already processed)
+  [SKIP] HumanEval/89 (already processed)
+  [SKIP] HumanEval/90 (already processed)
+  [SKIP] HumanEval/91 (already processed)
+  [SKIP] HumanEval/92 (already processed)
+  [SKIP] HumanEval/93 (already processed)
+  [SKIP] HumanEval/94 (already processed)
+  [SKIP] HumanEval/95 (already processed)
+  [SKIP] HumanEval/96 (already processed)
+  [SKIP] HumanEval/97 (already processed)
+  [SKIP] HumanEval/98 (already processed)
+  [SKIP] HumanEval/99 (already processed)
+  [SKIP] HumanEval/100 (already processed)
+  [SKIP] HumanEval/101 (already processed)
+  [SKIP] HumanEval/102 (already processed)
+  [SKIP] HumanEval/103 (already processed)
+  [SKIP] HumanEval/104 (already processed)
+  [SKIP] HumanEval/105 (already processed)
+  [SKIP] HumanEval/106 (already processed)
+  [SKIP] HumanEval/107 (already processed)
+  [SKIP] HumanEval/108 (already processed)
+  [SKIP] HumanEval/109 (already processed)
+  [SKIP] HumanEval/110 (already processed)
+  [SKIP] HumanEval/111 (already processed)
+  [SKIP] HumanEval/112 (already processed)
+  [SKIP] HumanEval/113 (already processed)
+  [SKIP] HumanEval/114 (already processed)
+  [SKIP] HumanEval/115 (already processed)
+  [SKIP] HumanEval/116 (already processed)
+  [SKIP] HumanEval/117 (already processed)
+  [SKIP] HumanEval/118 (already processed)
+  [SKIP] HumanEval/119 (already processed)
+  [SKIP] HumanEval/120 (already processed)
+  [SKIP] HumanEval/121 (already processed)
+  [SKIP] HumanEval/122 (already processed)
+  [SKIP] HumanEval/123 (already processed)
+  [SKIP] HumanEval/124 (already processed)
+  [SKIP] HumanEval/125 (already processed)
+  [SKIP] HumanEval/126 (already processed)
+  [SKIP] HumanEval/127 (already processed)
+  [SKIP] HumanEval/128 (already processed)
+  [SKIP] HumanEval/129 (already processed)
+  [SKIP] HumanEval/130 (already processed)
+  [SKIP] HumanEval/131 (already processed)
+  [SKIP] HumanEval/132 (already processed)
+  [SKIP] HumanEval/133 (already processed)
+  [SKIP] HumanEval/134 (already processed)
+  [SKIP] HumanEval/135 (already processed)
+  [SKIP] HumanEval/136 (already processed)
+  [SKIP] HumanEval/137 (already processed)
+  [SKIP] HumanEval/138 (already processed)
+  [SKIP] HumanEval/139 (already processed)
+  [SKIP] HumanEval/140 (already processed)
+  [SKIP] HumanEval/141 (already processed)
+  [SKIP] HumanEval/142 (already processed)
+  [SKIP] HumanEval/143 (already processed)
+  [SKIP] HumanEval/144 (already processed)
+  [SKIP] HumanEval/145 (already processed)
+  [SKIP] HumanEval/146 (already processed)
+  [SKIP] HumanEval/147 (already processed)
+  [SKIP] HumanEval/148 (already processed)
+  [SKIP] HumanEval/149 (already processed)
+  [SKIP] HumanEval/150 (already processed)
+  [SKIP] HumanEval/151 (already processed)
+  [SKIP] HumanEval/152 (already processed)
+  [SKIP] HumanEval/153 (already processed)
+  [SKIP] HumanEval/154 (already processed)
+  [SKIP] HumanEval/155 (already processed)
+  [SKIP] HumanEval/156 (already processed)
+  [SKIP] HumanEval/157 (already processed)
+  [SKIP] HumanEval/158 (already processed)
+  [SKIP] HumanEval/159 (already processed)
+  [SKIP] HumanEval/160 (already processed)
+  [SKIP] HumanEval/161 (already processed)
+  [SKIP] HumanEval/162 (already processed)
+  [SKIP] HumanEval/163 (already processed)
+
+============================================================
+📋 BENCHMARK 2/5: SWE-bench Lite (Local)
+============================================================
+✓ 3 tarefas SWE-bench carregadas
+  [SKIP] astropy__astropy-12907 (already processed)
+  [SKIP] astropy__astropy-14182 (already processed)
+  [SKIP] astropy__astropy-14365 (already processed)
+
+============================================================
+📋 BENCHMARK 3/5: Terminal-Bench (Tarefas de Terminal)
+============================================================
+  [SKIP] tb-001 (already processed)
+  [SKIP] tb-002 (already processed)
+  [SKIP] tb-003 (already processed)
+  [SKIP] tb-004 (already processed)
+  [SKIP] tb-005 (already processed)
+
+============================================================
+📋 BENCHMARK 4/5: LiveCodeBench (Algoritmos)
+============================================================
+  [SKIP] lcb-001 (already processed)
+  [START] lcb-002 (is_palindrome)...
+  [SKIP] lcb-003 (already processed)  [SKIP] lcb-004 (already processed)
+
+  [START] lcb-005 (merge_sorted)...
+  [DONE] ✅ lcb-002 | turns=3 tokens=48042 time=13.2s status=success
+  [DONE] ✅ lcb-005 | turns=2 tokens=30272 time=15.2s status=success
+
+============================================================
+📋 BENCHMARK 5/5: BigCodeBench (APIs Complexas)
+============================================================
+  [START] bcb-001 (file_stats)...
+  [START] bcb-002 (csv_aggregate)...
+  [START] bcb-003 (regex_extract)...
+  [DONE] ❌ bcb-002 | turns=7 tokens=107201 time=33.7s status=failed_tests
+  [DONE] ❌ bcb-003 | turns=16 tokens=245539 time=53.0s status=failed_tests
+  [DONE] ❌ bcb-001 | turns=6 tokens=95061 time=82.9s status=failed_tests
+
+============================================================
+📊 RESULTADOS CONSOLIDADOS
+============================================================
+Modelo: meta-llama/llama-3.1-8b-instruct
+Provedor: openrouter
+Max Iterações: 0
+Tempo Total: 102s (1.7min)
+------------------------------------------------------------
+
+📋 EVALPLUS
+  Tarefas: 57/164 (34.8%)
+  Turnos médios: 10.9
+  Tokens médios: 171899
+  Tempo médio: 136.7s
+  Custo total: $4.017283
+
+📋 SWE-BENCH
+  Tarefas: 3/3 (100.0%)
+  Turnos médios: 7.0
+  Tokens médios: 142514
+  Tempo médio: 83.2s
+  Custo total: $0.060925
+
+📋 TERMINAL-BENCH
+  Tarefas: 1/5 (20.0%)
+  Turnos médios: 3.4
+  Tokens médios: 48285
+  Tempo médio: 28.5s
+  Custo total: $0.034403
+
+📋 LIVECODE-BENCH
+  Tarefas: 5/5 (100.0%)
+  Turnos médios: 3.4
+  Tokens médios: 50340
+  Tempo médio: 12.5s
+  Custo total: $0.035867
+
+📋 BIGCODEBENCH
+  Tarefas: 0/3 (0.0%)
+  Turnos médios: 9.7
+  Tokens médios: 149267
+  Tempo médio: 56.5s
+  Custo total: $0.063812
+
+✓ JSON salvo: /home/j/Documentos/GitHub/crom-agente/benchmark/reports/full_benchmark_20260626_065226.json
+
+✅ Todos os benchmarks concluídos!
