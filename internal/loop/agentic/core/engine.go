@@ -49,6 +49,8 @@ type AgenticLoop struct {
 	fastPathCache       map[string]fastPathCacheEntry
 	fastPathCacheMu     sync.Mutex
 	linterFailures      map[string]int
+	mistakeMemory       *MistakeMemory
+	timelineMemory      *TimelineMemory
 }
 
 // QueueUserMessage adiciona uma mensagem do usuário na fila de injeção em tempo real
@@ -115,6 +117,8 @@ func New(provider llm.Provider, sm *state.StateManager, handler EventHandler, cf
 		failureRetryDelay: delay,
 		fastPathCache:     make(map[string]fastPathCacheEntry),
 		linterFailures:    make(map[string]int),
+		mistakeMemory:     NewMistakeMemory(20),
+		timelineMemory:    NewTimelineMemory(10),
 	}
 }
 

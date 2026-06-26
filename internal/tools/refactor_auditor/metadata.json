@@ -1,0 +1,5 @@
+{
+  "id": "refactor_auditor",
+  "name": "Refactoring Auditor",
+  "description": "Inspeciona o código alterado em busca de violações de design, funções excessivamente longas, código duplicado ou possíveis arquivos mortos/redundantes no workspace."
+}

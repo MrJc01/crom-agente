@@ -1,0 +1,4 @@
+{
+  "id": "dependency_graph",
+  "description": "Analisa o grafo de importações locais para mapear arquivos dependentes e dependências de um módulo ou arquivo."
+}

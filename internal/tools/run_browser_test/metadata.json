@@ -1,0 +1,5 @@
+{
+  "id": "run_browser_test",
+  "name": "Run Browser Test",
+  "description": "Executa testes E2E e automações visuais em navegador headless, coletando console logs, screenshots, verificando acessibilidade (Lighthouse) e realizando testes de responsividade e regressão visual."
+}

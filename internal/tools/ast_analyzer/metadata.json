@@ -1,0 +1,4 @@
+{
+  "id": "ast_analyzer",
+  "description": "Extrai e mapear declarações de funções, structs e métodos em arquivos de código para checagem de assinaturas."
+}

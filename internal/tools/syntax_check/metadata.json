@@ -1,0 +1,5 @@
+{
+  "id": "syntax_check",
+  "name": "Syntax Checker",
+  "description": "Verifica rapidamente a sintaxe de arquivos modificados usando parsers locais (como parser.ParseFile para Go) ou compiladores nativos rápidos antes de executar os testes."
+}

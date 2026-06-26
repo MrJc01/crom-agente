@@ -18,6 +18,7 @@ import (
 	_ "github.com/crom/crom-agente/internal/agents/specialists/finalizer"
 	_ "github.com/crom/crom-agente/internal/agents/specialists/reasoning"
 	_ "github.com/crom/crom-agente/internal/agents/specialists/spawn"
+	_ "github.com/crom/crom-agente/internal/agents/specialists/tester"
 	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/config/topology"
 	"github.com/crom/crom-agente/internal/llm/providers"
@@ -58,11 +59,52 @@ type MultiAgentManager struct {
 
 // NewMultiAgentManager cria um novo gerenciador multi-agente
 func NewMultiAgentManager() *MultiAgentManager {
-	return &MultiAgentManager{
+	m := &MultiAgentManager{
 		runningAgents:     make(map[string]*RunningAgent),
 		activeBrowsers:    make(map[string]*browser.BrowserTool),
 		activeSpecialists: make(map[string]agentscore.Agent),
 		MCPManager:        NewMCPManager(),
+	}
+	go m.startHeartbeatCleanup()
+	return m
+}
+
+func (m *MultiAgentManager) startHeartbeatCleanup() {
+	ticker := time.NewTicker(5 * time.Second)
+	for range ticker.C {
+		m.mu.Lock()
+		if len(m.runningAgents) == 0 {
+			for name, b := range m.activeBrowsers {
+				b.Close()
+				delete(m.activeBrowsers, name)
+			}
+			for name, agentInst := range m.activeSpecialists {
+				if closer, ok := agentInst.(interface{ Close() }); ok {
+					closer.Close()
+				}
+				delete(m.activeSpecialists, name)
+			}
+		} else {
+			for name, b := range m.activeBrowsers {
+				if _, running := m.runningAgents[name]; !running {
+					b.Close()
+					delete(m.activeBrowsers, name)
+				}
+			}
+			for name, agentInst := range m.activeSpecialists {
+				parts := strings.Split(name, "/")
+				if len(parts) > 0 {
+					wsName := parts[0]
+					if _, running := m.runningAgents[wsName]; !running {
+						if closer, ok := agentInst.(interface{ Close() }); ok {
+							closer.Close()
+						}
+						delete(m.activeSpecialists, name)
+					}
+				}
+			}
+		}
+		m.mu.Unlock()
 	}
 }
 
@@ -285,10 +327,15 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 		return err
 	}
 
-	// 5. Instancia StateManager
+	// 5. Instancia StateManager (com isolamento por worker - Task 78)
 	storageDir := filepath.Join(target.Path, ".crom")
 	if sessionName == "" {
 		sessionName = fmt.Sprintf("session-%d", time.Now().UnixNano())
+	}
+	// Se o sessionName contém indicador de worker, isolar em subpasta dedicada
+	if strings.Contains(sessionName, "worker_") || strings.Contains(sessionName, "bench_") {
+		storageDir = filepath.Join(target.Path, ".crom", "workers", sessionName)
+		_ = os.MkdirAll(storageDir, 0755)
 	}
 	sm := state.NewSessionStateManager(storageDir, sessionName)
 	if err := sm.LoadState(); err != nil {
@@ -297,6 +344,12 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 
 	// 6. Cria context cancelável
 	agentCtx, cancel := context.WithCancel(ctx)
+	agentCtx = context.WithValue(agentCtx, "session_name", sessionName)
+	agentCtx = context.WithValue(agentCtx, "token_recorder_callback", func(tokens int) {
+		if sm != nil {
+			_ = sm.RecordTokens(tokens)
+		}
+	})
 
 	// 7. Inicializa o PermissionManager
 	askFunc := func(ctx context.Context, action, target string) (bool, bool) {
@@ -377,6 +430,7 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 		BrowserTool:  browserTool,
 		SubagentTool: nil,
 		StateManager: sm,
+		LLMProvider:  provider,
 	})
 
 	for _, t := range builtinTools {
@@ -396,9 +450,17 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 			agentInst, exists := m.activeSpecialists[cacheKey]
 			if !exists {
 				var ok bool
+				specProvider := provider
+				if spec.Model != "" && spec.Model != resolved.Model {
+					if p, err := providers.NewProvider(resolved.Provider, spec.Model, func(key string) string {
+						return env.Get(key)
+					}); err == nil {
+						specProvider = p
+					}
+				}
 				agentInst, ok = agents.GetAgentInst(spec.Name, agents.Config{
 					WorkspacePath:   target.Path,
-					LLMProvider:     provider,
+					LLMProvider:     specProvider,
 					BrowserHeadless: resolved.BrowserHeadless,
 				})
 				if !ok {

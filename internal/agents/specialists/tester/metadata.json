@@ -1,0 +1,5 @@
+{
+  "id": "tester",
+  "name": "Tester",
+  "description": "Especialista em rodar suítes de testes, analisar AssertionError/falhas de asserção e certificar o correto funcionamento do código."
+}

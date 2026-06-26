@@ -17,6 +17,7 @@ import (
 	"github.com/crom/crom-agente/internal/loop"
 	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/tools"
+	"github.com/crom/crom-agente/internal/security"
 
 	"github.com/crom/crom-agente/internal/i18n"
 	"github.com/crom/crom-agente/internal/loop/agentic/prompting"
@@ -26,6 +27,7 @@ import (
 
 // Execute roda o loop ReAct completo para a tarefa dada
 func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
+	al.textOnlyMode = false
 	al.textOnlyMode = false
 	if al.handler != nil {
 		ctx = context.WithValue(ctx, "telemetry_callback", func(event loop.AgentEvent) {
@@ -286,6 +288,15 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			saveMsgs(messages)
 		}
 
+		if DetectIneffectiveCorrectionLoop(messages) {
+			al.handler.OnMessage("system", "Detectado loop de correção ineficaz (mesmo arquivo modificado com a mesma falha de teste 3 vezes).")
+			messages = append(messages, llm.Message{
+				Role:    "system",
+				Content: "[SYSTEM INTERVENTION] Você tentou corrigir o mesmo arquivo e obteve o mesmo erro/resultado de testes 3 vezes consecutivas. Você deve alterar sua estratégia. Analise detalhadamente o fluxo do código, procure variáveis globais, certifique-se de que os mocks ou o arquivo de teste não estão bloqueados e formule um novo plano de correção em vez de insistir na mesma alteração.",
+			})
+			saveMsgs(messages)
+		}
+
 		// Impedir loops de mensagens vazias (Item 17)
 		if countConsecutiveEmptyResponses(messages) >= 2 {
 			messages = append(messages, llm.Message{
@@ -416,6 +427,38 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				Role:    "system",
 				Content: textOnlyPromptContent,
 			})
+		}
+
+		// Injetar memória de erros (Mistake Prevention - Tasks 70+71)
+		if al.mistakeMemory != nil && al.mistakeMemory.Size() > 0 {
+			mistakeBlock := al.mistakeMemory.BuildPromptBlock()
+			if mistakeBlock != "" {
+				if !copied {
+					runMessages = make([]llm.Message, len(messages))
+					copy(runMessages, messages)
+					copied = true
+				}
+				runMessages = append(runMessages, llm.Message{
+					Role:    "system",
+					Content: mistakeBlock,
+				})
+			}
+		}
+
+		// Injetar Timeline de Ações Bem-Sucedidas (Task 73)
+		if al.timelineMemory != nil {
+			timelineBlock := al.timelineMemory.GetTimeline()
+			if timelineBlock != "" {
+				if !copied {
+					runMessages = make([]llm.Message, len(messages))
+					copy(runMessages, messages)
+					copied = true
+				}
+				runMessages = append(runMessages, llm.Message{
+					Role:    "system",
+					Content: timelineBlock,
+				})
+			}
 		}
 
 		// Chamar o LLM
@@ -754,6 +797,24 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 						saveMsgs(messages)
 						lastIterFailed = true
 						lastToolWasValidation = true
+
+						// Linter de Coerência de Plano (Task 54)
+						plan := al.stateManager.GetPlan()
+						hasCorrectionTask := false
+						for _, item := range plan {
+							if strings.HasPrefix(item.Title, "Corrigir falhas") || strings.Contains(strings.ToLower(item.Title), "corrigir") {
+								hasCorrectionTask = true
+								break
+							}
+						}
+						if !hasCorrectionTask {
+							newPlan := append(plan, state.TaskItem{
+								Title:  "Corrigir falhas detectadas na suíte de testes",
+								Status: "in_progress",
+							})
+							_ = al.stateManager.SetPlan(newPlan)
+						}
+
 						if al.stateManager != nil {
 							_ = al.stateManager.SaveIterationLog(i+1, iterLog)
 						}
@@ -1071,18 +1132,20 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 					}
 				}
 
+				redactedArgs := security.Redact(rawArgs)
+				redactedErr := security.Redact(execErr.Error())
 				iterLog.ToolsCalled = append(iterLog.ToolsCalled, state.ToolTrace{
 					ToolName:   toolID,
-					Args:       rawArgs,
+					Args:       redactedArgs,
 					Success:    false,
-					Output:     execErr.Error(),
+					Output:     redactedErr,
 					DurationMs: toolDuration,
 				})
-				errContent := tooling.FormatToolError(toolID, execErr.Error())
+				errContent := tooling.FormatToolError(toolID, redactedErr)
 				messages = append(messages, llm.Message{
 					Role: "tool", ToolCallID: tc.ID, Name: toolID, Content: errContent,
 				})
-				al.handler.OnMessage("system", i18n.Get("errors.tool_execution_failed", toolID)+": "+execErr.Error())
+				al.handler.OnMessage("system", i18n.Get("errors.tool_execution_failed", toolID)+": "+redactedErr)
 
 				// Evento estruturado de tool_result com erro
 				errCode := loop.ErrToolExecution
@@ -1097,15 +1160,28 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 						"tool_call_id": tc.ID,
 						"tool":         toolID,
 						"success":      false,
-						"error":        execErr.Error(),
+						"error":        redactedErr,
 						"error_code":   errCode,
 					},
 				})
+
+				// Registrar no MistakeMemory (Task 70)
+				if al.mistakeMemory != nil {
+					targetFile := extractTargetFromArgs(rawArgs)
+					al.mistakeMemory.Record(toolID, targetFile, rawArgs, redactedErr)
+				}
+
 				iterationHasFailure = true
 				continue
 			}
 
 			if result.Success {
+				// Registrar na Timeline de Sucesso (Task 73)
+				if al.timelineMemory != nil {
+					targetFile := extractTargetFromArgs(rawArgs)
+					al.timelineMemory.RecordAction(fmt.Sprintf("[%s] %s", toolID, targetFile))
+				}
+
 				// Validação pós-criação/edição de arquivos (Fase 7)
 				if toolID == "write_file" || toolID == "diff_replace" {
 					var argsPath struct {
@@ -1151,11 +1227,13 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 								_ = os.Remove(backupPath)
 							}
 
+							redactedFeedback := security.Redact(feedbackMsg)
+							redactedArgs := security.Redact(rawArgs)
 							iterLog.ToolsCalled = append(iterLog.ToolsCalled, state.ToolTrace{
 								ToolName:   toolID,
-								Args:       rawArgs,
+								Args:       redactedArgs,
 								Success:    false,
-								Output:     feedbackMsg,
+								Output:     redactedFeedback,
 								DurationMs: toolDuration,
 							})
 
@@ -1163,10 +1241,10 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 								Role:       "tool",
 								ToolCallID: tc.ID,
 								Name:       toolID,
-								Content:    feedbackMsg,
+								Content:    redactedFeedback,
 							})
 
-							al.handler.OnMessage("system", fmt.Sprintf("Validação falhou para %s: %s", argsPath.Path, errMsg))
+							al.handler.OnMessage("system", fmt.Sprintf("Validação falhou para %s: %s", argsPath.Path, security.Redact(errMsg)))
 
 							al.handler.OnEvent(loop.AgentEvent{
 								Timestamp: time.Now(),
@@ -1176,7 +1254,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 									"tool_call_id": tc.ID,
 									"tool":         toolID,
 									"success":      false,
-									"error":        feedbackMsg,
+									"error":        redactedFeedback,
 								},
 							})
 
@@ -1212,11 +1290,16 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 					}
 				}
 
+				redactedArgs := security.Redact(rawArgs)
+				redactedData := result.Data
+				if !strings.HasPrefix(result.Data, "image:base64:") {
+					redactedData = security.Redact(result.Data)
+				}
 				iterLog.ToolsCalled = append(iterLog.ToolsCalled, state.ToolTrace{
 					ToolName:   toolID,
-					Args:       rawArgs,
+					Args:       redactedArgs,
 					Success:    true,
-					Output:     result.Data,
+					Output:     redactedData,
 					DurationMs: toolDuration,
 				})
 				if toolID == "schedule_timer" {
@@ -1241,9 +1324,9 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 						Content: result.Data,
 					})
 				} else {
-					truncatedData := result.Data
+					truncatedData := redactedData
 					if toolID == "terminal_command" || toolID == "run_command" {
-						truncatedData = truncateTraceback(result.Data)
+						truncatedData = truncateTraceback(redactedData)
 					}
 					messages = append(messages, llm.Message{
 						Role: "tool", ToolCallID: tc.ID, Name: toolID, Content: truncatedData,
@@ -1260,7 +1343,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 						"tool_call_id": tc.ID,
 						"tool":         toolID,
 						"success":      true,
-						"output":       truncateStr(result.Data, 500),
+						"output":       truncateStr(redactedData, 500),
 					},
 				})
 
@@ -1269,21 +1352,42 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				if errMsg == "" && result.Data != "" {
 					errMsg = result.Data
 				}
+				redactedArgs := security.Redact(tc.Function.Arguments)
+				redactedErr := security.Redact(errMsg)
 				iterLog.ToolsCalled = append(iterLog.ToolsCalled, state.ToolTrace{
 					ToolName:   toolID,
-					Args:       tc.Function.Arguments,
+					Args:       redactedArgs,
 					Success:    false,
-					Output:     errMsg,
+					Output:     redactedErr,
 					DurationMs: toolDuration,
 				})
-				errContent := tooling.FormatToolError(toolID, errMsg)
+				errContent := tooling.FormatToolError(toolID, redactedErr)
 				if toolID == "terminal_command" {
 					errContent = loop.FormatContextualError(errContent)
 				}
 				messages = append(messages, llm.Message{
 					Role: "tool", ToolCallID: tc.ID, Name: toolID, Content: errContent,
 				})
-				al.handler.OnMessage("system", fmt.Sprintf("Erro na ferramenta %s: %s", toolID, errMsg))
+				al.handler.OnMessage("system", fmt.Sprintf("Erro na ferramenta %s: %s", toolID, redactedErr))
+
+				// Linter de Coerência de Plano (Task 54)
+				if al.stateManager != nil && (toolID == "run_tests" || toolID == "syntax_check") {
+					plan := al.stateManager.GetPlan()
+					hasCorrectionTask := false
+					for _, item := range plan {
+						if strings.HasPrefix(item.Title, "Corrigir falhas") || strings.Contains(strings.ToLower(item.Title), "corrigir") {
+							hasCorrectionTask = true
+							break
+						}
+					}
+					if !hasCorrectionTask {
+						newPlan := append(plan, state.TaskItem{
+							Title:  "Corrigir falhas de compilador/testes em " + toolID,
+							Status: "in_progress",
+						})
+						_ = al.stateManager.SetPlan(newPlan)
+					}
+				}
 
 				// Evento estruturado de tool_result com falha lógica
 				al.handler.OnEvent(loop.AgentEvent{
@@ -1738,6 +1842,26 @@ func extractEntryPointFromPrompt(intent string) string {
 		}
 	}
 	return ""
+}
+
+// extractTargetFromArgs extrai o alvo (path, command) dos argumentos JSON de uma chamada de ferramenta
+func extractTargetFromArgs(rawArgs string) string {
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(rawArgs), &args); err != nil {
+		return "unknown"
+	}
+	// Tentar campos comuns
+	for _, key := range []string{"path", "file", "command", "query", "url"} {
+		if v, ok := args[key]; ok {
+			if s, ok := v.(string); ok && s != "" {
+				if len(s) > 100 {
+					return s[:100]
+				}
+				return s
+			}
+		}
+	}
+	return "unknown"
 }
 
 func runAutoTests(workspaceDir string) (bool, string) {

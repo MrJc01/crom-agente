@@ -1,0 +1,4 @@
+{
+  "id": "import_validator",
+  "description": "Verifica se há importações circulares (ciclos) ou referências/imports quebrados nos arquivos locais."
+}

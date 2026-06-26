@@ -1,0 +1,4 @@
+{
+  "id": "concurrency_lock",
+  "description": "Gerenciador de travas (mutex) para impedir que múltiplos especialistas ou agentes escrevam concorrentemente no mesmo arquivo."
+}

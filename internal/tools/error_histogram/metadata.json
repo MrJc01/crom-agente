@@ -1,0 +1,4 @@
+{
+  "id": "error_histogram",
+  "description": "Gera um histograma de falhas de teste e compilação ocorridas ao longo da sessão atual."
+}

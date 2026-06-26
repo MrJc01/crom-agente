@@ -1,0 +1,4 @@
+{
+  "id": "read_log_paginated",
+  "description": "Lê arquivos de log gigantes de forma paginada para economizar memória e contexto do LLM."
+}

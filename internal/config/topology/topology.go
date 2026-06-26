@@ -84,6 +84,12 @@ func GetDefaultTopology() *TopologyConfig {
 				Description: "Especialista em consolidação de tarefas e geração de respostas explicativas finais",
 				ToolIDs:     []string{},
 			},
+			{
+				Name:        "tester",
+				Type:        "native",
+				Description: "Especialista em rodar suítes de testes, analisar AssertionError/falhas de asserção e certificar o correto funcionamento do código",
+				ToolIDs:     []string{"terminal_command", "run_tests", "read_file", "write_file"},
+			},
 		},
 	}
 }

@@ -1,0 +1,4 @@
+{
+  "id": "cost_estimator",
+  "description": "Calcula e relata o custo financeiro acumulado das chamadas de API LLM com base nos tokens consumidos."
+}

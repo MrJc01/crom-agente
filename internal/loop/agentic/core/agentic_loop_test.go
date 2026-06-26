@@ -417,9 +417,9 @@ func TestCompactMessages(t *testing.T) {
 		t.Fatalf("primeira mensagem não preservada: %s", compacted[0].Content)
 	}
 
-	// A segunda mensagem deve conter o resumo
-	if !strings.Contains(compacted[1].Content, "Resumo do histórico") {
-		t.Fatalf("esperado resumo, obteve: %s", compacted[1].Content)
+	// A segunda mensagem deve conter o resumo determinístico (não mais LLM)
+	if !strings.Contains(compacted[1].Content, "RESUMO DO HISTÓRICO COMPACTADO") {
+		t.Fatalf("esperado resumo determinístico, obteve: %s", compacted[1].Content)
 	}
 
 	// A última mensagem deve ser a mais recente

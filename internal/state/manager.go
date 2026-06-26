@@ -253,6 +253,25 @@ func (sm *StateManager) saveStateLocked() error {
 		return fmt.Errorf("erro ao renomear arquivo de estado: %w", err)
 	}
 
+	// Telemetria de Sessão Unificada (Task 51): exportar estado sanitizado para o root do workspace
+	workspaceRoot := ""
+	current := sm.filePath
+	for {
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		if filepath.Base(parent) == ".crom" {
+			workspaceRoot = filepath.Dir(parent)
+			break
+		}
+		current = parent
+	}
+	if workspaceRoot != "" {
+		unifiedPath := filepath.Join(workspaceRoot, ".crom_state.json")
+		_ = os.WriteFile(unifiedPath, data, 0644)
+	}
+
 	return nil
 }
 

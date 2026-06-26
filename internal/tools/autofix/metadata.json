@@ -1,0 +1,5 @@
+{
+  "id": "autofix",
+  "name": "Autofix Loop",
+  "description": "Recebe o caminho de um arquivo com falha e o log de erro, gera uma correção automatizada usando LLM, aplica a correção temporariamente e executa testes locais para validar o reparo antes de consolidar."
+}

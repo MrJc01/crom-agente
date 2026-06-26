@@ -58,6 +58,14 @@ func NewProxyTool(workspaceRoot string, jail bool) *ProxyTool {
 
 func (t *ProxyTool) ID() string { return metadata.ID }
 
+type proxySnapshot struct {
+	ID          string `json:"id"`
+	LocalAddr   string `json:"local_addr"`
+	TargetAddr  string `json:"target_addr"`
+	LogPath     string `json:"log_path"`
+	Connections int    `json:"connections"`
+}
+
 func (t *ProxyTool) Description() string {
 	return metadata.Description
 }
@@ -209,7 +217,17 @@ func (t *ProxyTool) startProxy(ctx context.Context, localPort int, targetAddr st
 		}
 	}()
 
-	data, _ := json.MarshalIndent(p, "", "  ")
+	p.mu.Lock()
+	snap := proxySnapshot{
+		ID:          p.ID,
+		LocalAddr:   p.LocalAddr,
+		TargetAddr:  p.TargetAddr,
+		LogPath:     p.LogPath,
+		Connections: p.Connections,
+	}
+	p.mu.Unlock()
+
+	data, _ := json.MarshalIndent(snap, "", "  ")
 	return tools.Result{
 		Success: true,
 		Data:    fmt.Sprintf("Proxy iniciado com sucesso!\n%s", string(data)),
@@ -235,9 +253,18 @@ func (t *ProxyTool) listProxies() (tools.Result, error) {
 	proxiesMu.RLock()
 	defer proxiesMu.RUnlock()
 
-	list := make([]*ActiveProxy, 0, len(activeProxies))
+	list := make([]proxySnapshot, 0, len(activeProxies))
 	for _, p := range activeProxies {
-		list = append(list, p)
+		p.mu.Lock()
+		snap := proxySnapshot{
+			ID:          p.ID,
+			LocalAddr:   p.LocalAddr,
+			TargetAddr:  p.TargetAddr,
+			LogPath:     p.LogPath,
+			Connections: p.Connections,
+		}
+		p.mu.Unlock()
+		list = append(list, snap)
 	}
 
 	data, _ := json.MarshalIndent(list, "", "  ")

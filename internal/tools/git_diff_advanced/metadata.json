@@ -1,0 +1,4 @@
+{
+  "id": "git_diff_advanced",
+  "description": "Correlaciona o git diff de modificações locais com stack traces em logs de erros de teste para apontar a linha exata da falha."
+}

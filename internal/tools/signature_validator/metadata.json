@@ -1,0 +1,4 @@
+{
+  "id": "signature_validator",
+  "description": "Valida se as assinaturas de funções modificadas quebraram chamadas existentes no restante da base de código."
+}

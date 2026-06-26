@@ -1,6 +1,8 @@
 package core
 
 import (
+	"encoding/json"
+
 	"github.com/crom/crom-agente/internal/llm"
 )
 
@@ -45,4 +47,70 @@ func assistantSignature(msg llm.Message) string {
 		sig += "|" + tc.Function.Name + ":" + tc.Function.Arguments
 	}
 	return sig
+}
+
+// DetectIneffectiveCorrectionLoop verifica se o assistente está tentando corrigir o mesmo arquivo/linha com o mesmo erro 3 vezes seguidas.
+func DetectIneffectiveCorrectionLoop(messages []llm.Message) bool {
+	type attempt struct {
+		file string
+		err  string
+	}
+	var attempts []attempt
+
+	for i := 0; i < len(messages)-1; i++ {
+		msg := messages[i]
+		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
+			var editedFile string
+			for _, tc := range msg.ToolCalls {
+				if tc.Function.Name == "write_file" || tc.Function.Name == "diff_replace" || tc.Function.Name == "autofix" {
+					var args struct {
+						Path string `json:"path"`
+					}
+					_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
+					if args.Path != "" {
+						editedFile = args.Path
+					}
+				}
+			}
+
+			if editedFile != "" {
+				var testErr string
+				for j := i + 1; j < len(messages); j++ {
+					nextMsg := messages[j]
+					if nextMsg.Role == "tool" && (nextMsg.Name == "run_tests" || nextMsg.Name == "autofix") {
+						testErr = nextMsg.Content
+						break
+					}
+					if nextMsg.Role == "assistant" {
+						break
+					}
+				}
+				if testErr != "" {
+					attempts = append(attempts, attempt{file: editedFile, err: testErr})
+				}
+			}
+		}
+	}
+
+	if len(attempts) < 3 {
+		return false
+	}
+
+	lastIdx := len(attempts) - 1
+	a1 := attempts[lastIdx]
+	a2 := attempts[lastIdx-1]
+	a3 := attempts[lastIdx-2]
+
+	e1 := simplifyError(a1.err)
+	e2 := simplifyError(a2.err)
+	e3 := simplifyError(a3.err)
+
+	return a1.file == a2.file && a2.file == a3.file && e1 == e2 && e2 == e3 && e1 != ""
+}
+
+func simplifyError(err string) string {
+	if len(err) > 200 {
+		return err[:200]
+	}
+	return err
 }

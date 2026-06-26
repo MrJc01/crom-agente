@@ -1,0 +1,4 @@
+{
+  "id": "inject_local_env",
+  "description": "Injeta variáveis de ambiente locais (ou carrega de um arquivo .env) no processo atual para execuções de testes e comandos."
+}

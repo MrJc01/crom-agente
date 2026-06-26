@@ -1,0 +1,93 @@
+?   	github.com/crom/crom-agente/internal/agents	[no test files]
+ok  	github.com/crom/crom-agente/internal/agents/core	1.019s
+?   	github.com/crom/crom-agente/internal/agents/specialists/browser	[no test files]
+ok  	github.com/crom/crom-agente/internal/agents/specialists/external	3.184s
+?   	github.com/crom/crom-agente/internal/agents/specialists/finalizer	[no test files]
+?   	github.com/crom/crom-agente/internal/agents/specialists/reasoning	[no test files]
+FAIL	github.com/crom/crom-agente/internal/agents/specialists/spawn [build failed]
+FAIL	github.com/crom/crom-agente/internal/agents/specialists/tester [build failed]
+?   	github.com/crom/crom-agente/internal/agents/supervisor	[no test files]
+panic: exit status 1
+
+goroutine 1 [running]:
+github.com/crom/crom-agente/internal/blackbox.TestMain(0xc0000b4140)
+	/home/j/Documentos/GitHub/crom-agente/internal/blackbox/e2e_test.go:25 +0x385
+main.main()
+	_testmain.go:51 +0x172
+FAIL	github.com/crom/crom-agente/internal/blackbox	0.216s
+FAIL	github.com/crom/crom-agente/internal/cli [build failed]
+ok  	github.com/crom/crom-agente/internal/config	1.023s
+ok  	github.com/crom/crom-agente/internal/config/topology	1.019s
+ok  	github.com/crom/crom-agente/internal/cron	3.218s
+FAIL	github.com/crom/crom-agente/internal/daemon [build failed]
+?   	github.com/crom/crom-agente/internal/daemon/pb	[no test files]
+ok  	github.com/crom/crom-agente/internal/i18n	1.015s
+ok  	github.com/crom/crom-agente/internal/llm	1.013s
+ok  	github.com/crom/crom-agente/internal/llm/providers	1.022s
+ok  	github.com/crom/crom-agente/internal/loop	1.251s
+FAIL	github.com/crom/crom-agente/internal/loop/agentic/core [build failed]
+ok  	github.com/crom/crom-agente/internal/loop/agentic/prompting	1.014s
+?   	github.com/crom/crom-agente/internal/loop/agentic/tooling	[no test files]
+ok  	github.com/crom/crom-agente/internal/loop/agentic/workspace	1.018s
+ok  	github.com/crom/crom-agente/internal/mcp	1.037s
+FAIL	github.com/crom/crom-agente/internal/orchestrator [build failed]
+ok  	github.com/crom/crom-agente/internal/permission	1.016s
+ok  	github.com/crom/crom-agente/internal/security	1.017s
+ok  	github.com/crom/crom-agente/internal/state	1.237s
+ok  	github.com/crom/crom-agente/internal/tools	2.898s
+ok  	github.com/crom/crom-agente/internal/tools/ask_user	1.018s
+?   	github.com/crom/crom-agente/internal/tools/ast_analyzer	[no test files]
+ok  	github.com/crom/crom-agente/internal/tools/autofix	1.248s
+?   	github.com/crom/crom-agente/internal/tools/browser	[no test files]
+ok  	github.com/crom/crom-agente/internal/tools/bug_explainer	1.017s
+?   	github.com/crom/crom-agente/internal/tools/call_graph	[no test files]
+ok  	github.com/crom/crom-agente/internal/tools/checkpoint	1.018s
+?   	github.com/crom/crom-agente/internal/tools/code_explainer	[no test files]
+?   	github.com/crom/crom-agente/internal/tools/complexity_reducer	[no test files]
+?   	github.com/crom/crom-agente/internal/tools/computer_control	[no test files]
+ok  	github.com/crom/crom-agente/internal/tools/concurrency_lock	1.225s
+?   	github.com/crom/crom-agente/internal/tools/cost_estimator	[no test files]
+?   	github.com/crom/crom-agente/internal/tools/database_tester	[no test files]
+ok  	github.com/crom/crom-agente/internal/tools/delete_file	1.015s
+?   	github.com/crom/crom-agente/internal/tools/dependency_graph	[no test files]
+ok  	github.com/crom/crom-agente/internal/tools/diff_replace	1.054s
+?   	github.com/crom/crom-agente/internal/tools/doc_generator	[no test files]
+?   	github.com/crom/crom-agente/internal/tools/error_histogram	[no test files]
+?   	github.com/crom/crom-agente/internal/tools/git_add	[no test files]
+ok  	github.com/crom/crom-agente/internal/tools/git_branch	1.060s
+?   	github.com/crom/crom-agente/internal/tools/git_commit	[no test files]
+ok  	github.com/crom/crom-agente/internal/tools/git_conflict	1.014s
+?   	github.com/crom/crom-agente/internal/tools/git_diff	[no test files]
+?   	github.com/crom/crom-agente/internal/tools/git_diff_advanced	[no test files]
+?   	github.com/crom/crom-agente/internal/tools/git_log	[no test files]
+?   	github.com/crom/crom-agente/internal/tools/git_status	[no test files]
+ok  	github.com/crom/crom-agente/internal/tools/grep	1.016s
+?   	github.com/crom/crom-agente/internal/tools/http_client	[no test files]
+?   	github.com/crom/crom-agente/internal/tools/import_validator	[no test files]
+?   	github.com/crom/crom-agente/internal/tools/inject_local_env	[no test files]
+?   	github.com/crom/crom-agente/internal/tools/legacy_matcher	[no test files]
+ok  	github.com/crom/crom-agente/internal/tools/manage_plan	1.097s
+?   	github.com/crom/crom-agente/internal/tools/memory_leak_scanner	[no test files]
+?   	github.com/crom/crom-agente/internal/tools/mock_generator	[no test files]
+?   	github.com/crom/crom-agente/internal/tools/mttr_report	[no test files]
+ok  	github.com/crom/crom-agente/internal/tools/port_monitor	1.064s
+?   	github.com/crom/crom-agente/internal/tools/proxy	[no test files]
+ok  	github.com/crom/crom-agente/internal/tools/read_file	1.016s
+?   	github.com/crom/crom-agente/internal/tools/read_log_paginated	[no test files]
+?   	github.com/crom/crom-agente/internal/tools/read_session_messages	[no test files]
+ok  	github.com/crom/crom-agente/internal/tools/record_decision	1.014s
+ok  	github.com/crom/crom-agente/internal/tools/refactor_auditor	1.017s
+?   	github.com/crom/crom-agente/internal/tools/registry	[no test files]
+ok  	github.com/crom/crom-agente/internal/tools/rename_file	1.012s
+ok  	github.com/crom/crom-agente/internal/tools/run_browser_test	1.640s
+ok  	github.com/crom/crom-agente/internal/tools/run_tests	1.141s
+?   	github.com/crom/crom-agente/internal/tools/schedule_timer	[no test files]
+?   	github.com/crom/crom-agente/internal/tools/scraper	[no test files]
+?   	github.com/crom/crom-agente/internal/tools/semantic_search	[no test files]
+?   	github.com/crom/crom-agente/internal/tools/signature_validator	[no test files]
+ok  	github.com/crom/crom-agente/internal/tools/stack_translator	1.015s
+ok  	github.com/crom/crom-agente/internal/tools/syntax_check	1.017s
+ok  	github.com/crom/crom-agente/internal/tools/terminal_command	5.822s
+ok  	github.com/crom/crom-agente/internal/tools/tree	1.014s
+ok  	github.com/crom/crom-agente/internal/tools/write_file	1.012s
+FAIL

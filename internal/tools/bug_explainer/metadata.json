@@ -1,0 +1,5 @@
+{
+  "id": "bug_explainer",
+  "name": "Bug Explainer",
+  "description": "Analisa logs de erro ou falhas de testes, filtrando ruídos, e gera um resumo detalhado em markdown contendo a causa do erro, o arquivo/linha exatos e sugestão de correção."
+}

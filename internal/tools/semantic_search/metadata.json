@@ -1,0 +1,5 @@
+{
+  "id": "semantic_search",
+  "name": "Semantic Search",
+  "description": "Busca por similaridade de termos e TF-IDF local na base de código do projeto para localizar arquivos relevantes baseando-se em uma consulta de busca ou falha de teste."
+}

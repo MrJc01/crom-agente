@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/crom/crom-agente/internal/agents/core"
 )
@@ -72,18 +73,29 @@ func (a *AgentToolAdapter) Execute(ctx context.Context, args json.RawMessage) (R
 		return Result{Success: false, Error: "agente especialista interno não configurado"}, nil
 	}
 
-	res, err := a.InnerAgent.Execute(ctx, input.Prompt, input.PriorSummary)
+	// Protocolo de Resgate (Timeout Specialist): limite de 5 minutos para subagentes
+	execCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
+	defer cancel()
+
+	res, err := a.InnerAgent.Execute(execCtx, input.Prompt, input.PriorSummary)
 	if err != nil {
 		return Result{Success: false, Error: fmt.Sprintf("erro na execução do especialista: %s", err.Error())}, nil
 	}
 
-	respBytes, err := json.Marshal(res)
-	if err != nil {
-		return Result{Success: false, Error: "falha ao serializar resposta do agente: " + err.Error()}, nil
+	// Agregação de Resoluções: Consolidar em markdown amigável para o LLM
+	statusText := "Sucesso"
+	if !res.Success {
+		statusText = "Falha"
 	}
+
+	markdownReport := fmt.Sprintf("### Relatório do Especialista [%s]\n"+
+		"**Status**: %s\n\n"+
+		"#### Resumo do Contexto:\n%s\n\n"+
+		"#### Saída do Especialista:\n%s\n",
+		a.InnerAgent.Name(), statusText, res.ContextSummary, res.Output)
 
 	return Result{
 		Success: res.Success,
-		Data:    string(respBytes),
+		Data:    markdownReport,
 	}, nil
 }

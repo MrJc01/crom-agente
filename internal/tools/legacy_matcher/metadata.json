@@ -1,0 +1,4 @@
+{
+  "id": "legacy_matcher",
+  "description": "Busca correspondências de padrões de código ou snippets na base de dados legada para garantir conformidade de estilo."
+}

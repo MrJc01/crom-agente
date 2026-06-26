@@ -6,6 +6,7 @@ import (
 	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/tools"
 	"github.com/crom/crom-agente/internal/tools/ask_user"
+	"github.com/crom/crom-agente/internal/tools/call_graph"
 	"github.com/crom/crom-agente/internal/tools/code_explainer"
 	"github.com/crom/crom-agente/internal/tools/complexity_reducer"
 	"github.com/crom/crom-agente/internal/tools/computer_control"
@@ -27,16 +28,37 @@ import (
 	"github.com/crom/crom-agente/internal/tools/mock_generator"
 	"github.com/crom/crom-agente/internal/tools/port_monitor"
 	"github.com/crom/crom-agente/internal/tools/proxy"
+	"github.com/crom/crom-agente/internal/llm"
+	"github.com/crom/crom-agente/internal/tools/autofix"
+	"github.com/crom/crom-agente/internal/tools/bug_explainer"
+	"github.com/crom/crom-agente/internal/tools/checkpoint"
 	"github.com/crom/crom-agente/internal/tools/read_file"
 	"github.com/crom/crom-agente/internal/tools/read_session_messages"
+	"github.com/crom/crom-agente/internal/tools/record_decision"
+	"github.com/crom/crom-agente/internal/tools/refactor_auditor"
 	"github.com/crom/crom-agente/internal/tools/rename_file"
+	"github.com/crom/crom-agente/internal/tools/run_browser_test"
 	"github.com/crom/crom-agente/internal/tools/run_tests"
 	"github.com/crom/crom-agente/internal/tools/schedule_timer"
 	"github.com/crom/crom-agente/internal/tools/scraper"
 	"github.com/crom/crom-agente/internal/tools/stack_translator"
+	"github.com/crom/crom-agente/internal/tools/syntax_check"
 	"github.com/crom/crom-agente/internal/tools/terminal_command"
 	"github.com/crom/crom-agente/internal/tools/tree"
 	"github.com/crom/crom-agente/internal/tools/write_file"
+	"github.com/crom/crom-agente/internal/tools/ast_analyzer"
+	"github.com/crom/crom-agente/internal/tools/concurrency_lock"
+	"github.com/crom/crom-agente/internal/tools/cost_estimator"
+	"github.com/crom/crom-agente/internal/tools/dependency_graph"
+	"github.com/crom/crom-agente/internal/tools/error_histogram"
+	"github.com/crom/crom-agente/internal/tools/git_diff_advanced"
+	"github.com/crom/crom-agente/internal/tools/import_validator"
+	"github.com/crom/crom-agente/internal/tools/inject_local_env"
+	"github.com/crom/crom-agente/internal/tools/legacy_matcher"
+	"github.com/crom/crom-agente/internal/tools/mttr_report"
+	"github.com/crom/crom-agente/internal/tools/read_log_paginated"
+	"github.com/crom/crom-agente/internal/tools/semantic_search"
+	"github.com/crom/crom-agente/internal/tools/signature_validator"
 )
 
 // RegistrationConfig configura a inicialização em lote de todas as ferramentas nativas
@@ -52,6 +74,7 @@ type RegistrationConfig struct {
 	BrowserTool  tools.Tool
 	SubagentTool tools.Tool
 	StateManager *state.StateManager
+	LLMProvider  llm.Provider
 }
 
 // GetBuiltinTools retorna a lista completa de ferramentas nativas instanciadas e prontas para registro
@@ -110,18 +133,41 @@ func GetBuiltinTools(cfg RegistrationConfig) []tools.Tool {
 	list = append(list, database_tester.NewDatabaseTesterTool(cfg.WorkspacePath))
 	list = append(list, proxy.NewProxyTool(cfg.WorkspacePath, cfg.WorkspaceJail))
 	list = append(list, run_tests.NewRunTestsTool(cfg.WorkspacePath))
+	list = append(list, run_browser_test.NewRunBrowserTestTool(cfg.WorkspacePath, true))
 	list = append(list, stack_translator.NewStackTranslatorTool(cfg.WorkspacePath, cfg.WorkspaceJail))
 	list = append(list, doc_generator.NewDocGeneratorTool(cfg.WorkspacePath, cfg.WorkspaceJail))
 	list = append(list, code_explainer.NewCodeExplainerTool(cfg.WorkspacePath, cfg.WorkspaceJail))
 	list = append(list, mock_generator.NewMockGeneratorTool(cfg.WorkspacePath, cfg.WorkspaceJail))
 	list = append(list, complexity_reducer.NewComplexityReducerTool(cfg.WorkspacePath, cfg.WorkspaceJail))
 	list = append(list, memory_leak_scanner.NewMemoryLeakScannerTool(cfg.WorkspacePath, cfg.WorkspaceJail))
+	list = append(list, bug_explainer.NewBugExplainerTool(cfg.WorkspacePath, cfg.LLMProvider))
+	list = append(list, checkpoint.NewCheckpointTool(cfg.WorkspacePath, cfg.StateManager))
+	list = append(list, refactor_auditor.NewRefactorAuditorTool(cfg.WorkspacePath, cfg.WorkspaceJail))
+	list = append(list, autofix.NewAutofixTool(cfg.WorkspacePath, cfg.WorkspaceJail, cfg.LLMProvider))
+	list = append(list, syntax_check.NewSyntaxCheckTool(cfg.WorkspacePath, cfg.WorkspaceJail))
 
 	if cfg.StateManager != nil {
 		list = append(list, manage_plan.NewManagePlanTool(cfg.WorkspacePath, cfg.StateManager))
 	}
 
 	list = append(list, read_session_messages.NewReadSessionMessagesTool(cfg.WorkspacePath))
+	list = append(list, record_decision.NewRecordDecisionTool(cfg.WorkspacePath))
+
+	// Novas ferramentas nativas avançadas
+	list = append(list, ast_analyzer.NewASTAnalyzerTool(cfg.WorkspacePath, cfg.WorkspaceJail))
+	list = append(list, call_graph.NewCallGraphTool(cfg.WorkspacePath))
+	list = append(list, concurrency_lock.NewConcurrencyLockTool(cfg.WorkspacePath))
+	list = append(list, cost_estimator.NewCostEstimatorTool(cfg.WorkspacePath, cfg.StateManager))
+	list = append(list, dependency_graph.NewDependencyGraphTool(cfg.WorkspacePath, cfg.WorkspaceJail))
+	list = append(list, error_histogram.NewErrorHistogramTool(cfg.WorkspacePath, cfg.StateManager))
+	list = append(list, git_diff_advanced.NewGitDiffAdvancedTool(cfg.WorkspacePath))
+	list = append(list, import_validator.NewImportValidatorTool(cfg.WorkspacePath, cfg.WorkspaceJail))
+	list = append(list, inject_local_env.NewInjectLocalEnvTool(cfg.WorkspacePath, cfg.WorkspaceJail))
+	list = append(list, legacy_matcher.NewLegacyMatcherTool(cfg.WorkspacePath, cfg.WorkspaceJail))
+	list = append(list, mttr_report.NewMTTRReportTool(cfg.WorkspacePath, cfg.StateManager))
+	list = append(list, read_log_paginated.NewReadLogPaginatedTool(cfg.WorkspacePath, cfg.WorkspaceJail))
+	list = append(list, semantic_search.NewSemanticSearchTool(cfg.WorkspacePath))
+	list = append(list, signature_validator.NewSignatureValidatorTool(cfg.WorkspacePath))
 
 	return list
 }

@@ -1,0 +1,6 @@
+{
+  "id": "call_graph",
+  "description": "Gera um grafo de chamadas de funções locais (Go) dentro de um diretório/pacote, mostrando quem chama quem. Útil para entender impactos de refatoração.",
+  "category": "engineering",
+  "requires_approval": false
+}

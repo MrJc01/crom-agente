@@ -1,0 +1,5 @@
+{
+  "id": "checkpoint",
+  "name": "Workspace Checkpointer",
+  "description": "Cria checkpoints do estado atual do workspace ou restaura (rollback) para um checkpoint anterior em caso de erro, garantindo que correções mal-sucedidas possam ser revertidas instantaneamente."
+}

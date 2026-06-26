@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/crom/crom-agente/internal/llm"
 )
@@ -25,9 +26,16 @@ func (b *BaseAgent) Description() string {
 	return b.AgentDescription
 }
 
-// SystemPrompt retorna o prompt de sistema do especialista
+// SystemPrompt retorna o prompt de sistema do especialista, injetando as ferramentas autorizadas
 func (b *BaseAgent) SystemPrompt() string {
-	return b.AgentSysPrompt
+	if len(b.AllowedToolIDs) == 0 {
+		return b.AgentSysPrompt + "\n\nNota: Você NÃO tem permissão para chamar ferramentas nesta execução. Confie inteiramente no seu raciocínio lógico."
+	}
+	toolsList := ""
+	for _, id := range b.AllowedToolIDs {
+		toolsList += "- " + id + "\n"
+	}
+	return fmt.Sprintf("%s\n\n[FERRAMENTAS AUTORIZADAS]\nVocê tem permissão para utilizar as seguintes ferramentas:\n%s\nUse-as conforme necessário para atingir o objetivo.", b.AgentSysPrompt, toolsList)
 }
 
 // ToolIDs retorna as IDs das ferramentas associadas a este especialista

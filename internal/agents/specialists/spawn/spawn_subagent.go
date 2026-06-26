@@ -71,6 +71,9 @@ func (s *SpawnAgent) SystemPrompt() string {
 // Execute executa o subagente iniciando um AgenticLoop isolado
 func (s *SpawnAgent) Execute(ctx context.Context, prompt string, priorSummary string) (core.AgentResult, error) {
 	subagentID := fmt.Sprintf("subagent-%d", time.Now().UnixNano())
+	if parentSession, ok := ctx.Value("session_name").(string); ok && parentSession != "" {
+		subagentID = fmt.Sprintf("session-%s-subagent", parentSession)
+	}
 	storageDir := filepath.Join(s.workspacePath, ".crom", "agents", subagentID)
 
 	subSM := state.NewStateManager(storageDir)
@@ -101,6 +104,7 @@ func (s *SpawnAgent) Execute(ctx context.Context, prompt string, priorSummary st
 		WorkspacePath: s.workspacePath,
 		WorkspaceJail: true,
 		StateManager:  subSM,
+		LLMProvider:  s.LLMProvider,
 	})
 
 	for _, t := range builtinTools {
@@ -128,6 +132,11 @@ func (s *SpawnAgent) Execute(ctx context.Context, prompt string, priorSummary st
 
 	// Sumariza a execução do subagente
 	newSummary, _ := core.CompressHistory(ctx, s.LLMProvider, prompt, output, priorSummary)
+
+	// Registra os tokens consumidos pelo subagente no StateManager principal (Task 7)
+	if recordFn, ok := ctx.Value("token_recorder_callback").(func(int)); ok && subSM != nil {
+		recordFn(subSM.GetState().TokensGastos)
+	}
 
 	return core.AgentResult{
 		Success:        true,

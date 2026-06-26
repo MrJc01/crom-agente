@@ -3,6 +3,7 @@ package tools_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/crom/crom-agente/internal/agents/core"
@@ -90,16 +91,11 @@ func TestAgentToolAdapter(t *testing.T) {
 		t.Errorf("prior_summary recebido incorreto: %s", inner.ReceivedPrior)
 	}
 
-	var output core.AgentResult
-	if err := json.Unmarshal([]byte(res.Data), &output); err != nil {
-		t.Fatalf("falha ao desserializar resultado: %v", err)
+	if !strings.Contains(res.Data, "Completed coding") {
+		t.Errorf("esperava encontrar 'Completed coding' no relatório, obteve: %s", res.Data)
 	}
 
-	if output.Output != "Completed coding" {
-		t.Errorf("Output incorreto no JSON: %s", output.Output)
-	}
-
-	if output.ContextSummary != "Finished all modules" {
-		t.Errorf("ContextSummary incorreto no JSON: %s", output.ContextSummary)
+	if !strings.Contains(res.Data, "Finished all modules") {
+		t.Errorf("esperava encontrar 'Finished all modules' no relatório, obteve: %s", res.Data)
 	}
 }

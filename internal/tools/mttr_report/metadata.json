@@ -1,0 +1,4 @@
+{
+  "id": "mttr_report",
+  "description": "Calcula a métrica MTTR (Mean Time to Repair/Recover) da sessão com base no tempo decorrido entre o primeiro erro e a validação bem-sucedida."
+}

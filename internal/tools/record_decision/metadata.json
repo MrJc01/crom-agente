@@ -1,0 +1,5 @@
+{
+  "id": "record_decision",
+  "name": "Record Decision",
+  "description": "Grava uma decisão ou constatação lógica importante no log centralizado de decisões (.crom/decisions.log) compartilhado com outros especialistas."
+}
