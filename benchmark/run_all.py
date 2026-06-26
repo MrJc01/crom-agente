@@ -12,6 +12,7 @@ import time
 import tempfile
 import subprocess
 import re
+import threading
 from pathlib import Path
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
@@ -34,8 +35,42 @@ if ENV_FILE.exists():
 
 PROVIDER = "openrouter"
 MODEL = "meta-llama/llama-3.1-8b-instruct"
-MAX_ITER = 8
-TIMEOUT = 120
+MAX_ITER = 0
+TIMEOUT = 1800
+
+
+class ProgressManager:
+    def __init__(self, filepath):
+        self.filepath = Path(filepath)
+        self.lock = threading.Lock()
+        self.state = {}
+        if self.filepath.exists():
+            try:
+                with open(self.filepath) as f:
+                    self.state = json.load(f)
+            except Exception:
+                pass
+
+    def get_result(self, bench_name, task_id):
+        return self.state.get(bench_name, {}).get(task_id)
+
+    def save_result(self, bench_name, task_id, result):
+        with self.lock:
+            if bench_name not in self.state:
+                self.state[bench_name] = {}
+            self.state[bench_name][task_id] = result
+            tmp = self.filepath.with_suffix('.tmp')
+            with open(tmp, 'w') as f:
+                json.dump(self.state, f, indent=2)
+            tmp.rename(self.filepath)
+
+    def clear(self):
+        with self.lock:
+            self.state = {}
+            if self.filepath.exists():
+                self.filepath.unlink()
+
+progress = ProgressManager(REPORTS_DIR / "benchmark_progress.json")
 
 
 def build_agent():
@@ -169,6 +204,11 @@ def run_evalplus(limit=5, workers=1):
     
     def process_task(task, idx):
         tid = task["task_id"]
+        cached = progress.get_result("evalplus", tid)
+        if cached:
+            print(f"  [SKIP] {tid} (already processed)")
+            return cached
+            
         print(f"  [START] {tid}...")
         
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -237,7 +277,7 @@ def run_evalplus(limit=5, workers=1):
             sym = "✅" if success else "❌"
             print(f"  [DONE] {sym} {tid} | turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s status={status}")
             
-            return {
+            res = {
                 "task_id": tid,
                 "success": success,
                 "turns": stats["turns"],
@@ -246,6 +286,8 @@ def run_evalplus(limit=5, workers=1):
                 "tool_calls": stats["tool_calls"],
                 "status": status
             }
+            progress.save_result("evalplus", tid, res)
+            return res
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = [executor.submit(process_task, task, idx) for idx, task in enumerate(tasks)]
@@ -285,6 +327,11 @@ def run_swebench(limit=3, workers=1):
     
     def process_task(task, idx):
         iid = task["instance_id"]
+        cached = progress.get_result("swe-bench", iid)
+        if cached:
+            print(f"  [SKIP] {iid} (already processed)")
+            return cached
+            
         print(f"  [START] {iid}...")
         
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -315,7 +362,7 @@ def run_swebench(limit=3, workers=1):
             sym = "✅" if success else "❌"
             print(f"  [DONE] {sym} {iid} | turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s patch={has_patch} analysis={has_analysis}")
             
-            return {
+            res = {
                 "task_id": iid,
                 "success": success,
                 "turns": stats["turns"],
@@ -326,6 +373,8 @@ def run_swebench(limit=3, workers=1):
                 "has_patch": has_patch,
                 "has_analysis": has_analysis
             }
+            progress.save_result("swe-bench", iid, res)
+            return res
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = [executor.submit(process_task, task, idx) for idx, task in enumerate(tasks)]
@@ -363,6 +412,11 @@ def run_terminalbench(limit=3, workers=1):
     
     def process_task(task, idx):
         tid = task["task_id"]
+        cached = progress.get_result("terminal-bench", tid)
+        if cached:
+            print(f"  [SKIP] {tid} (already processed)")
+            return cached
+            
         print(f"  [START] {tid} ({task['name']})...")
         
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -377,7 +431,7 @@ def run_terminalbench(limit=3, workers=1):
             sym = "✅" if success else "❌"
             print(f"  [DONE] {sym} {tid} | turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s status={status}")
             
-            return {
+            res = {
                 "task_id": tid,
                 "name": task["name"],
                 "success": success,
@@ -387,6 +441,8 @@ def run_terminalbench(limit=3, workers=1):
                 "tool_calls": stats["tool_calls"],
                 "status": status
             }
+            progress.save_result("terminal-bench", tid, res)
+            return res
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = [executor.submit(process_task, task, idx) for idx, task in enumerate(tasks)]
@@ -428,6 +484,11 @@ def run_livecodebench(limit=3, workers=1):
     
     def process_task(task, idx):
         tid = task["task_id"]
+        cached = progress.get_result("livecode-bench", tid)
+        if cached:
+            print(f"  [SKIP] {tid} (already processed)")
+            return cached
+            
         print(f"  [START] {tid} ({task['name']})...")
         
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -478,7 +539,7 @@ def run_livecodebench(limit=3, workers=1):
             sym = "✅" if success else "❌"
             print(f"  [DONE] {sym} {tid} | turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s status={status}")
             
-            return {
+            res = {
                 "task_id": tid,
                 "name": task["name"],
                 "success": success,
@@ -488,6 +549,8 @@ def run_livecodebench(limit=3, workers=1):
                 "tool_calls": stats["tool_calls"],
                 "status": status
             }
+            progress.save_result("livecode-bench", tid, res)
+            return res
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = [executor.submit(process_task, task, idx) for idx, task in enumerate(tasks)]
@@ -516,6 +579,11 @@ def run_bigcodebench(limit=3, workers=1):
     
     def process_task(task, idx):
         tid = task["task_id"]
+        cached = progress.get_result("bigcodebench", tid)
+        if cached:
+            print(f"  [SKIP] {tid} (already processed)")
+            return cached
+            
         print(f"  [START] {tid} ({task['name']})...")
         
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -567,7 +635,7 @@ def run_bigcodebench(limit=3, workers=1):
             sym = "✅" if success else "❌"
             print(f"  [DONE] {sym} {tid} | turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s status={status}")
             
-            return {
+            res = {
                 "task_id": tid,
                 "name": task["name"],
                 "success": success,
@@ -577,6 +645,8 @@ def run_bigcodebench(limit=3, workers=1):
                 "tool_calls": stats["tool_calls"],
                 "status": status
             }
+            progress.save_result("bigcodebench", tid, res)
+            return res
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = [executor.submit(process_task, task, idx) for idx, task in enumerate(tasks)]
@@ -661,8 +731,13 @@ def main():
     parser = argparse.ArgumentParser(description="Runner de todos os benchmarks")
     parser.add_argument("--limit", type=int, default=5, help="Limite de tarefas por benchmark")
     parser.add_argument("--workers", type=int, default=3, help="Número de threads/workers para execução paralela")
+    parser.add_argument("--clear-progress", action="store_true", help="Limpa o progresso salvo antes de iniciar")
     args = parser.parse_args()
     
+    if args.clear_progress:
+        progress.clear()
+        print("🗑️ Progresso anterior limpo.")
+        
     if not build_agent():
         sys.exit(1)
     
