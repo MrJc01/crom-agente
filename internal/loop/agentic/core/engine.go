@@ -48,6 +48,7 @@ type AgenticLoop struct {
 	textOnlyMode        bool
 	fastPathCache       map[string]fastPathCacheEntry
 	fastPathCacheMu     sync.Mutex
+	linterFailures      map[string]int
 }
 
 // QueueUserMessage adiciona uma mensagem do usuário na fila de injeção em tempo real
@@ -62,6 +63,7 @@ func (al *AgenticLoop) GetStateManager() *state.StateManager {
 	return al.stateManager
 }
 
+// SetPermissionManager define o gerenciador de permissões
 func (al *AgenticLoop) SetPermissionManager(pm interface {
 	Authorize(ctx context.Context, action, target string) (bool, error)
 }) {
@@ -112,6 +114,7 @@ func New(provider llm.Provider, sm *state.StateManager, handler EventHandler, cf
 		promptManager:     pm,
 		failureRetryDelay: delay,
 		fastPathCache:     make(map[string]fastPathCacheEntry),
+		linterFailures:    make(map[string]int),
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -191,15 +192,17 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []llm.Messag
 	}
 
 	type openAIRequest struct {
-		Model      string               `json:"model"`
-		Messages   []openAIChatMessage  `json:"messages"`
-		Tools      []llm.ToolDefinition `json:"tools,omitempty"`
-		ToolChoice interface{}          `json:"tool_choice,omitempty"`
+		Model       string               `json:"model"`
+		Messages    []openAIChatMessage  `json:"messages"`
+		Tools       []llm.ToolDefinition `json:"tools,omitempty"`
+		ToolChoice  interface{}          `json:"tool_choice,omitempty"`
+		Temperature *float64             `json:"temperature,omitempty"`
 	}
 
 	reqBody := openAIRequest{
-		Model:    p.model,
-		Messages: reqMessages,
+		Model:       p.model,
+		Messages:    reqMessages,
+		Temperature: opts.Temperature,
 	}
 
 	if len(opts.Tools) > 0 && !isToolUseDisabled {
@@ -246,9 +249,20 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []llm.Messag
 			return nil, fmt.Errorf("openai: erro ao ler response body: %w", err)
 		}
 
-		// Se for Rate Limit (429), falha imediatamente para evitar travar a UI/CLI
+		// Se for Rate Limit (429), tenta respeitar o Retry-After ou faz backoff exponencial antes de tentar novamente
 		if resp.StatusCode == http.StatusTooManyRequests {
 			resp.Body.Close()
+			if attempt < maxRetries {
+				retryAfterStr := resp.Header.Get("Retry-After")
+				sleepDuration := time.Duration(attempt*5) * time.Second
+				if retryAfterStr != "" {
+					if seconds, errConv := strconv.Atoi(retryAfterStr); errConv == nil {
+						sleepDuration = time.Duration(seconds) * time.Second
+					}
+				}
+				time.Sleep(sleepDuration)
+				continue
+			}
 			break
 		}
 

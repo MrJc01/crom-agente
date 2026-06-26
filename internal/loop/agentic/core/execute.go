@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -158,6 +161,17 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		saveMsgs(messages)
 	}
 
+	maxIterations := 20
+	if al.config != nil && al.config.MaxIterations > 0 {
+		maxIterations = al.config.MaxIterations
+	}
+	lowerIntent := strings.ToLower(intent)
+	if strings.Contains(lowerIntent, "swe-bench") || strings.Contains(lowerIntent, "issue") || len(strings.Fields(intent)) > 300 {
+		maxIterations = 35
+	} else if strings.Contains(lowerIntent, "evalplus") || strings.Contains(lowerIntent, "humaneval") {
+		maxIterations = 12
+	}
+
 	consecutiveNoToolCallTurns := 0
 	consecutiveFailures := 0
 	consecutiveRetryCount := 0
@@ -166,16 +180,16 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 	lastToolWasValidation := false
 
 	for i := 0; ; i++ {
-		if al.config.MaxIterations > 0 && i >= al.config.MaxIterations {
+		if i >= maxIterations {
 			al.handler.OnMessage("system", "Limite de iterações atingido.")
 			al.handler.OnEvent(loop.AgentEvent{
 				Timestamp: time.Now(),
 				Event:     "finished",
-				Iteration: al.config.MaxIterations,
-				Data:      map[string]interface{}{"reason": "max_iterations", "total_iterations": al.config.MaxIterations},
+				Iteration: maxIterations,
+				Data:      map[string]interface{}{"reason": "max_iterations", "total_iterations": maxIterations},
 			})
 			al.handler.OnStatusChange("idle")
-			return fmt.Errorf("limite de %d iterações atingido", al.config.MaxIterations)
+			return fmt.Errorf("limite de %d iterações atingido", maxIterations)
 		}
 		askUserCalled := false
 		iterLog := state.IterationLog{
@@ -251,7 +265,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			},
 		})
 
-		// Detectar loops repetitivos
+		// Detectar loops repetitivos (Item 16)
 		if DetectRepetitiveLoop(messages) {
 			al.handler.OnMessage("system", i18n.Get("system.repetitive_loop_detected"))
 			messages = append(messages, llm.Message{
@@ -261,8 +275,32 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			saveMsgs(messages)
 		}
 
+		if DetectCommandLoop(messages) {
+			al.handler.OnMessage("system", "Detectado loop repetitivo na execução de comandos.")
+			messages = append(messages, llm.Message{
+				Role:    "system",
+				Content: "[SYSTEM INTERVENTION] Você executou o mesmo comando de terminal com a mesma saída 3 vezes seguidas. Você deve parar de tentar o mesmo comando e mudar de estratégia (ex: examinar arquivos detalhadamente, corrigir o erro do código em vez de rodar o teste seguidamente).",
+			})
+			saveMsgs(messages)
+		}
+
+		// Impedir loops de mensagens vazias (Item 17)
+		if countConsecutiveEmptyResponses(messages) >= 2 {
+			messages = append(messages, llm.Message{
+				Role:    "system",
+				Content: "[SYSTEM INTERVENTION] ATENÇÃO: Suas últimas duas respostas foram vazias. Você deve retornar um texto com seu raciocínio (pensamento) ou chamar uma ferramenta válida. Não envie mensagens vazias.",
+			})
+			saveMsgs(messages)
+		}
+
 		// Construir definições de ferramentas para o LLM
 		opts := tooling.BuildRequestOptions(al.tools, intent)
+
+		// Backoff de Temperatura Dinâmico (Item 18)
+		if DetectRepetitiveLoop(messages) || DetectCommandLoop(messages) {
+			temp := 0.8
+			opts.Temperature = &temp
+		}
 
 		// Injetar plano de trabalho atualizado de forma dinâmica no contexto
 		runMessages := messages
@@ -314,7 +352,8 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			}
 		}
 
-		// Injetar diretrizes do ModoCognitivo atual de forma dinâmica
+		// Injetar diretrizes do ModoCognitivo atual de forma dinâmica (Item 25)
+		cognitiveInjected := false
 		if al.promptManager != nil {
 			if phasePrompt, ok := al.promptManager.GetPrompt("phase_" + modo); ok && phasePrompt.Enabled {
 				if !copied {
@@ -325,6 +364,30 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				runMessages = append(runMessages, llm.Message{
 					Role:    "system",
 					Content: phasePrompt.Content,
+				})
+				cognitiveInjected = true
+			}
+		}
+
+		if !cognitiveInjected {
+			cognitivePrompt := ""
+			switch modo {
+			case state.ModoPlanning:
+				cognitivePrompt = "[SYSTEM COGNITIVE MODE: PLANNING] Você está na fase de planejamento. Priorize ler a estrutura de arquivos e criar um plano claro em task.md antes de iniciar a codificação."
+			case state.ModoDebugging:
+				cognitivePrompt = "[SYSTEM COGNITIVE MODE: DEBUGGING] Você está depurando uma falha. Seja extremamente cirúrgico, examine os logs de erro ou tracebacks com atenção, leia os arquivos relevantes e execute testes locais para confirmar suas correções antes de dar a tarefa como concluída."
+			case state.ModoVerifying:
+				cognitivePrompt = "[SYSTEM COGNITIVE MODE: VERIFYING] Você está verificando seu trabalho. Execute a suíte de testes locais ou faça validações manuais para garantir que as alterações não introduziram regressões."
+			}
+			if cognitivePrompt != "" {
+				if !copied {
+					runMessages = make([]llm.Message, len(messages))
+					copy(runMessages, messages)
+					copied = true
+				}
+				runMessages = append(runMessages, llm.Message{
+					Role:    "system",
+					Content: cognitivePrompt,
 				})
 			}
 		}
@@ -461,6 +524,30 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				_ = al.stateManager.SaveIterationLog(i+1, iterLog)
 			}
 			return fmt.Errorf("abortando: o modelo executou %d turnos sem ações em tarefa que requer arquivos", consecutiveNoToolCallTurns)
+		}
+
+		// Circuit Breaker de Arquivos Inalterados (Item 21)
+		if countConsecutiveReadOnlyTurns(messages) >= 4 && taskRequiresFiles(intent) {
+			if al.stateManager != nil {
+				_ = al.stateManager.SetCircuitBreakerTriggered(true)
+			}
+			al.handler.OnMessage("system", "⚠️ [CIRCUIT_BREAKER] Abortando: O agente realizou 4 turnos seguidos sem modificar o workspace (apenas leituras ou nenhuma ação).")
+			al.handler.OnEvent(loop.AgentEvent{
+				Timestamp: time.Now(),
+				Event:     "error",
+				Iteration: i + 1,
+				Data: map[string]interface{}{
+					"error": loop.AgentError{
+						Code:    loop.ErrToolExecution,
+						Message: "circuit breaker triggered: no workspace modifications in 4 turns",
+					},
+				},
+			})
+			al.handler.OnStatusChange("idle")
+			if al.stateManager != nil {
+				_ = al.stateManager.SaveIterationLog(i+1, iterLog)
+			}
+			return fmt.Errorf("abortando: 4 turnos sem alteração de arquivos")
 		}
 
 		messages = append(messages, msg)
@@ -621,11 +708,10 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 					}
 				}
 				if hasPendingTasks {
-					// Se a resposta é conversacional (sem tool calls e parece uma saudação/conversa),
-					// o plano foi gerado desnecessariamente. Limpa e finaliza.
-					if len(msg.ToolCalls) == 0 && isConversationalResponse(msg.Content, intent) {
+					// Se a resposta é conversacional ou conclui explicitamente (sem tool calls) (Item 20)
+					if len(msg.ToolCalls) == 0 && (isConversationalResponse(msg.Content, intent) || isCompletionResponse(msg.Content)) {
 						_ = al.stateManager.SetPlan(nil)
-						al.handler.OnMessage("system", "Resposta conversacional detectada. Plano limpo automaticamente.")
+						al.handler.OnMessage("system", "Foco conversacional ou conclusão detectada. Plano limpo automaticamente.")
 					} else {
 						warning := loop.GeneratePendingTasksWarning(plan)
 						al.handler.OnMessage("system", "Aviso de tarefas pendentes no plano. Solicitando continuação.")
@@ -659,6 +745,25 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 						_ = al.stateManager.SaveIterationLog(i+1, iterLog)
 					}
 					continue
+				}
+			}
+
+			// Autoverificação e execução de testes unitários locais (Fase 1)
+			if workspaceDir != "" && al.stateManager != nil {
+				st := al.stateManager.GetState()
+				if st.FilesCreated > 0 || st.FilesValidated > 0 {
+					if ok, testErrMsg := runAutoTests(workspaceDir); !ok {
+						warning := fmt.Sprintf("⚠️ [TEST_FAILURE]: A execução de testes unitários ou doctests locais detectou falhas no workspace:\n%s\nPor favor, corrija os erros identificados antes de encerrar.", testErrMsg)
+						al.handler.OnMessage("system", "Testes unitários ou doctests locais falharam. Solicitando correção.")
+						messages = append(messages, llm.Message{Role: "system", Content: warning})
+						saveMsgs(messages)
+						lastIterFailed = true
+						lastToolWasValidation = true
+						if al.stateManager != nil {
+							_ = al.stateManager.SaveIterationLog(i+1, iterLog)
+						}
+						continue
+					}
 				}
 			}
 
@@ -926,6 +1031,31 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				}
 			}
 
+			// Backup setup for write_file/diff_replace (Item 13)
+			var backupPath string
+			var backupContent []byte
+			var targetFilePath string
+			var existedBefore bool
+			if toolID == "write_file" || toolID == "diff_replace" {
+				var argsPath struct {
+					Path string `json:"path"`
+				}
+				if err := json.Unmarshal([]byte(rawArgs), &argsPath); err == nil && argsPath.Path != "" {
+					targetFilePath = argsPath.Path
+					if !filepath.IsAbs(targetFilePath) && workspaceDir != "" {
+						targetFilePath = filepath.Join(workspaceDir, targetFilePath)
+					}
+					if _, errStat := os.Stat(targetFilePath); errStat == nil {
+						existedBefore = true
+						if data, errRead := os.ReadFile(targetFilePath); errRead == nil {
+							backupContent = data
+							backupPath = targetFilePath + ".bak"
+							_ = os.WriteFile(backupPath, data, 0644)
+						}
+					}
+				}
+			}
+
 			// Executar com timeout
 			toolStartTime := time.Now()
 			toolCtx, cancel := context.WithTimeout(ctx, time.Duration(al.config.ToolTimeoutSeconds)*time.Second)
@@ -934,6 +1064,18 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			toolDuration := time.Since(toolStartTime).Milliseconds()
 
 			if execErr != nil {
+				// Rollback on execution error
+				if targetFilePath != "" {
+					if existedBefore {
+						_ = os.WriteFile(targetFilePath, backupContent, 0644)
+					} else {
+						_ = os.Remove(targetFilePath)
+					}
+					if backupPath != "" {
+						_ = os.Remove(backupPath)
+					}
+				}
+
 				iterLog.ToolsCalled = append(iterLog.ToolsCalled, state.ToolTrace{
 					ToolName:   toolID,
 					Args:       rawArgs,
@@ -980,12 +1122,39 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 							filePath = filepath.Join(workspaceDir, filePath)
 						}
 
+						// Auto-formatting (Item 14)
+						runAutoFormatter(filePath)
+
 						if al.stateManager != nil {
 							_ = al.stateManager.RecordFileValidated()
 						}
-						valid, errMsg := loop.ValidateCreatedFile(filePath, "")
+						entryPoint := extractEntryPointFromPrompt(intent)
+						valid, errMsg := loop.ValidateCreatedFile(filePath, "", entryPoint)
 						if !valid {
-							feedbackMsg := fmt.Sprintf("⚠️ [VALIDATION_ERROR]: O arquivo %s contém erros de sintaxe/compilação:\n%s\nPor favor, corrija os erros identificados.", argsPath.Path, errMsg)
+							al.mu.Lock()
+							al.linterFailures[filePath]++
+							failures := al.linterFailures[filePath]
+							al.mu.Unlock()
+
+							var feedbackMsg string
+							if failures >= 3 {
+								// Rollback (Item 13)
+								if existedBefore {
+									_ = os.WriteFile(filePath, backupContent, 0644)
+								} else {
+									_ = os.Remove(filePath)
+								}
+								al.mu.Lock()
+								al.linterFailures[filePath] = 0
+								al.mu.Unlock()
+								feedbackMsg = fmt.Sprintf("⚠️ [ROLLBACK_TRIGGERED]: O arquivo %s falhou na validação de sintaxe/linter 3 vezes consecutivas. Suas modificações foram revertidas para o estado original para manter o workspace limpo. Erro da última tentativa:\n%s\nPor favor, repense a abordagem.", argsPath.Path, errMsg)
+							} else {
+								feedbackMsg = fmt.Sprintf("⚠️ [VALIDATION_ERROR]: O arquivo %s contém erros de sintaxe/compilação (Tentativa %d de 3):\n%s\nPor favor, corrija os erros identificados.", argsPath.Path, failures, errMsg)
+							}
+
+							if backupPath != "" {
+								_ = os.Remove(backupPath)
+							}
 
 							iterLog.ToolsCalled = append(iterLog.ToolsCalled, state.ToolTrace{
 								ToolName:   toolID,
@@ -1019,6 +1188,15 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 							iterationHasFailure = true
 							continue
 						}
+
+						// Reset failures on success
+						al.mu.Lock()
+						al.linterFailures[filePath] = 0
+						al.mu.Unlock()
+						if backupPath != "" {
+							_ = os.Remove(backupPath)
+						}
+
 						if al.stateManager != nil {
 							_ = al.stateManager.RecordFileCreated()
 						}
@@ -1068,8 +1246,12 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 						Content: result.Data,
 					})
 				} else {
+					truncatedData := result.Data
+					if toolID == "terminal_command" || toolID == "run_command" {
+						truncatedData = truncateTraceback(result.Data)
+					}
 					messages = append(messages, llm.Message{
-						Role: "tool", ToolCallID: tc.ID, Name: toolID, Content: result.Data,
+						Role: "tool", ToolCallID: tc.ID, Name: toolID, Content: truncatedData,
 					})
 				}
 				al.handler.OnMessage("system", fmt.Sprintf("Ferramenta %s executada com sucesso.", toolID))
@@ -1519,4 +1701,221 @@ func taskRequiresFiles(intent string) bool {
 		}
 	}
 	return false
+}
+
+func extractEntryPointFromPrompt(intent string) string {
+	// Padrão 1: entry_point: has_close_elements ou entry_point = 'has_close_elements' ou similar
+	re1 := regexp.MustCompile(`(?i)entry_point["'\s:=]+([\w_]+)`)
+	matches1 := re1.FindStringSubmatch(intent)
+	if len(matches1) > 1 {
+		return matches1[1]
+	}
+
+	// Padrão 2: "def target_func(" ou "def target_func ("
+	re2 := regexp.MustCompile(`def\s+([\w_]+)\s*\(`)
+	matches2 := re2.FindStringSubmatch(intent)
+	if len(matches2) > 1 {
+		name := matches2[1]
+		if name != "check" && name != "candidate" && name != "solve" {
+			return name
+		}
+	}
+	return ""
+}
+
+func runAutoTests(workspaceDir string) (bool, string) {
+	if workspaceDir == "" {
+		return true, ""
+	}
+
+	// 1. Detectar se é projeto Go (existe go.mod)
+	goMod := filepath.Join(workspaceDir, "go.mod")
+	if _, err := os.Stat(goMod); err == nil {
+		if _, err := exec.LookPath("go"); err == nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, "go", "test", "./...")
+			cmd.Dir = workspaceDir
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				return false, fmt.Sprintf("Go test execution failed:\n%s", string(out))
+			}
+		}
+	}
+
+	// 2. Detectar se existem arquivos Python modificados/criados ou se é projeto Python
+	files, err := os.ReadDir(workspaceDir)
+	if err != nil {
+		return true, ""
+	}
+
+	var pyFiles []string
+	var testFiles []string
+	for _, f := range files {
+		if !f.IsDir() {
+			name := f.Name()
+			if strings.HasSuffix(name, ".py") {
+				if strings.Contains(name, "test") {
+					testFiles = append(testFiles, name)
+				} else {
+					pyFiles = append(pyFiles, name)
+				}
+			}
+		}
+	}
+
+	// Se tiver arquivos de teste explícitos (ex: test_solucao.py), rodar com python3
+	if len(testFiles) > 0 {
+		if _, err := exec.LookPath("python3"); err == nil {
+			for _, tf := range testFiles {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				cmd := exec.CommandContext(ctx, "python3", tf)
+				cmd.Dir = workspaceDir
+				out, err := cmd.CombinedOutput()
+				if err != nil {
+					return false, fmt.Sprintf("Python unit test '%s' failed:\n%s", tf, string(out))
+				}
+			}
+		}
+	}
+
+	// Se tiver arquivos Python regulares, rodar doctest neles se contiverem doctests
+	if _, err := exec.LookPath("python3"); err == nil {
+		for _, pf := range pyFiles {
+			// Ler arquivo para ver se contém ">>>" indicando doctests
+			content, errRead := os.ReadFile(filepath.Join(workspaceDir, pf))
+			if errRead == nil && strings.Contains(string(content), ">>>") {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				// python3 -m doctest pf
+				cmd := exec.CommandContext(ctx, "python3", "-m", "doctest", pf)
+				cmd.Dir = workspaceDir
+				out, err := cmd.CombinedOutput()
+				if err != nil || strings.Contains(string(out), "Failed") {
+					return false, fmt.Sprintf("Python doctest in '%s' failed:\n%s", pf, string(out))
+				}
+			}
+		}
+	}
+
+	return true, ""
+}
+
+func DetectCommandLoop(messages []llm.Message) bool {
+	type cmdTrace struct {
+		cmd string
+		out string
+	}
+	var traces []cmdTrace
+	for i := len(messages) - 1; i >= 0; i-- {
+		m := messages[i]
+		if m.Role == "assistant" {
+			for _, tc := range m.ToolCalls {
+				if tc.Function.Name == "terminal_command" || tc.Function.Name == "run_command" {
+					var out string
+					for j := i + 1; j < len(messages); j++ {
+						if messages[j].Role == "tool" && messages[j].ToolCallID == tc.ID {
+							out = messages[j].Content
+							break
+						}
+					}
+					traces = append(traces, cmdTrace{
+						cmd: tc.Function.Arguments,
+						out: out,
+					})
+				}
+			}
+		}
+	}
+	if len(traces) < 3 {
+		return false
+	}
+	if traces[0].cmd == traces[1].cmd && traces[0].out == traces[1].out &&
+		traces[1].cmd == traces[2].cmd && traces[1].out == traces[2].out {
+		return true
+	}
+	return false
+}
+
+func countConsecutiveEmptyResponses(messages []llm.Message) int {
+	count := 0
+	for i := len(messages) - 1; i >= 0; i-- {
+		m := messages[i]
+		if m.Role == "assistant" {
+			if m.Content == "" && len(m.ToolCalls) == 0 {
+				count++
+			} else {
+				break
+			}
+		}
+	}
+	return count
+}
+
+func runAutoFormatter(path string) {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".go":
+		if _, err := exec.LookPath("gofmt"); err == nil {
+			cmd := exec.Command("gofmt", "-w", path)
+			_ = cmd.Run()
+		}
+	case ".py":
+		if _, err := exec.LookPath("black"); err == nil {
+			cmd := exec.Command("black", path)
+			_ = cmd.Run()
+		} else if _, err := exec.LookPath("ruff"); err == nil {
+			cmd := exec.Command("ruff", "format", path)
+			_ = cmd.Run()
+		}
+	}
+}
+
+func isCompletionResponse(content string) bool {
+	lower := strings.ToLower(content)
+	return strings.Contains(lower, "tarefa concluída") ||
+		strings.Contains(lower, "task is complete") ||
+		strings.Contains(lower, "concluí a tarefa") ||
+		strings.Contains(lower, "i have completed the task") ||
+		strings.Contains(lower, "tudo pronto") ||
+		strings.Contains(lower, "finalizei as alterações")
+}
+
+func countConsecutiveReadOnlyTurns(messages []llm.Message) int {
+	count := 0
+	for i := len(messages) - 1; i >= 0; i-- {
+		m := messages[i]
+		if m.Role == "assistant" {
+			hasWriteOrExec := false
+			for _, tc := range m.ToolCalls {
+				name := tc.Function.Name
+				if name == "write_file" || name == "diff_replace" || name == "terminal_command" || name == "run_command" {
+					hasWriteOrExec = true
+					break
+				}
+			}
+			if !hasWriteOrExec {
+				count++
+			} else {
+				break
+			}
+		}
+	}
+	return count
+}
+
+func truncateTraceback(s string) string {
+	lines := strings.Split(s, "\n")
+	if len(lines) <= 20 {
+		return s
+	}
+	lower := strings.ToLower(s)
+	isError := strings.Contains(lower, "traceback") || strings.Contains(lower, "error") || strings.Contains(lower, "fail") || strings.Contains(lower, "exception") || strings.Contains(lower, "undefined")
+	if isError {
+		firstFive := lines[:5]
+		lastTen := lines[len(lines)-10:]
+		return strings.Join(firstFive, "\n") + "\n\n... [TRUNCATED LOGS / TRACEBACKS FOR CONTEXT SIZE (Item 46)] ...\n\n" + strings.Join(lastTen, "\n")
+	}
+	return s
 }

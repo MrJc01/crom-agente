@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/crom/crom-agente/internal/tools"
@@ -109,8 +110,8 @@ func (t *DiffReplaceTool) Execute(ctx context.Context, args json.RawMessage) (to
 
 	content := string(data)
 
-	// Procurar ocorrências do TargetContent
-	var matches []int
+	// Procurar ocorrências do TargetContent (Tenta exato primeiro)
+	var matches [][]int
 	searchIndex := 0
 	for {
 		idx := strings.Index(content[searchIndex:], input.TargetContent)
@@ -118,10 +119,18 @@ func (t *DiffReplaceTool) Execute(ctx context.Context, args json.RawMessage) (to
 			break
 		}
 		actualIdx := searchIndex + idx
-		matches = append(matches, actualIdx)
+		matches = append(matches, []int{actualIdx, actualIdx + len(input.TargetContent)})
 		searchIndex = actualIdx + len(input.TargetContent)
 		if len(input.TargetContent) == 0 { // Prevenir loop infinito se target estiver vazio
 			break
+		}
+	}
+
+	// Se não achou exato, tenta fuzzy match (Item 32)
+	if len(matches) == 0 && len(strings.TrimSpace(input.TargetContent)) > 0 {
+		re, errRegex := makeFuzzyRegex(input.TargetContent)
+		if errRegex == nil {
+			matches = re.FindAllStringIndex(content, -1)
 		}
 	}
 
@@ -130,11 +139,12 @@ func (t *DiffReplaceTool) Execute(ctx context.Context, args json.RawMessage) (to
 	}
 
 	// Filtrar correspondências baseando-se nas linhas especificadas (se informadas)
-	var validMatches []int
-	for _, matchIdx := range matches {
+	var validMatches [][]int
+	for _, matchRange := range matches {
+		matchStart := matchRange[0]
 		// Determinar em qual linha (1-indexed) a correspondência começa
 		lineNum := 1
-		for i := 0; i < matchIdx; i++ {
+		for i := 0; i < matchStart; i++ {
 			if content[i] == '\n' {
 				lineNum++
 			}
@@ -148,7 +158,7 @@ func (t *DiffReplaceTool) Execute(ctx context.Context, args json.RawMessage) (to
 			continue
 		}
 
-		validMatches = append(validMatches, matchIdx)
+		validMatches = append(validMatches, matchRange)
 	}
 
 	if len(validMatches) == 0 {
@@ -158,13 +168,15 @@ func (t *DiffReplaceTool) Execute(ctx context.Context, args json.RawMessage) (to
 	if len(validMatches) > 1 {
 		return tools.Result{
 			Success: false,
-			Error:   fmt.Sprintf("substituição ambígua: encontradas %d ocorrências de target_content no intervalo de busca especificado", len(validMatches)),
+			Error:   fmt.Sprintf("substituição ambígua: encontradas %d ocorrências de target_content no intervalo de busca especificado (Item 33)", len(validMatches)),
 		}, nil
 	}
 
 	// Exatamente uma correspondência válida encontrada
-	matchIdx := validMatches[0]
-	newContent := content[:matchIdx] + input.ReplacementContent + content[matchIdx+len(input.TargetContent):]
+	matchRange := validMatches[0]
+	startIdx := matchRange[0]
+	endIdx := matchRange[1]
+	newContent := content[:startIdx] + input.ReplacementContent + content[endIdx:]
 
 	// Gravar de volta no arquivo
 	err = os.WriteFile(targetFile, []byte(newContent), 0644)
@@ -173,4 +185,17 @@ func (t *DiffReplaceTool) Execute(ctx context.Context, args json.RawMessage) (to
 	}
 
 	return tools.Result{Success: true, Data: fmt.Sprintf("substituição efetuada com sucesso no arquivo %s", input.Path)}, nil
+}
+
+func makeFuzzyRegex(target string) (*regexp.Regexp, error) {
+	words := strings.Fields(target)
+	if len(words) == 0 {
+		return nil, fmt.Errorf("target content is empty")
+	}
+	var patternParts []string
+	for _, w := range words {
+		patternParts = append(patternParts, regexp.QuoteMeta(w))
+	}
+	pattern := "(?s)" + strings.Join(patternParts, `\s+`)
+	return regexp.Compile(pattern)
 }

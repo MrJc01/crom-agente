@@ -68,8 +68,9 @@ type Response struct {
 
 // RequestOptions contém opções para a chamada ao LLM
 type RequestOptions struct {
-	Tools      []ToolDefinition `json:"tools,omitempty"`
-	ToolChoice string           `json:"tool_choice,omitempty"` // "auto", "none"
+	Tools       []ToolDefinition `json:"tools,omitempty"`
+	ToolChoice  string           `json:"tool_choice,omitempty"` // "auto", "none"
+	Temperature *float64         `json:"temperature,omitempty"`
 }
 
 // Provider é a interface de abstração para qualquer provedor de LLM

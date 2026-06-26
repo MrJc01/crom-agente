@@ -90,6 +90,48 @@ hello()
 			lang:     "",
 			wantOk:   true,
 		},
+		{
+			name:     "Mixed tabs and spaces Python",
+			filename: "mixed.py",
+			content:  "def test():\n\tprint('tab')\n    print('spaces')",
+			lang:     "python",
+			wantOk:   false,
+		},
+		{
+			name:     "HTML Mismatched tags",
+			filename: "mismatched.html",
+			content:  "<html><body><h1>Title</h2></body></html>",
+			lang:     "html",
+			wantOk:   false,
+		},
+		{
+			name:     "HTML Unclosed tag",
+			filename: "unclosed.html",
+			content:  "<html><body><h1>Title",
+			lang:     "html",
+			wantOk:   false,
+		},
+		{
+			name:     "SQL valid",
+			filename: "query.sql",
+			content:  "SELECT * FROM users WHERE name = 'John' AND age = 30",
+			lang:     "sql",
+			wantOk:   true,
+		},
+		{
+			name:     "SQL unbalanced single quote",
+			filename: "query_bad.sql",
+			content:  "SELECT * FROM users WHERE name = 'John",
+			lang:     "sql",
+			wantOk:   false,
+		},
+		{
+			name:     "SQL unbalanced parentheses",
+			filename: "query_bad_paren.sql",
+			content:  "SELECT * FROM users WHERE (age > 18))",
+			lang:     "sql",
+			wantOk:   false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -100,10 +142,32 @@ hello()
 				t.Fatalf("failed to write test file: %v", err)
 			}
 
-			ok, errMsg := ValidateCreatedFile(filePath, tt.lang)
+			ok, errMsg := ValidateCreatedFile(filePath, tt.lang, "")
 			if ok != tt.wantOk {
 				t.Errorf("ValidateCreatedFile() got ok = %v, want %v; error message: %q", ok, tt.wantOk, errMsg)
 			}
 		})
 	}
+
+	// Test entry point validation
+	t.Run("Python EntryPoint presence", func(t *testing.T) {
+		pyPath := filepath.Join(tempDir, "ep_check.py")
+		content := "def target_func():\n    return 42\n"
+		err := os.WriteFile(pyPath, []byte(content), 0644)
+		if err != nil {
+			t.Fatalf("failed to write test file: %v", err)
+		}
+
+		// target_func exists -> true
+		ok, errStr := ValidateCreatedFile(pyPath, "python", "target_func")
+		if !ok {
+			t.Errorf("expected target_func to exist, got error: %s", errStr)
+		}
+
+		// missing_func doesn't exist -> false
+		ok, errStr = ValidateCreatedFile(pyPath, "python", "missing_func")
+		if ok {
+			t.Errorf("expected missing_func to be missing, but validation passed")
+		}
+	})
 }

@@ -118,11 +118,16 @@ func (p *OllamaProvider) SendMessages(ctx context.Context, messages []llm.Messag
 		}
 	}
 
+	type ollamaOptions struct {
+		Temperature float64 `json:"temperature,omitempty"`
+	}
+
 	type ollamaRequest struct {
 		Model    string               `json:"model"`
 		Messages []ollamaChatMessage  `json:"messages"`
 		Tools    []llm.ToolDefinition `json:"tools,omitempty"`
 		Stream   bool                 `json:"stream"`
+		Options  *ollamaOptions       `json:"options,omitempty"`
 	}
 
 	reqTools := opts.Tools
@@ -130,11 +135,17 @@ func (p *OllamaProvider) SendMessages(ctx context.Context, messages []llm.Messag
 		reqTools = nil
 	}
 
+	var oOpts *ollamaOptions
+	if opts.Temperature != nil {
+		oOpts = &ollamaOptions{Temperature: *opts.Temperature}
+	}
+
 	reqBody := ollamaRequest{
 		Model:    p.model,
 		Messages: reqMessages,
 		Tools:    reqTools,
 		Stream:   false,
+		Options:  oOpts,
 	}
 
 	jsonData, err := json.Marshal(reqBody)

@@ -396,12 +396,16 @@ func TryParseMarkdownToolCalls(content string) []llm.ToolCall {
 				inBlock = false
 				// Processa o bloco finalizado
 				if len(blockLines) > 0 {
-					// Verifica se o caminho está na primeira linha do bloco como comentário
-					firstLine := strings.TrimSpace(blockLines[0])
-					pathInFirstLine := parseFilePathFromComment(firstLine)
-					if pathInFirstLine != "" {
-						detectedPath = pathInFirstLine
-						blockLines = blockLines[1:] // remove a linha de comentário do path
+					// Verifica se o caminho está nas primeiras linhas do bloco como comentário (Item 36)
+					for lIdx := 0; lIdx < len(blockLines) && lIdx < 3; lIdx++ {
+						lineVal := strings.TrimSpace(blockLines[lIdx])
+						pathVal := parseFilePathFromComment(lineVal)
+						if pathVal != "" {
+							detectedPath = pathVal
+							// Remove a linha de comentário do path
+							blockLines = append(blockLines[:lIdx], blockLines[lIdx+1:]...)
+							lIdx--
+						}
 					}
 
 					// Fallback: se ainda não detectou o caminho do arquivo, tenta buscar um arquivo único no texto com a extensão correspondente
@@ -410,6 +414,14 @@ func TryParseMarkdownToolCalls(content string) []llm.ToolCall {
 					}
 
 					if detectedPath != "" {
+						// Limpeza de linhas em branco extras no início/fim
+						for len(blockLines) > 0 && strings.TrimSpace(blockLines[0]) == "" {
+							blockLines = blockLines[1:]
+						}
+						for len(blockLines) > 0 && strings.TrimSpace(blockLines[len(blockLines)-1]) == "" {
+							blockLines = blockLines[:len(blockLines)-1]
+						}
+
 						fileContent := strings.Join(blockLines, "\n")
 						// Cria argumentos JSON para a ferramenta write_file
 						argsMap := map[string]string{

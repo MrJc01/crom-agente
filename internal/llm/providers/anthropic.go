@@ -62,11 +62,12 @@ type anthropicTool struct {
 }
 
 type anthropicRequest struct {
-	Model     string             `json:"model"`
-	MaxTokens int                `json:"max_tokens"`
-	System    string             `json:"system,omitempty"`
-	Messages  []anthropicMessage `json:"messages"`
-	Tools     []anthropicTool    `json:"tools,omitempty"`
+	Model       string             `json:"model"`
+	MaxTokens   int                `json:"max_tokens"`
+	System      string             `json:"system,omitempty"`
+	Messages    []anthropicMessage `json:"messages"`
+	Tools       []anthropicTool    `json:"tools,omitempty"`
+	Temperature *float64           `json:"temperature,omitempty"`
 }
 
 func (p *AnthropicProvider) SendMessages(ctx context.Context, messages []llm.Message, opts llm.RequestOptions) (*llm.Response, error) {
@@ -138,10 +139,11 @@ func (p *AnthropicProvider) SendMessages(ctx context.Context, messages []llm.Mes
 	}
 
 	reqBody := anthropicRequest{
-		Model:     p.model,
-		MaxTokens: 4000,
-		System:    systemPrompt,
-		Messages:  anthropicMsgs,
+		Model:       p.model,
+		MaxTokens:   4000,
+		System:      systemPrompt,
+		Messages:    anthropicMsgs,
+		Temperature: opts.Temperature,
 	}
 
 	if len(opts.Tools) > 0 {

@@ -118,15 +118,17 @@ func (p *GeminiProvider) SendMessages(ctx context.Context, messages []llm.Messag
 	}
 
 	type geminiRequest struct {
-		Model      string               `json:"model"`
-		Messages   []geminiChatMessage  `json:"messages"`
-		Tools      []llm.ToolDefinition `json:"tools,omitempty"`
-		ToolChoice interface{}          `json:"tool_choice,omitempty"`
+		Model       string               `json:"model"`
+		Messages    []geminiChatMessage  `json:"messages"`
+		Tools       []llm.ToolDefinition `json:"tools,omitempty"`
+		ToolChoice  interface{}          `json:"tool_choice,omitempty"`
+		Temperature *float64             `json:"temperature,omitempty"`
 	}
 
 	reqBody := geminiRequest{
-		Model:    p.model,
-		Messages: reqMessages,
+		Model:       p.model,
+		Messages:    reqMessages,
+		Temperature: opts.Temperature,
 	}
 
 	if len(opts.Tools) > 0 {

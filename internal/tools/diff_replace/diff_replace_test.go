@@ -66,4 +66,21 @@ func TestDiffReplaceTool(t *testing.T) {
 	if res.Success {
 		t.Fatal("esperava erro de conteúdo não encontrado")
 	}
+
+	// 4. Fuzzy match com espaçamento diferente (Item 32)
+	fuzzyContent := "func myFunc() {\n\treturn    99\n}"
+	_ = os.WriteFile(testFile, []byte(fuzzyContent), 0644)
+	argsFuzzy := json.RawMessage(`{
+		"path": "test.txt",
+		"target_content": "func myFunc() {\n return 99\n}",
+		"replacement_content": "func myFunc() { return 100 }"
+	}`)
+	res, err = tool.Execute(context.Background(), argsFuzzy)
+	if err != nil || !res.Success {
+		t.Fatalf("erro ao executar diff_replace fuzzy: %v, res: %+v", err, res)
+	}
+	data, _ = os.ReadFile(testFile)
+	if string(data) != "func myFunc() { return 100 }" {
+		t.Fatalf("fuzzy substitution failed. Obteve: %q", string(data))
+	}
 }
