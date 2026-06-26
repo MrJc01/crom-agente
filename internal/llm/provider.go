@@ -71,6 +71,8 @@ type RequestOptions struct {
 	Tools       []ToolDefinition `json:"tools,omitempty"`
 	ToolChoice  string           `json:"tool_choice,omitempty"` // "auto", "none"
 	Temperature *float64         `json:"temperature,omitempty"`
+	MaxTokens   *int             `json:"max_tokens,omitempty"`
+	Stream      bool             `json:"stream,omitempty"`
 }
 
 // Provider é a interface de abstração para qualquer provedor de LLM
@@ -78,6 +80,9 @@ type RequestOptions struct {
 type Provider interface {
 	// SendMessages envia mensagens ao LLM e retorna a resposta
 	SendMessages(ctx context.Context, messages []Message, opts RequestOptions) (*Response, error)
+
+	// StreamMessages envia mensagens ao LLM e retorna os chunks através de um canal
+	StreamMessages(ctx context.Context, messages []Message, opts RequestOptions, chunkChan chan<- string) (*Response, error)
 
 	// Name retorna o nome do provedor (para logs)
 	Name() string

@@ -17,6 +17,9 @@ func (h *tuiEventHandler) OnStatusChange(status string) {
 	h.spinner.Update(status)
 }
 
+func (h *tuiEventHandler) OnStreamChunk(chunk string) {
+}
+
 func (h *tuiEventHandler) OnMessage(role string, content string) {
 	// Para o spinner antes de imprimir para evitar entrelaçamento de texto
 	h.spinner.Stop()

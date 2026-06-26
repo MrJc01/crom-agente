@@ -139,7 +139,7 @@ func (t *TreeTool) walkTree(rootDir, currentDir string, currentDepth, maxDepth i
 		}
 
 		// Filtros de exclusão padrão
-		if base == ".git" || base == "node_modules" || base == "build" || base == "dist" || base == "bin" || base == ".crom" || base == "tmp" || base == "obj" {
+		if base == ".git" || base == "node_modules" || base == "build" || base == "dist" || base == "bin" || base == ".crom" || base == "tmp" || base == "obj" || base == "__pycache__" || base == "venv" || base == ".env" || base == ".venv" {
 			continue
 		}
 

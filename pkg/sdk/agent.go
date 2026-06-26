@@ -65,6 +65,9 @@ func (h *sdkEventWaitHandler) OnStatusChange(status string) {
 	}
 }
 
+func (h *sdkEventWaitHandler) OnStreamChunk(chunk string) {
+}
+
 func (h *sdkEventWaitHandler) OnMessage(role string, content string) {
 	h.inner.OnMessage(role, content)
 }

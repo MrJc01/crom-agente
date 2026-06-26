@@ -2,6 +2,8 @@ package cli
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -314,9 +316,45 @@ func init() {
 	envCmd.AddCommand(envListCmd, envSetCmd)
 	envListCmd.Flags().BoolVar(&revealEnv, "reveal", false, "Exibe os valores reais das chaves de API sem máscara")
 	configWorkspaceCmd.AddCommand(configWorkspaceListCmd, configWorkspaceGetCmd, configWorkspaceSetCmd)
-
 	configCmd.AddCommand(globalCmd, envCmd, configWorkspaceCmd, resolvedCmd)
 	rootCmd.AddCommand(configCmd)
+}
+
+var configInitCmd = &cobra.Command{
+	Use:   "init",
+	Short: "Inicializa o ambiente do crom-agente (~/.crom/) com configurações padrões interativamente (opcional)",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		gDir, err := config.GlobalDir()
+		if err != nil {
+			return err
+		}
+		
+		// Cria diretório global se não existir
+		_ = os.MkdirAll(gDir, 0755)
+
+		// Gera ou carrega config global
+		cfg, err := config.LoadGlobalConfig(gDir)
+		if err != nil {
+			return fmt.Errorf("falha ao inicializar config global: %w", err)
+		}
+
+		// Cria um env vazio se não existir
+		envPath := filepath.Join(gDir, config.EnvFile)
+		if _, err := os.Stat(envPath); os.IsNotExist(err) {
+			_ = os.WriteFile(envPath, []byte("# Variáveis de Ambiente e Chaves de API do Crom Agente\n# OPENROUTER_API_KEY=\n# OPENAI_API_KEY=\n"), 0600)
+		}
+
+		cmd.Println("✓ Ambiente global ~/.crom/ inicializado com sucesso!")
+		cmd.Printf("  Provider Padrão: %s\n", cfg.DefaultProvider)
+		cmd.Printf("  Modelo Padrão: %s\n", cfg.DefaultModel)
+		cmd.Println("  Para definir sua API Key use: crom-agente config env set OPENROUTER_API_KEY sua_chave")
+		return nil
+	},
+}
+
+func init() {
+	// Apenas para registrar configInitCmd após configCmd ser declarado
+	configCmd.AddCommand(configInitCmd)
 }
 
 // --- Helpers de Formatação ---

@@ -1,219 +1,91 @@
 package providers
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
 	"strings"
 
 	"github.com/crom/crom-agente/internal/llm"
 )
 
+// OllamaProvider is a wrapper around OpenAIProvider that points to the local Ollama instance.
+// Ollama has native support for the OpenAI Chat Completions API format.
 type OllamaProvider struct {
-	endpoint string
-	model    string
+	*OpenAIProvider
 }
 
-func NewOllamaProvider(endpoint, model string) *OllamaProvider {
-	if endpoint == "" {
-		endpoint = "http://localhost:11434"
+// NewOllamaProvider creates a new provider connecting to local Ollama.
+func NewOllamaProvider(endpointURL string, model string) *OllamaProvider {
+	if endpointURL == "" {
+		endpointURL = "http://localhost:11434"
 	}
-	if model == "" {
-		model = "llama3"
+	
+	// Ensure the endpoint points to the v1 chat completions API if it doesn't already
+	if !strings.HasSuffix(endpointURL, "/v1/chat/completions") {
+		if strings.HasSuffix(endpointURL, "/") {
+			endpointURL += "v1/chat/completions"
+		} else {
+			endpointURL += "/v1/chat/completions"
+		}
 	}
+	
+	base := NewOpenAIProvider("ollama", model)
+	base.URL = endpointURL
+	
 	return &OllamaProvider{
-		endpoint: endpoint,
-		model:    model,
+		OpenAIProvider: base,
 	}
 }
 
-func (p *OllamaProvider) Name() string {
+func (o *OllamaProvider) Name() string {
 	return "ollama"
 }
 
-func (p *OllamaProvider) SupportsSystemPrompt() bool {
-	// A grande maioria dos modelos modernos rodando no Ollama suporta System Prompt.
-	// Se no futuro identificarmos modelos específicos sem suporte, podemos tratá-los aqui.
-	return true
+func sanitizeMessagesForDeepSeek(messages []llm.Message) []llm.Message {
+	sanitized := make([]llm.Message, len(messages))
+	for i, msg := range messages {
+		sMsg := msg
+		
+		// If assistant message has tool calls, append/prepend tool call info into text
+		if sMsg.Role == "assistant" && len(sMsg.ToolCalls) > 0 {
+			var builder strings.Builder
+			builder.WriteString(sMsg.Content)
+			if sMsg.Content != "" {
+				builder.WriteString("\n")
+			}
+			builder.WriteString("[Chamando ferramentas:")
+			for _, tc := range sMsg.ToolCalls {
+				builder.WriteString(" " + tc.Function.Name)
+			}
+			builder.WriteString("]")
+			sMsg.Content = builder.String()
+			sMsg.ToolCalls = nil // Remove tool calls so API doesn't complain about them
+		}
+		
+		// If tool message, convert role to user, and sanitize content
+		if sMsg.Role == "tool" {
+			sMsg.Role = "user"
+			sMsg.Content = "[Retorno da ferramenta " + sMsg.Name + ": " + sMsg.Content + "]"
+			sMsg.Name = ""
+			sMsg.ToolCallID = ""
+		}
+		
+		sanitized[i] = sMsg
+	}
+	return sanitized
 }
 
-func (p *OllamaProvider) Capabilities() llm.ModelCapabilities {
-	return llm.GetCapabilities(p.model)
+func (o *OllamaProvider) SendMessages(ctx context.Context, messages []llm.Message, opts llm.RequestOptions) (*llm.Response, error) {
+	if strings.Contains(strings.ToLower(o.model), "deepseek") {
+		messages = sanitizeMessagesForDeepSeek(messages)
+		opts.Tools = nil
+	}
+	return o.OpenAIProvider.SendMessages(ctx, messages, opts)
 }
 
-func (p *OllamaProvider) SendMessages(ctx context.Context, messages []llm.Message, opts llm.RequestOptions) (*llm.Response, error) {
-	url := p.endpoint + "/api/chat"
-
-	type ollamaFunctionCall struct {
-		Name      string          `json:"name"`
-		Arguments json.RawMessage `json:"arguments"`
+func (o *OllamaProvider) StreamMessages(ctx context.Context, messages []llm.Message, opts llm.RequestOptions, chunkChan chan<- string) (*llm.Response, error) {
+	if strings.Contains(strings.ToLower(o.model), "deepseek") {
+		messages = sanitizeMessagesForDeepSeek(messages)
+		opts.Tools = nil
 	}
-
-	type ollamaToolCall struct {
-		ID       string             `json:"id"`
-		Type     string             `json:"type"`
-		Function ollamaFunctionCall `json:"function"`
-	}
-
-	type ollamaChatMessage struct {
-		Role      string           `json:"role"`
-		Content   string           `json:"content,omitempty"`
-		ToolCalls []ollamaToolCall `json:"tool_calls,omitempty"`
-	}
-
-	// Detecta se é o modelo deepseek para contornar bug de template no Ollama
-	isDeepSeek := strings.Contains(strings.ToLower(p.model), "deepseek")
-
-	// Layer 2: Extrai o contexto escrito da mídia antes do envio
-	injectedMessages := llm.ExtractAndInjectMediaContext(ctx, messages, p.Name(), "", p.endpoint)
-
-	reqMessages := make([]ollamaChatMessage, len(injectedMessages))
-	for i, m := range injectedMessages {
-		var tcs []ollamaToolCall
-		content := m.Content
-		if strings.HasPrefix(content, "image:base64:") {
-			// Substitui o payload da imagem nativa pelo indicador textual se o modelo não for de visão,
-			// mas como já injetamos a descrição do Layer 2 no Content, podemos omitir o base64 bruto.
-			content = "[Imagem: Captura de tela processada]"
-		}
-
-		if isDeepSeek {
-			if m.Role == "assistant" && len(m.ToolCalls) > 0 {
-				var calls []string
-				for _, tc := range m.ToolCalls {
-					calls = append(calls, fmt.Sprintf("%s(%s)", tc.Function.Name, tc.Function.Arguments))
-				}
-				content += fmt.Sprintf("\n[Chamando ferramentas: %s]", strings.Join(calls, ", "))
-			} else if m.Role == "tool" {
-				reqMessages[i] = ollamaChatMessage{
-					Role:    "user",
-					Content: fmt.Sprintf("[Retorno da ferramenta %s: %s]", m.Name, m.Content),
-				}
-				continue
-			}
-		} else {
-			for _, tc := range m.ToolCalls {
-				argsBytes := []byte(tc.Function.Arguments)
-				if len(argsBytes) == 0 {
-					argsBytes = []byte("{}")
-				}
-				tcs = append(tcs, ollamaToolCall{
-					ID:   tc.ID,
-					Type: tc.Type,
-					Function: ollamaFunctionCall{
-						Name:      tc.Function.Name,
-						Arguments: json.RawMessage(argsBytes),
-					},
-				})
-			}
-		}
-
-		reqMessages[i] = ollamaChatMessage{
-			Role:      m.Role,
-			Content:   content,
-			ToolCalls: tcs,
-		}
-	}
-
-	type ollamaOptions struct {
-		Temperature float64 `json:"temperature,omitempty"`
-	}
-
-	type ollamaRequest struct {
-		Model    string               `json:"model"`
-		Messages []ollamaChatMessage  `json:"messages"`
-		Tools    []llm.ToolDefinition `json:"tools,omitempty"`
-		Stream   bool                 `json:"stream"`
-		Options  *ollamaOptions       `json:"options,omitempty"`
-	}
-
-	reqTools := opts.Tools
-	if isDeepSeek {
-		reqTools = nil
-	}
-
-	var oOpts *ollamaOptions
-	if opts.Temperature != nil {
-		oOpts = &ollamaOptions{Temperature: *opts.Temperature}
-	}
-
-	reqBody := ollamaRequest{
-		Model:    p.model,
-		Messages: reqMessages,
-		Tools:    reqTools,
-		Stream:   false,
-		Options:  oOpts,
-	}
-
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("ollama: erro ao serializar request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("ollama: erro ao criar request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("ollama: falha na requisição HTTP: %w", err)
-	}
-	defer resp.Body.Close()
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("ollama: erro ao ler response body: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("ollama: status HTTP inválido (%d): %s", resp.StatusCode, string(bodyBytes))
-	}
-
-	type ollamaResponse struct {
-		Message struct {
-			Role      string           `json:"role"`
-			Content   string           `json:"content"`
-			ToolCalls []ollamaToolCall `json:"tool_calls"`
-		} `json:"message"`
-		Done            bool `json:"done"`
-		PromptEvalCount int  `json:"prompt_eval_count"`
-		EvalCount       int  `json:"eval_count"`
-	}
-
-	var apiResp ollamaResponse
-	if err := json.Unmarshal(bodyBytes, &apiResp); err != nil {
-		return nil, fmt.Errorf("ollama: erro ao parsear response: %w", err)
-	}
-
-	var respTcs []llm.ToolCall
-	for _, tc := range apiResp.Message.ToolCalls {
-		respTcs = append(respTcs, llm.ToolCall{
-			ID:   tc.ID,
-			Type: tc.Type,
-			Function: llm.FunctionCall{
-				Name:      tc.Function.Name,
-				Arguments: string(tc.Function.Arguments),
-			},
-		})
-	}
-
-	return &llm.Response{
-		Message: llm.Message{
-			Role:      apiResp.Message.Role,
-			Content:   apiResp.Message.Content,
-			ToolCalls: respTcs,
-		},
-		Usage: llm.Usage{
-			PromptTokens:     apiResp.PromptEvalCount,
-			CompletionTokens: apiResp.EvalCount,
-			TotalTokens:      apiResp.PromptEvalCount + apiResp.EvalCount,
-		},
-	}, nil
+	return o.OpenAIProvider.StreamMessages(ctx, messages, opts, chunkChan)
 }

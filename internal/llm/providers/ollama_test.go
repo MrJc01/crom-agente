@@ -28,13 +28,21 @@ func TestOllamaProvider_SendMessages_SanitizesDeepSeek(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{
-			"message": {
-				"role": "assistant",
-				"content": "Executado com sucesso localmente"
-			},
-			"done": true,
-			"prompt_eval_count": 10,
-			"eval_count": 5
+			"choices": [
+				{
+					"index": 0,
+					"message": {
+						"role": "assistant",
+						"content": "Executado com sucesso localmente"
+					},
+					"finish_reason": "stop"
+				}
+			],
+			"usage": {
+				"prompt_tokens": 10,
+				"completion_tokens": 5,
+				"total_tokens": 15
+			}
 		}`))
 	}))
 	defer server.Close()

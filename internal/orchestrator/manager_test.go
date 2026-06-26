@@ -28,6 +28,7 @@ func (t *testEventHandler) OnStatusChange(status string) {
 	}
 }
 
+func (t *testEventHandler) OnStreamChunk(string)          {}
 func (t *testEventHandler) OnMessage(string, string)      {}
 func (t *testEventHandler) OnEvent(event loop.AgentEvent) {}
 

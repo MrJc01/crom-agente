@@ -63,6 +63,19 @@ func (h *daemonAPIEventHandler) OnStatusChange(status string) {
 	}
 }
 
+func (h *daemonAPIEventHandler) OnStreamChunk(chunk string) {
+	payload, _ := json.Marshal(map[string]string{
+		"type":    "stream_chunk",
+		"content": chunk,
+	})
+
+	h.router.Broadcast(h.workspaceName, IPCResponse{
+		Success: true,
+		Stream:  true,
+		Data:    payload,
+	})
+}
+
 func (h *daemonAPIEventHandler) OnMessage(role string, content string) {
 	payload, _ := json.Marshal(map[string]string{
 		"type":    "message",

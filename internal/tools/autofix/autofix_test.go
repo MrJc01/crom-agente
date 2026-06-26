@@ -18,13 +18,20 @@ func (d *dummyProvider) Model() string { return "dummy" }
 func (d *dummyProvider) SupportsSystemPrompt() bool { return true }
 func (d *dummyProvider) Capabilities() llm.ModelCapabilities { return llm.ModelCapabilities{} }
 func (d *dummyProvider) SendMessages(ctx context.Context, msgs []llm.Message, opts llm.RequestOptions) (*llm.Response, error) {
-	// Returns a fixed Go file that passes tests
 	return &llm.Response{
 		Message: llm.Message{
 			Role:    "assistant",
 			Content: "package test_autofix\n\nimport \"testing\"\n\nfunc TestDummy(t *testing.T) {}\n",
 		},
 	}, nil
+}
+
+func (d *dummyProvider) StreamMessages(ctx context.Context, msgs []llm.Message, opts llm.RequestOptions, chunkChan chan<- string) (*llm.Response, error) {
+	resp, err := d.SendMessages(ctx, msgs, opts)
+	if err == nil && chunkChan != nil {
+		chunkChan <- resp.Message.Content
+	}
+	return resp, err
 }
 
 func TestAutofixTool(t *testing.T) {

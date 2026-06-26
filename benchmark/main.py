@@ -40,6 +40,10 @@ def main():
     parser.add_argument("--timeout", type=int, help="Timeout em segundos para cada tarefa")
     parser.add_argument("--mock-agent", action="store_true", help="Usa execução mock para testar a suíte sem gastar tokens")
     parser.add_argument("--output-dir", default=str(REPORTS_DIR), help="Pasta para salvar os relatórios")
+    parser.add_argument("--temp", type=float, help="Temperatura do modelo LLM")
+    parser.add_argument("--top-p", type=float, help="Top-P do modelo LLM")
+    parser.add_argument("--max-context-tokens", type=int, help="Máximo de tokens permitidos no histórico")
+    
     
     args = parser.parse_args()
     
@@ -48,6 +52,13 @@ def main():
     model = args.model or config.get("default_model", "meta-llama/llama-3.1-8b-instruct")
     max_iter = args.max_iterations or config.get("max_iterations", 30)
     timeout = args.timeout or config.get("timeout_seconds", 180)
+    
+    if args.temp is not None:
+        os.environ["CROM_MODEL_TEMP"] = str(args.temp)
+    if args.top_p is not None:
+        os.environ["CROM_MODEL_TOP_P"] = str(args.top_p)
+    if args.max_context_tokens is not None:
+        os.environ["CROM_MAX_CONTEXT_TOKENS"] = str(args.max_context_tokens)
     
     if args.action == "compare":
         print("📊 Gerando Relatório Comparativo Composto...")

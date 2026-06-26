@@ -327,6 +327,14 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 		return tools.Result{Success: false, Error: "o comando não pode ser vazio"}, nil
 	}
 
+	// Interceptar downloads acidentais via curl/wget que poluam o console (Task 5.14)
+	if strings.HasPrefix(command, "curl ") && !strings.Contains(command, "-s") && !strings.Contains(command, "--silent") {
+		command = strings.Replace(command, "curl ", "curl -s ", 1)
+	}
+	if strings.HasPrefix(command, "wget ") && !strings.Contains(command, "-q") {
+		command = strings.Replace(command, "wget ", "wget -q ", 1)
+	}
+
 	// Validação de segurança contra comandos bloqueados
 	for _, blocked := range t.blockedCommands {
 		if strings.Contains(command, blocked) {
@@ -338,7 +346,12 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 		// Wrapper de timeout estrito de 1 hora
 		bgCtx, bgCancel := context.WithTimeout(context.Background(), 1*time.Hour)
 		// Aplica nice para limitar consumo de CPU da session PTY
-		cmdName, cmdArgs := tools.WrapCommandWithCgroup(command, 1024, 50)
+		// Força o redirecionamento do stderr para stdout para captura perfeita (Task 1.14)
+		cmdMerged := command
+		if !strings.Contains(cmdMerged, "2>&1") && !strings.Contains(cmdMerged, "&>") {
+			cmdMerged += " 2>&1"
+		}
+		cmdName, cmdArgs := tools.WrapCommandWithCgroup(cmdMerged, 1024, 50)
 		c := exec.CommandContext(bgCtx, cmdName, cmdArgs...)
 		c.Dir = t.workspaceRoot
 		c.SysProcAttr = &syscall.SysProcAttr{
@@ -385,6 +398,31 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 		var wg sync.WaitGroup
 		wg.Add(2)
 
+		var lastOutputMu sync.Mutex
+		lastOutputTime := time.Now()
+
+		// Watchdog de deadlock (mata se ficar > 60s sem output)
+		go func() {
+			ticker := time.NewTicker(5 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-bgCtx.Done():
+					return
+				case <-ticker.C:
+					lastOutputMu.Lock()
+					idle := time.Since(lastOutputTime)
+					lastOutputMu.Unlock()
+					if idle > 60*time.Second {
+						_, _ = logsBuf.Write([]byte("\n[ERROR] Deadlock detectado: Nenhuma saída no terminal por mais de 60 segundos. Processo abortado automaticamente.\n"))
+						t.killProcessGroup(c)
+						bgCancel()
+						return
+					}
+				}
+			}
+		}()
+
 		// Goroutine para ler stdout
 		go func() {
 			defer wg.Done()
@@ -394,6 +432,9 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 				if n > 0 {
 					chunk := buffer[:n]
 					_, _ = logsBuf.Write(chunk)
+					lastOutputMu.Lock()
+					lastOutputTime = time.Now()
+					lastOutputMu.Unlock()
 					if t.stream != nil {
 						_, _ = t.stream.Write(chunk)
 					}
@@ -413,6 +454,9 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 				if n > 0 {
 					chunk := buffer[:n]
 					_, _ = logsBuf.Write(chunk)
+					lastOutputMu.Lock()
+					lastOutputTime = time.Now()
+					lastOutputMu.Unlock()
 					if t.stream != nil {
 						_, _ = t.stream.Write(chunk)
 					}
@@ -427,7 +471,7 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 		go func() {
 			wg.Wait()
 			_ = c.Wait()
-			bgCancel() // Limpa o timer de 1 hora
+			bgCancel() // Limpa o timer de 1 hora e encerra o watchdog
 
 			backgroundProcsMu.Lock()
 			delete(backgroundProcs, bgID)
@@ -526,6 +570,7 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 	// Goroutine de leitura não-bloqueante/streaming
 	go func() {
 		buffer := make([]byte, 2048)
+		totalBytesRead := 0
 	readLoop:
 		for {
 			select {
@@ -535,6 +580,17 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 				_ = f.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 				n, readErr := f.Read(buffer)
 				if n > 0 {
+					totalBytesRead += n
+					if totalBytesRead > 50*1024*1024 { // 50MB protection
+						msg := "\n[ERROR] OOM Protection: O comando gerou mais de 50MB de saída e foi abortado automaticamente para evitar crash do agente.\n"
+						_, _ = logsBuf.Write([]byte(msg))
+						if t.stream != nil {
+							_, _ = t.stream.Write([]byte(msg))
+						}
+						t.killProcessGroup(c)
+						procCancel()
+						return
+					}
 					chunk := buffer[:n]
 					_, _ = logsBuf.Write(chunk)
 					if t.stream != nil {
@@ -593,6 +649,28 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 	case out := <-outChan:
 		_ = c.Wait()
 		close(doneChan)
+
+		// Heurística de minificação de JSON para economizar tokens do LLM
+		outTrim := strings.TrimSpace(out)
+		if (strings.HasPrefix(outTrim, "{") && strings.HasSuffix(outTrim, "}")) ||
+			(strings.HasPrefix(outTrim, "[") && strings.HasSuffix(outTrim, "]")) {
+			var obj interface{}
+			if err := json.Unmarshal([]byte(outTrim), &obj); err == nil {
+				if minified, err := json.Marshal(obj); err == nil {
+					out = string(minified)
+				}
+			}
+		}
+
+		// Task 3.3: Truncamento e Aviso Dinâmico para saídas gigantes
+		lines := strings.Split(out, "\n")
+		if len(lines) > 500 {
+			truncatedLines := append(lines[:250], fmt.Sprintf("\n... [SAÍDA TRUNCADA (%d linhas omitidas para economizar contexto)] ...\n", len(lines)-500))
+			truncatedLines = append(truncatedLines, lines[len(lines)-250:]...)
+			out = strings.Join(truncatedLines, "\n")
+			out += fmt.Sprintf("\n\n[!] AVISO DO SISTEMA: O comando gerou %d linhas. O output foi truncado preservando apenas o início e o fim. Seja muito mais específico nos próximos comandos (ex: use 'grep' para encontrar o erro ou limite a saída) para não ser penalizado ou perder contexto.", len(lines))
+		}
+
 		return tools.Result{
 			Success: c.ProcessState.Success(),
 			Data:    out,
@@ -654,4 +732,42 @@ func (t *TerminalCommandTool) killProcessGroup(cmd *exec.Cmd) {
 		_ = syscall.Kill(-pid, syscall.SIGKILL)
 		_ = cmd.Process.Kill()
 	}
+}
+
+
+func buildSandboxedCommand(ctx context.Context, cmdName string, cmdArgs []string, workspace string, jailDir string) *exec.Cmd {
+    if jailDir == "" {
+        c := exec.CommandContext(ctx, cmdName, cmdArgs...)
+        c.Dir = workspace
+        return c
+    }
+
+    // Tenta encontrar o bwrap
+    bwrapPath, err := exec.LookPath("bwrap")
+    if err == nil && bwrapPath != "" {
+        // Usa bwrap
+        bwrapArgs := []string{
+            "--ro-bind", "/", "/",
+            "--dev", "/dev",
+            "--proc", "/proc",
+            "--tmpfs", "/tmp",
+            "--bind", workspace, workspace,
+            "--unshare-pid",
+            "--unshare-ipc",
+            "--unshare-uts",
+            "--unshare-cgroup",
+            "--chdir", workspace,
+        }
+        bwrapArgs = append(bwrapArgs, cmdName)
+        bwrapArgs = append(bwrapArgs, cmdArgs...)
+        
+        c := exec.CommandContext(ctx, bwrapPath, bwrapArgs...)
+        c.Dir = workspace
+        return c
+    }
+
+    // Fallback: não usa jail se não tem privilégios
+    c := exec.CommandContext(ctx, cmdName, cmdArgs...)
+    c.Dir = workspace
+    return c
 }

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/crom/crom-agente/internal/tools"
 )
@@ -80,10 +82,35 @@ func (t *ReadFileTool) Execute(ctx context.Context, args json.RawMessage) (tools
 		return tools.Result{Success: false, Error: err.Error()}, nil
 	}
 
+	// Task 9.6: Evitar leitura de arquivos binários ou que quebram o context window
+	ext := strings.ToLower(filepath.Ext(targetFile))
+	blockedExts := map[string]bool{
+		".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".ico": true, ".svg": true, ".webp": true,
+		".pdf": true, ".zip": true, ".tar": true, ".gz": true, ".mp4": true, ".mp3": true, ".wav": true,
+		".exe": true, ".dll": true, ".so": true, ".dylib": true, ".bin": true, ".pyc": true, ".pyo": true,
+		".class": true, ".jar": true, ".war": true, ".ttf": true, ".woff": true, ".woff2": true, ".eot": true,
+	}
+	if blockedExts[ext] {
+		return tools.Result{Success: false, Error: fmt.Sprintf("Você não pode ler o arquivo '%s' porque ele tem uma extensão binária bloqueada (%s).", input.Path, ext)}, nil
+	}
+
 	data, err := os.ReadFile(targetFile)
 	if err != nil {
 		return tools.Result{Success: false, Error: fmt.Sprintf("erro ao ler arquivo: %s", err.Error())}, nil
 	}
 
-	return tools.Result{Success: true, Data: string(data)}, nil
+	lines := strings.Split(string(data), "\n")
+	if len(lines) > 800 {
+		return tools.Result{
+			Success: false, 
+			Error: fmt.Sprintf("O arquivo '%s' possui %d linhas (maior que o limite de 800 linhas). O uso indiscriminado do `read_file` em arquivos gigantes quebra o contexto. Por favor, use `grep` ou leia o código fonte do repositório em blocos menores.", input.Path, len(lines)),
+		}, nil
+	}
+
+	for i, line := range lines {
+		lines[i] = strings.TrimRight(line, " \t\r")
+	}
+	cleanedData := strings.Join(lines, "\n")
+
+	return tools.Result{Success: true, Data: cleanedData}, nil
 }

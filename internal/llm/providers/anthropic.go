@@ -241,3 +241,9 @@ func (p *AnthropicProvider) SendMessages(ctx context.Context, messages []llm.Mes
 		},
 	}, nil
 }
+
+func (p *AnthropicProvider) StreamMessages(ctx context.Context, messages []llm.Message, opts llm.RequestOptions, chunkChan chan<- string) (*llm.Response, error) {
+	defer close(chunkChan)
+	// Fallback to non-streaming for now
+	return p.SendMessages(ctx, messages, opts)
+}

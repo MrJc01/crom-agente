@@ -39,11 +39,12 @@ func CompactMessages(ctx context.Context, provider llm.Provider, maxMsgs int, ha
 		maxMsgs = 40
 	}
 
-	if len(messages) <= maxMsgs {
+	currentTokens := llm.CountTokens(messages, "", provider.Name(), "default")
+	if len(messages) <= maxMsgs && currentTokens <= 50000 {
 		return messages
 	}
 
-	keepRecent := 15
+	keepRecent := 10 // equivale a 5 turnos completos de iteração
 	if maxMsgs < 20 {
 		keepRecent = 5
 	}
@@ -65,34 +66,40 @@ func CompactMessages(ctx context.Context, provider llm.Provider, maxMsgs int, ha
 		return compacted
 	}
 
-	middleEnd := len(messages) - keepRecent
+	var compacted []llm.Message
+	// Sliding Window Dinâmica por Tokens (Task 73)
+	for {
+		middleEnd := len(messages) - keepRecent
+		if middleEnd <= middleStart {
+			middleEnd = middleStart + 1
+		}
 
-	// ═══════════════════════════════════════════════════
-	// Compactação Determinística (LLM-Free)
-	// ═══════════════════════════════════════════════════
-	summary := extractDeterministicSummary(messages[middleStart:middleEnd])
+		summary := extractDeterministicSummary(messages[middleStart:middleEnd])
+
+		compacted = make([]llm.Message, 0)
+		compacted = append(compacted, messages[:middleStart]...)
+		compacted = append(compacted, llm.Message{
+			Role:    "system",
+			Content: i18n.Get("system.compactor_history_summary", summary),
+		})
+		if middleEnd < len(messages) {
+			compacted = append(compacted, messages[middleEnd:]...)
+		}
+
+		compactedTokens := llm.CountTokens(compacted, "", provider.Name(), "default")
+		if compactedTokens <= 50000 || keepRecent <= 2 {
+			break
+		}
+		
+		// Se ainda está acima do limite de tokens, tentamos compactar mais turnos recentes
+		keepRecent -= 2
+	}
 
 	if handler != nil {
 		handler.OnMessage("system", i18n.Get("system.compactor_optimization_log"))
 	}
 
-	var compacted []llm.Message
-	compacted = append(compacted, messages[:middleStart]...)
-
-	// Preserve any system messages from the middle block (protected/immutable ones)
-	for i := middleStart; i < middleEnd; i++ {
-		if messages[i].Role == "system" {
-			compacted = append(compacted, messages[i])
-		}
-	}
-
-	compacted = append(compacted, llm.Message{
-		Role:    "system",
-		Content: i18n.Get("system.compactor_history_summary", summary),
-	})
-	compacted = append(compacted, messages[middleEnd:]...)
-
-	log.Printf("[AgenticLoop] Compactou histórico de %d para %d mensagens (determinístico)", len(messages), len(compacted))
+	log.Printf("[AgenticLoop] Compactou histórico de %d para %d mensagens (determinístico, limit=50k tokens)", len(messages), len(compacted))
 	return compacted
 }
 
@@ -116,7 +123,7 @@ func extractDeterministicSummary(messages []llm.Message) string {
 				toolCallCount[tc.Function.Name]++
 
 				// Extrair arquivos de argumentos de escrita
-				if tc.Function.Name == "write_file" || tc.Function.Name == "diff_replace" {
+				if tc.Function.Name == "write_file" || tc.Function.Name == "edit_file" {
 					if paths := filePathRegex.FindAllString(tc.Function.Arguments, 3); len(paths) > 0 {
 						for _, p := range paths {
 							filesModified[p] = true

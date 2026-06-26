@@ -1,0 +1,4 @@
+{
+  "id": "pytest_isolated",
+  "description": "Roda o pytest de forma isolada e segura em um arquivo ou teste específico, forçando timeout rigoroso e suprimindo warnings de dependências globais."
+}

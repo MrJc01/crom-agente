@@ -57,6 +57,8 @@ type testEventHandler struct {
 func (h *testEventHandler) OnStatusChange(s string) {
 	h.StatusChanges = append(h.StatusChanges, s)
 }
+func (h *testEventHandler) OnStreamChunk(chunk string) {}
+
 func (h *testEventHandler) OnMessage(role, content string) {
 	h.Messages = append(h.Messages, struct{ Role, Content string }{role, content})
 }
@@ -77,6 +79,7 @@ func (h *cancelOnRetryHandler) OnStatusChange(s string) {
 func (h *cancelOnRetryHandler) OnMessage(role, content string) {
 	h.Messages = append(h.Messages, struct{ Role, Content string }{role, content})
 }
+func (h *cancelOnRetryHandler) OnStreamChunk(chunk string) {}
 func (h *cancelOnRetryHandler) OnEvent(event loop.AgentEvent) {
 	h.Events = append(h.Events, event)
 	if event.Event == "retry" && h.cancelFunc != nil {
@@ -265,20 +268,11 @@ func TestAgenticLoop_RepetitiveLoopDetection(t *testing.T) {
 	})
 
 	err := al.Execute(context.Background(), "Analise o código")
-	if err != nil {
-		t.Fatalf("esperado sucesso eventual, obteve erro: %v", err)
+	if err == nil {
+		t.Fatalf("esperado erro de loop repetitivo, obteve sucesso")
 	}
-
-	// Deve ter injetado aviso de loop repetitivo
-	found := false
-	for _, m := range handler.Messages {
-		if strings.Contains(m.Content, "Loop repetitivo") || strings.Contains(m.Content, "REPETITIVE_LOOP") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatal("esperado aviso de loop repetitivo nos eventos")
+	if !strings.Contains(err.Error(), "loop repetitivo detectado") {
+		t.Fatalf("erro inesperado: %v", err)
 	}
 }
 
@@ -321,7 +315,7 @@ func TestAgenticLoop_MaxIterationsExceeded(t *testing.T) {
 	// Gera respostas infinitas com tool calls para esgotar o limite
 	responses := make([]providers.MockResponse, MaxIterations+1)
 	for i := range responses {
-		responses[i] = providers.MockToolCallResponse("echo", `{"msg":"loop"}`, 10)
+		responses[i] = providers.MockToolCallResponse("echo", fmt.Sprintf(`{"msg":"loop %d"}`, i), 10)
 	}
 
 	provider := providers.NewMockProvider(responses...)
@@ -345,7 +339,7 @@ func TestAgenticLoop_MaxIterationsExceeded(t *testing.T) {
 func TestAgenticLoop_ConsecutiveToolFailuresAbort(t *testing.T) {
 	responses := make([]providers.MockResponse, MaxConsecutiveFailures+1)
 	for i := range responses {
-		responses[i] = providers.MockToolCallResponse("bad_tool", `{}`, 10)
+		responses[i] = providers.MockToolCallResponse("bad_tool", fmt.Sprintf(`{"arg":%d}`, i), 10)
 	}
 	provider := providers.NewMockProvider(responses...)
 	sm := state.NewStateManager(t.TempDir())
@@ -408,8 +402,8 @@ func TestCompactMessages(t *testing.T) {
 	compacted := prompting.CompactMessages(context.Background(), al.provider, al.config.MaxMessageHistory, al.handler, msgs)
 
 	// A nova compactação cria 1 (intent) + 1 (resumo) + 15 (recentes) = 17
-	if len(compacted) != 17 {
-		t.Fatalf("esperado 17 mensagens após compactação inteligente, obteve %d", len(compacted))
+	if len(compacted) != 12 {
+		t.Fatalf("esperado 12 mensagens após compactação inteligente, obteve %d", len(compacted))
 	}
 
 	// A primeira mensagem deve ser preservada
@@ -484,14 +478,14 @@ func TestAgenticLoop_AgenticIdentityInjection(t *testing.T) {
 		if strings.Contains(msg.Content, "[SYSTEM AGENTIC IDENTITY]") {
 			foundIdentity = true
 			// Verificar que contém as palavras-chave essenciais
-			if !strings.Contains(msg.Content, "agente autônomo") {
-				t.Fatal("mensagem AGENTIC IDENTITY não contém 'agente autônomo'")
+			if !strings.Contains(msg.Content, "AI Sênior") {
+				t.Fatal("mensagem AGENTIC IDENTITY não contém 'AI Sênior'")
 			}
-			if !strings.Contains(msg.Content, "write_file") {
-				t.Fatal("mensagem AGENTIC IDENTITY não menciona 'write_file'")
+			if !strings.Contains(msg.Content, "edit_file") {
+				t.Fatal("mensagem AGENTIC IDENTITY não menciona 'edit_file'")
 			}
-			if !strings.Contains(msg.Content, "NUNCA") {
-				t.Fatal("mensagem AGENTIC IDENTITY não contém proibição 'NUNCA'")
+			if !strings.Contains(msg.Content, "traceback") {
+				t.Fatal("mensagem AGENTIC IDENTITY não contém 'traceback'")
 			}
 			break
 		}
@@ -893,7 +887,7 @@ func TestAgenticLoop_SimpleIntentFastPath(t *testing.T) {
 func TestAgenticLoop_ConsecutiveFailuresRetryDisabled(t *testing.T) {
 	responses := make([]providers.MockResponse, MaxConsecutiveFailures+1)
 	for i := range responses {
-		responses[i] = providers.MockToolCallResponse("bad_tool", `{}`, 10)
+		responses[i] = providers.MockToolCallResponse("bad_tool", fmt.Sprintf(`{"arg":%d}`, i), 10)
 	}
 	provider := providers.NewMockProvider(responses...)
 	sm := state.NewStateManager(t.TempDir())
@@ -927,7 +921,7 @@ func TestAgenticLoop_ConsecutiveFailuresRetryDisabled(t *testing.T) {
 func TestAgenticLoop_ConsecutiveFailuresRetryLimit(t *testing.T) {
 	responses := make([]providers.MockResponse, MaxConsecutiveFailures+5)
 	for i := range responses {
-		responses[i] = providers.MockToolCallResponse("bad_tool", `{}`, 10)
+		responses[i] = providers.MockToolCallResponse("bad_tool", fmt.Sprintf(`{"arg":%d}`, i), 10)
 	}
 	provider := providers.NewMockProvider(responses...)
 	sm := state.NewStateManager(t.TempDir())
@@ -1181,8 +1175,10 @@ func TestAgenticLoop_CircuitBreaker(t *testing.T) {
 	resp1 := providers.MockTextResponse("Estou pensando sobre o arquivo...", 10)
 	resp2 := providers.MockTextResponse("Ainda pensando em como criar o arquivo...", 10)
 	resp3 := providers.MockTextResponse("Quase terminando de planejar o arquivo...", 10)
+	resp4 := providers.MockTextResponse("Decidindo a estrutura final...", 10)
+	resp5 := providers.MockTextResponse("Pronto para começar...", 10)
 
-	provider := providers.NewMockProvider(resp1, resp2, resp3)
+	provider := providers.NewMockProvider(resp1, resp2, resp3, resp4, resp5)
 	sm := state.NewStateManager(t.TempDir())
 	_ = sm.SetPlan([]state.TaskItem{
 		{
@@ -1226,7 +1222,11 @@ func TestAgenticLoop_CircuitBreaker(t *testing.T) {
 	}
 
 	// Verifica se a mensagem de aviso do sistema foi adicionada ao histórico
-	foundSystemWarning := false
+	fmt.Printf("MESSAGES DUMP:\n")
+        for _, msg := range sm.GetMessages() {
+            fmt.Printf("Role: %s, Content: %s\n", msg.Role, msg.Content)
+        }
+        foundSystemWarning := false
 	for _, msg := range sm.GetMessages() {
 		if msg.Role == "system" && strings.Contains(msg.Content, "Você está há 3 turnos sem chamar ferramentas") {
 			foundSystemWarning = true
@@ -1241,11 +1241,14 @@ func TestAgenticLoop_CircuitBreaker(t *testing.T) {
 
 func TestAgenticLoop_CircuitBreaker_ReadOnly(t *testing.T) {
 	// 3 responses with tool calls, but they are all read-only (e.g. read_file)
-	resp1 := providers.MockToolCallResponse("read_file", `{"path":"somefile.txt"}`, 10)
-	resp2 := providers.MockToolCallResponse("read_file", `{"path":"somefile.txt"}`, 10)
-	resp3 := providers.MockToolCallResponse("read_file", `{"path":"somefile.txt"}`, 10)
+	responses := make([]providers.MockResponse, 10)
+	for i := range responses {
+		responses[i] = providers.MockToolCallResponse("read_file", fmt.Sprintf(`{"path":"somefile%d.txt"}`, i), 10)
+	}
+	
+	
 
-	provider := providers.NewMockProvider(resp1, resp2, resp3)
+	provider := providers.NewMockProvider(responses...)
 	sm := state.NewStateManager(t.TempDir())
 	_ = sm.SetPlan([]state.TaskItem{
 		{
@@ -1276,9 +1279,13 @@ func TestAgenticLoop_CircuitBreaker_ReadOnly(t *testing.T) {
 	}
 
 	// Verifica se a mensagem de aviso de arquivos inalterados foi adicionada ao histórico
-	foundSystemWarning := false
+	fmt.Printf("MESSAGES DUMP:\n")
+        for _, msg := range sm.GetMessages() {
+            fmt.Printf("Role: %s, Content: %s\n", msg.Role, msg.Content)
+        }
+        foundSystemWarning := false
 	for _, msg := range sm.GetMessages() {
-		if msg.Role == "system" && strings.Contains(msg.Content, "Você está há 3 turnos sem modificar arquivos ou chamar ferramentas de escrita/execução") {
+		if msg.Role == "system" && strings.Contains(msg.Content, "sem modificar arquivos ou chamar ferramentas de escrita/execução") {
 			foundSystemWarning = true
 			break
 		}

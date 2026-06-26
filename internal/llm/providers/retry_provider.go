@@ -40,7 +40,7 @@ func (r *RetryProvider) Capabilities() llm.ModelCapabilities {
 
 func (r *RetryProvider) SendMessages(ctx context.Context, messages []llm.Message, opts llm.RequestOptions) (*llm.Response, error) {
 	var lastErr error
-	backoff := 2 * time.Second
+	backoff := 5 * time.Second // Start with 5 seconds for heavy rate-limits
 
 	for i := 0; i < r.maxRetries; i++ {
 		resp, err := r.underlying.SendMessages(ctx, messages, opts)
@@ -68,10 +68,18 @@ func (r *RetryProvider) SendMessages(ctx context.Context, messages []llm.Message
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-time.After(backoff):
-			// backoff exponencial: 2s, 4s, 8s...
+			// backoff exponencial com teto de 30 segundos
 			backoff *= 2
+			if backoff > 30*time.Second {
+				backoff = 30 * time.Second
+			}
 		}
 	}
 
 	return nil, fmt.Errorf("todas as %d tentativas falharam: %w", r.maxRetries, lastErr)
+}
+
+func (r *RetryProvider) StreamMessages(ctx context.Context, messages []llm.Message, opts llm.RequestOptions, chunkChan chan<- string) (*llm.Response, error) {
+	// For retry, we just delegate if the underlying provider supports it
+	return r.underlying.StreamMessages(ctx, messages, opts, chunkChan)
 }

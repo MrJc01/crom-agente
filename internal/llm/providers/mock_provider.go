@@ -133,3 +133,8 @@ func MockErrorResponse(errMsg string) MockResponse {
 		Err: fmt.Errorf("%s", errMsg),
 	}
 }
+
+func (m *MockProvider) StreamMessages(ctx context.Context, messages []llm.Message, opts llm.RequestOptions, chunkChan chan<- string) (*llm.Response, error) {
+	defer close(chunkChan)
+	return m.SendMessages(ctx, messages, opts)
+}

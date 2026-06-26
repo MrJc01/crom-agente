@@ -43,7 +43,7 @@ func RenderDiffZone(handler MessageHandler, workspaceDir string, rawArgs string,
 		diffOutput := security.RenderDiff(args.Path, oldContent, args.Content)
 		handler.OnMessage("system", diffOutput)
 
-	case "diff_replace":
+	case "edit_file":
 		var args struct {
 			Path               string `json:"path"`
 			TargetContent      string `json:"target_content"`
@@ -53,7 +53,7 @@ func RenderDiffZone(handler MessageHandler, workspaceDir string, rawArgs string,
 			return
 		}
 
-		// Para diff_replace, mostramos o diff do trecho alterado
+		// Para edit_file, mostramos o diff do trecho alterado
 		diffOutput := security.RenderDiff(args.Path, args.TargetContent, args.ReplacementContent)
 		handler.OnMessage("system", diffOutput)
 	}

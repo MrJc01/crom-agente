@@ -113,10 +113,17 @@ func (d *Daemon) setupLogging() error {
 	// Multiplexa saída para stdout (terminal) e arquivo (lumberjack)
 	multiWriter := io.MultiWriter(os.Stdout, lumberjackLogger)
 
-	// Configura o handler do slog
-	handler := slog.NewTextHandler(multiWriter, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	})
+	// Configura o handler do slog dinamicamente (JSON/Debug ou Text/Info) (Task 1.12)
+	var handler slog.Handler
+	if os.Getenv("CROM_LOG_JSON") == "true" {
+		handler = slog.NewJSONHandler(multiWriter, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		})
+	} else {
+		handler = slog.NewTextHandler(multiWriter, &slog.HandlerOptions{
+			Level: slog.LevelInfo,
+		})
+	}
 	logger := slog.New(handler)
 	slog.SetDefault(logger)
 

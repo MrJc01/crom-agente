@@ -17,8 +17,11 @@ var (
 	benchLimit     int
 	benchMaxIter   int
 	benchTimeout   int
-	benchMock      bool
-	benchOutputDir string
+	benchMock             bool
+	benchOutputDir        string
+	benchTemp             float64
+	benchTopP             float64
+	benchMaxContextTokens int
 )
 
 var benchmarkCmd = &cobra.Command{
@@ -67,6 +70,15 @@ var benchmarkRunCmd = &cobra.Command{
 		}
 		if benchOutputDir != "" {
 			pyArgs = append(pyArgs, "--output-dir", benchOutputDir)
+		}
+		if benchTemp > 0.0 {
+			pyArgs = append(pyArgs, "--temp", fmt.Sprintf("%f", benchTemp))
+		}
+		if benchTopP > 0.0 {
+			pyArgs = append(pyArgs, "--top-p", fmt.Sprintf("%f", benchTopP))
+		}
+		if benchMaxContextTokens > 0 {
+			pyArgs = append(pyArgs, "--max-context-tokens", strconv.Itoa(benchMaxContextTokens))
 		}
 
 		cmd.Printf("⚡ Executando wrapper Python do benchmark em: %s...\n", scriptPath)
@@ -124,6 +136,9 @@ func init() {
 	benchmarkRunCmd.Flags().IntVar(&benchTimeout, "timeout", 0, "Override de timeout em segundos por tarefa")
 	benchmarkRunCmd.Flags().BoolVar(&benchMock, "mock", false, "Usa simulação rápida mock sem consumir API")
 	benchmarkRunCmd.Flags().StringVar(&benchOutputDir, "output-dir", "", "Diretório alternativo para salvar relatórios")
+	benchmarkRunCmd.Flags().Float64Var(&benchTemp, "temp", 0.0, "Temperatura do modelo")
+	benchmarkRunCmd.Flags().Float64Var(&benchTopP, "top-p", 0.0, "Top-P do modelo")
+	benchmarkRunCmd.Flags().IntVar(&benchMaxContextTokens, "max-context-tokens", 0, "Máximo de tokens de contexto")
 
 	benchmarkCompareCmd.Flags().StringVar(&benchOutputDir, "output-dir", "", "Diretório contendo relatórios JSON")
 

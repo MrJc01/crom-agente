@@ -1,4 +1,4 @@
-package diff_replace
+package edit_file
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 
@@ -21,36 +22,36 @@ func init() {
 	var err error
 	metadata, err = tools.ParseMetadata(metadataJSON)
 	if err != nil {
-		panic("falha ao carregar metadados de diff_replace: " + err.Error())
+		panic("falha ao carregar metadados de edit_file: " + err.Error())
 	}
 }
 
-// DiffReplaceTool substitui um trecho específico de texto por outro em um arquivo
-type DiffReplaceTool struct {
+// EditFileTool substitui um trecho específico de texto por outro em um arquivo
+type EditFileTool struct {
 	workspaceRoot string
 	jail          bool
 }
 
-// NewDiffReplaceTool cria a ferramenta diff_replace
-func NewDiffReplaceTool(workspaceRoot string, jail bool) *DiffReplaceTool {
-	return &DiffReplaceTool{
+// NewEditFileTool cria a ferramenta edit_file
+func NewEditFileTool(workspaceRoot string, jail bool) *EditFileTool {
+	return &EditFileTool{
 		workspaceRoot: workspaceRoot,
 		jail:          jail,
 	}
 }
 
 // ID retorna o identificador da ferramenta
-func (t *DiffReplaceTool) ID() string {
+func (t *EditFileTool) ID() string {
 	return metadata.ID
 }
 
 // Description retorna a descrição da ferramenta
-func (t *DiffReplaceTool) Description() string {
+func (t *EditFileTool) Description() string {
 	return metadata.Description
 }
 
 // ParametersSchema define os parâmetros aceitos via JSON
-func (t *DiffReplaceTool) ParametersSchema() json.RawMessage {
+func (t *EditFileTool) ParametersSchema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",
 		"properties": {
@@ -80,12 +81,12 @@ func (t *DiffReplaceTool) ParametersSchema() json.RawMessage {
 }
 
 // RequiresApproval indica que esta ferramenta requer aprovação HITL (nível Alta)
-func (t *DiffReplaceTool) RequiresApproval() bool {
+func (t *EditFileTool) RequiresApproval() bool {
 	return true
 }
 
 // Execute executa a substituição do conteúdo
-func (t *DiffReplaceTool) Execute(ctx context.Context, args json.RawMessage) (tools.Result, error) {
+func (t *EditFileTool) Execute(ctx context.Context, args json.RawMessage) (tools.Result, error) {
 	var input struct {
 		Path               string `json:"path"`
 		StartLine          int    `json:"start_line"`
@@ -178,13 +179,32 @@ func (t *DiffReplaceTool) Execute(ctx context.Context, args json.RawMessage) (to
 	endIdx := matchRange[1]
 	newContent := content[:startIdx] + input.ReplacementContent + content[endIdx:]
 
+	// Salvar backup para ferramenta de rollback contextual
+	_ = os.WriteFile(targetFile+".bak", data, 0644)
+
 	// Gravar de volta no arquivo
 	err = os.WriteFile(targetFile, []byte(newContent), 0644)
 	if err != nil {
 		return tools.Result{Success: false, Error: fmt.Sprintf("erro ao gravar alterações no arquivo: %s", err.Error())}, nil
 	}
 
-	return tools.Result{Success: true, Data: fmt.Sprintf("substituição efetuada com sucesso no arquivo %s", input.Path)}, nil
+	// Linter Automático (Syntax check rápido)
+	warning := ""
+	if strings.HasSuffix(targetFile, ".go") {
+		cmd := exec.CommandContext(ctx, "gofmt", "-e", targetFile)
+		out, errCmd := cmd.CombinedOutput()
+		if errCmd != nil {
+			warning = fmt.Sprintf("\n⚠️ ALERTA DE SINTAXE GO: A alteração parece ter introduzido um erro de compilação:\n%s", string(out))
+		}
+	} else if strings.HasSuffix(targetFile, ".py") {
+		cmd := exec.CommandContext(ctx, "python3", "-m", "py_compile", targetFile)
+		out, errCmd := cmd.CombinedOutput()
+		if errCmd != nil {
+			warning = fmt.Sprintf("\n⚠️ ALERTA DE SINTAXE PYTHON: A alteração parece ter introduzido um erro de sintaxe:\n%s", string(out))
+		}
+	}
+
+	return tools.Result{Success: true, Data: fmt.Sprintf("substituição efetuada com sucesso no arquivo %s%s", input.Path, warning)}, nil
 }
 
 func makeFuzzyRegex(target string) (*regexp.Regexp, error) {

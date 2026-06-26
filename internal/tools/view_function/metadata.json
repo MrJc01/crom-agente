@@ -1,0 +1,4 @@
+{
+  "id": "view_function",
+  "description": "Extrai apenas a implementação e o corpo de uma função ou classe específica de um arquivo Python ou Go. Ideal para entender a lógica exata de uma função sem ler o arquivo inteiro que estouraria o contexto."
+}

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"context"
 	"encoding/json"
 	"testing"
@@ -228,7 +229,7 @@ func TestAgentEvent_LLMErrorEmitsTypedError(t *testing.T) {
 func TestAgentEvent_MaxIterationsEmitsFinished(t *testing.T) {
 	responses := make([]providers.MockResponse, MaxIterations+1)
 	for i := range responses {
-		responses[i] = providers.MockToolCallResponse("echo", `{"msg":"loop"}`, 10)
+		responses[i] = providers.MockToolCallResponse("echo", fmt.Sprintf(`{"msg":"loop %d"}`, i), 10)
 	}
 	provider := providers.NewMockProvider(responses...)
 	sm := state.NewStateManager(t.TempDir())

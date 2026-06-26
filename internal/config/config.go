@@ -91,6 +91,7 @@ type WorkspaceConfig struct {
 	ConsecutiveFailureRetryDelay *int  `json:"consecutive_failure_retry_delay,omitempty"`
 	DisablePlanCacheProtection   *bool `json:"disable_plan_cache_protection,omitempty"`
 	DisableTerminalAwareness     *bool `json:"disable_terminal_awareness,omitempty"`
+	ReadOnly                     *bool `json:"readonly,omitempty"`
 }
 
 // ResolvedConfig é o resultado do merge de todas as camadas de configuração
@@ -116,6 +117,7 @@ type ResolvedConfig struct {
 	ConsecutiveFailureRetryDelay int
 	DisablePlanCacheProtection   bool
 	DisableTerminalAwareness     bool
+	ReadOnly                     bool
 }
 
 // CLIFlags contém flags passados via linha de comando (prioridade máxima)
@@ -133,6 +135,7 @@ type CLIFlags struct {
 	ConsecutiveFailureRetryDelay *int
 	DisablePlanCacheProtection   *bool
 	DisableTerminalAwareness     *bool
+	ReadOnly                     *bool
 }
 
 // --- Defaults ---
@@ -247,11 +250,15 @@ func LoadEnvVars(globalDir string) (*EnvVars, error) {
 	return env, nil
 }
 
-// Get retorna o valor de uma variável do .env
+// Get retorna o valor de uma variável do .env, caindo de volta para variáveis do sistema (os.Getenv)
 func (e *EnvVars) Get(key string) string {
 	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.vars[key]
+	val := e.vars[key]
+	e.mu.RUnlock()
+	if val == "" {
+		val = os.Getenv(key)
+	}
+	return val
 }
 
 // Set define uma variável no .env
@@ -339,7 +346,7 @@ func LoadWorkspaceConfig(workspacePath string) (*WorkspaceConfig, error) {
       "name": "spawn",
       "type": "native",
       "description": "Especialista em executar tarefas assíncronas isoladas e scripts locais",
-      "tool_ids": ["terminal_command", "read_file", "write_file", "diff_replace"]
+      "tool_ids": ["terminal_command", "read_file", "write_file", "edit_file"]
     }
   ]
 }`
@@ -451,6 +458,9 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 		if workspace.DisableTerminalAwareness != nil {
 			resolved.DisableTerminalAwareness = *workspace.DisableTerminalAwareness
 		}
+		if workspace.ReadOnly != nil {
+			resolved.ReadOnly = *workspace.ReadOnly
+		}
 	}
 
 	// Camada 3: CLI Flags (prioridade máxima)
@@ -493,5 +503,9 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 	if flags.DisableTerminalAwareness != nil {
 		resolved.DisableTerminalAwareness = *flags.DisableTerminalAwareness
 	}
+	if flags.ReadOnly != nil {
+		resolved.ReadOnly = *flags.ReadOnly
+	}
+
 	return resolved
 }

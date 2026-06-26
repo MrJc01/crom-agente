@@ -1,0 +1,4 @@
+{
+  "id": "undo_last_edit",
+  "description": "Reverte a última modificação (edit_file ou write_file) feita em um arquivo específico, restaurando-o para o estado anterior."
+}

@@ -1,4 +1,4 @@
-package diff_replace_test
+package edit_file_test
 
 import (
 	"context"
@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/crom/crom-agente/internal/tools/diff_replace"
+	"github.com/crom/crom-agente/internal/tools/edit_file"
 )
 
-func TestDiffReplaceTool(t *testing.T) {
+func TestEditFileTool(t *testing.T) {
 	ws := t.TempDir()
-	tool := diff_replace.NewDiffReplaceTool(ws, true)
+	tool := edit_file.NewEditFileTool(ws, true)
 
 	content := "linha 1\nlinha 2\nbloco para substituir\nlinha 4\nbloco para substituir\nlinha 6"
 	testFile := filepath.Join(ws, "test.txt")
@@ -29,7 +29,7 @@ func TestDiffReplaceTool(t *testing.T) {
 	}`)
 	res, err := tool.Execute(context.Background(), args)
 	if err != nil || !res.Success {
-		t.Fatalf("erro ao executar diff_replace: %v, res: %+v", err, res)
+		t.Fatalf("erro ao executar edit_file: %v, res: %+v", err, res)
 	}
 
 	// Verificar alteração
@@ -77,7 +77,7 @@ func TestDiffReplaceTool(t *testing.T) {
 	}`)
 	res, err = tool.Execute(context.Background(), argsFuzzy)
 	if err != nil || !res.Success {
-		t.Fatalf("erro ao executar diff_replace fuzzy: %v, res: %+v", err, res)
+		t.Fatalf("erro ao executar edit_file fuzzy: %v, res: %+v", err, res)
 	}
 	data, _ = os.ReadFile(testFile)
 	if string(data) != "func myFunc() { return 100 }" {

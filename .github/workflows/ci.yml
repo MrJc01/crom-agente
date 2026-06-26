@@ -2,33 +2,56 @@ name: CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main, develop]
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ['1.22', '1.23']
+
     steps:
     - uses: actions/checkout@v4
 
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.23'
+        go-version: ${{ matrix.go-version }}
         cache: true
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libayatana-appindicator3-dev
 
     - name: Verify dependencies
       run: go mod verify
 
-    - name: Build
-      run: go build -v ./...
+    - name: Run gofmt check
+      run: |
+        if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+          echo "The following files are not gofmt compliant:"
+          gofmt -s -l .
+          exit 1
+        fi
 
-    - name: Run Tests
-      run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+    - name: Run go vet
+      run: go vet ./...
+
+    - name: Build
+      run: go build -ldflags="-s -w" -v ./...
+
+    - name: Run Tests (Mock Provider)
+      run: go test -v -race -coverprofile=coverage.txt -covermode=atomic -timeout=180s ./...
+      env:
+        CROM_TEST_MODE: "mock"
+        CROM_PROVIDER: "mock"
 
     - name: Run golangci-lint
-      uses: golangci/golangci-lint-action@v4
+      uses: golangci/golangci-lint-action@v6
       with:
         version: latest
         args: --timeout=5m

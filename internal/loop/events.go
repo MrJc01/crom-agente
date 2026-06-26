@@ -31,4 +31,7 @@ const (
 	ErrMaxIterations    = "ERR_MAX_ITERATIONS"
 	ErrConsecutiveFails = "ERR_CONSECUTIVE_FAILURES"
 	ErrContextCanceled  = "ERR_CONTEXT_CANCELED"
+	ErrLoopDetected     = "ERR_LOOP_DETECTED"
+	ErrContextExceeded  = "ERR_CONTEXT_EXCEEDED"
+	ErrSyntax           = "ERR_SYNTAX_ERROR"
 )

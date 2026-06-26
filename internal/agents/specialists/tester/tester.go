@@ -67,7 +67,7 @@ func NewTesterAgent(cfg agents.Config) *TesterAgent {
 	ta.AgentDescription = metadata.Description
 	ta.AgentSysPrompt = defaultSystemPrompt
 	ta.LLMProvider = cfg.LLMProvider
-	ta.AllowedToolIDs = []string{"terminal_command", "run_tests", "read_file", "write_file", "diff_replace", "grep", "tree"}
+	ta.AllowedToolIDs = []string{"terminal_command", "run_tests", "read_file", "write_file", "edit_file", "grep", "tree"}
 	return ta
 }
 

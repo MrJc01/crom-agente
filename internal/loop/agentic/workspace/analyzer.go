@@ -67,6 +67,80 @@ func LoadLocalRules(workspaceDir string) string {
 	return strings.Join(rules, "\n\n")
 }
 
+// CheckWorkspaceQuota verifica se o tamanho total do diretório excedeu o limite (ex: 200MB).
+func CheckWorkspaceQuota(workspaceDir string, maxBytes int64) (bool, int64, error) {
+	if workspaceDir == "" {
+		return false, 0, nil
+	}
+	var size int64
+	err := filepath.Walk(workspaceDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		// Ignorar a pasta .crom para não estourar a quota com logs e snapshots do próprio agente
+		if info.IsDir() && info.Name() == ".crom" {
+			return filepath.SkipDir
+		}
+		if !info.IsDir() {
+			size += info.Size()
+		}
+		return nil
+	})
+	
+	if size > maxBytes {
+		return true, size, err
+	}
+	return false, size, err
+}
+
+// GenerateDirectoryTree gera uma árvore de arquivos rudimentar ignorando diretórios ocultos ou muito grandes (.git, node_modules)
+func GenerateDirectoryTree(workspaceDir string, maxDepth int) string {
+	if workspaceDir == "" {
+		return ""
+	}
+	var sb strings.Builder
+	var walk func(dir string, prefix string, depth int)
+	walk = func(dir string, prefix string, depth int) {
+		if depth > maxDepth {
+			return
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return
+		}
+		
+		// Filtrar entradas indesejadas primeiro
+		var validEntries []os.DirEntry
+		for _, e := range entries {
+			name := e.Name()
+			if name == ".git" || name == "node_modules" || name == "vendor" || name == ".crom" || name == ".venv" || name == "__pycache__" {
+				continue
+			}
+			validEntries = append(validEntries, e)
+		}
+
+		for i, entry := range validEntries {
+			name := entry.Name()
+			isLast := i == len(validEntries)-1
+			connector := "├── "
+			if isLast {
+				connector = "└── "
+			}
+			sb.WriteString(prefix + connector + name + "\n")
+			if entry.IsDir() {
+				nextPrefix := prefix + "│   "
+				if isLast {
+					nextPrefix = prefix + "    "
+				}
+				walk(filepath.Join(dir, name), nextPrefix, depth+1)
+			}
+		}
+	}
+	sb.WriteString(filepath.Base(workspaceDir) + "\n")
+	walk(workspaceDir, "", 1)
+	return sb.String()
+}
+
 // AutoValidate executa validações de qualidade específicas da stack técnica
 func AutoValidate(ctx context.Context, workspaceDir string, handler MessageHandler) (bool, string) {
 	stack := DetectStack(workspaceDir)

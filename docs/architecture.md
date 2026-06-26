@@ -315,28 +315,33 @@ O ciclo de execução em Go é implementado de forma iterativa através do padr�
 graph TD
     Start[Início do Loop] --> LoadConfig[Carregar ResolvedConfig]
     LoadConfig --> LoadContext[Carregar Contexto, Memória e Arquivos Focados]
-    LoadContext --> CallLLM[Chamar LLM com Ferramentas Disponíveis]
+    LoadContext --> LoopDetector{Detectar Loop Infinito?}
+    LoopDetector -- Loop Detectado --> Abort[Abortar / Injetar Penalidade]
+    Abort --> End[Fim do Loop / Retorno de Erro]
+    LoopDetector -- Normal --> CallLLM[Chamar LLM com Ferramentas Disponíveis]
     CallLLM --> ParseResponse{Analisar Resposta}
     ParseResponse -- Texto Puro --> CheckVerify{Passou por Edições?}
     ParseResponse -- Executar Ferramentas --> ValidateArgs[Validar Argumentos contra JSON Schema]
     ValidateArgs -- Inválido --> AutoCorrect[Auto-Correção: Notificar LLM]
-    AutoCorrect --> CallLLM
+    AutoCorrect --> LoopDetector
     ValidateArgs -- Válido --> CheckApproval{Requer Aprovação?}
     CheckApproval -- Sim --> RequestApproval[Aprovação do Usuário / SDK]
     RequestApproval -- Rejeitado --> InjectRejection[Injetar Rejeição no Histórico]
-    InjectRejection --> CallLLM
+    InjectRejection --> LoopDetector
     CheckApproval -- Não / Aprovado --> ExecTool[Executar Ferramenta em Go]
     RequestApproval -- Aprovado --> ExecTool
     ExecTool --> InjectResult[Injetar Resultado da Ferramenta]
-    InjectResult --> CallLLM
+    InjectResult --> LoopDetector
     CheckVerify -- Sim e 1ª vez --> EnterVerify[Injetar Fase de Verificação: Rodar Testes/Lints]
-    EnterVerify --> CallLLM
+    EnterVerify --> LoopDetector
     CheckVerify -- Não / Já Verificado --> SaveState[Salvar Memória e Estado]
     SaveState --> End[Fim do Loop]
     
     style AutoCorrect fill:#ffcccc,stroke:#333
     style RequestApproval fill:#ffe6cc,stroke:#333
     style EnterVerify fill:#e1f5fe,stroke:#333
+    style LoopDetector fill:#fff2cc,stroke:#333,stroke-dasharray: 5 5
+    style Abort fill:#ff9999,stroke:#333
 ```
 
 ### Características Especiais do Loop em Go:

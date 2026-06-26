@@ -17,11 +17,95 @@ from pathlib import Path
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
+try:
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn
+    from rich.console import Console
+    RICH_AVAILABLE = True
+    console = Console()
+except ImportError:
+    RICH_AVAILABLE = False
+    console = None
+
+class BenchProgress:
+    def __init__(self, title):
+        self.title = title
+        self.progress = None
+        self.tasks = {}
+        if RICH_AVAILABLE:
+            self.progress = Progress(
+                SpinnerColumn(),
+                TextColumn("[bold blue]{task.description}"),
+                BarColumn(bar_width=None),
+                "[progress.percentage]{task.percentage:>3.0f}%",
+                TimeElapsedColumn(),
+                TextColumn("{task.fields[status]}"),
+                expand=True
+            )
+
+    def __enter__(self):
+        if self.progress:
+            self.progress.start()
+            self.main_task = self.progress.add_task(f"[bold green]{self.title}", total=100, status="")
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.progress:
+            self.progress.stop()
+
+    def set_total(self, total):
+        if self.progress:
+            self.progress.update(self.main_task, total=total)
+
+    def start_task(self, tid, name=""):
+        if self.progress:
+            desc = f"{tid} ({name})" if name else str(tid)
+            self.tasks[tid] = self.progress.add_task(desc, total=100, status="[yellow]Running...")
+        else:
+            n = f" ({name})" if name else ""
+            print(f"  [START] {tid}{n}...")
+
+    def update_task(self, tid, success, stats, sym, status_msg=""):
+        if self.progress:
+            task_id = self.tasks.get(tid)
+            if task_id is not None:
+                color = "green" if success else "red"
+                final_status = f"[{color}]{sym} {status_msg} | turns={stats['turns']} tk={stats['tokens']} t={stats['elapsed_seconds']:.1f}s"
+                self.progress.update(task_id, completed=100, status=final_status)
+                self.progress.advance(self.main_task, 1)
+        else:
+            print(f"  [{sym}] {tid} | turns={stats['turns']} tk={stats['tokens']} t={stats['elapsed_seconds']:.1f}s | {status_msg}")
+
+    def skip_task(self, tid):
+        if self.progress:
+            self.progress.advance(self.main_task, 1)
+        else:
+            print(f"  [SKIP] {tid}")
+
+
 # Configuração
 BASE_DIR = Path(__file__).resolve().parent.parent
 BINARY = BASE_DIR / "bin" / "crom-agente"
 REPORTS_DIR = Path(__file__).resolve().parent / "reports"
 REPORTS_DIR.mkdir(exist_ok=True)
+
+def cleanup_reports_if_needed():
+    """Limpa a pasta reports automaticamente se estourar 1GB."""
+    total_size = sum(f.stat().st_size for f in REPORTS_DIR.glob('**/*') if f.is_file())
+    max_size = 1 * 1024 * 1024 * 1024  # 1GB em bytes
+    if total_size > max_size:
+        print(f"🧹 A pasta reports ultrapassou 1GB ({total_size / 1024 / 1024:.1f} MB). Limpando arquivos antigos...")
+        files = sorted([f for f in REPORTS_DIR.glob('**/*') if f.is_file()], key=lambda x: x.stat().st_mtime)
+        bytes_to_free = total_size - (max_size * 0.5)  # Libera até ficar com 500MB
+        freed = 0
+        for f in files:
+            if freed >= bytes_to_free:
+                break
+            size = f.stat().st_size
+            f.unlink(missing_ok=True)
+            freed += size
+
+cleanup_reports_if_needed()
+
 
 # Configura a API key
 ENV_FILE = BASE_DIR / "tests" / ".home" / ".crom" / ".env"
@@ -88,7 +172,7 @@ def build_agent():
     return True
 
 
-def run_agent(prompt, workspace, max_iter=MAX_ITER, timeout=TIMEOUT):
+def run_agent(prompt, workspace, max_iter=MAX_ITER, timeout=TIMEOUT, use_docker=False, task_id="unknown"):
     """Executa o crom-agente em um workspace e retorna estatísticas."""
     workspace_path = Path(workspace)
     workspace_path.mkdir(parents=True, exist_ok=True)
@@ -99,15 +183,32 @@ def run_agent(prompt, workspace, max_iter=MAX_ITER, timeout=TIMEOUT):
         import shutil
         shutil.rmtree(crom_dir, ignore_errors=True)
     
-    cmd = [
-        str(BINARY), "run", prompt,
-        "--provider", PROVIDER,
-        "--model", MODEL,
-        "--workspace", str(workspace_path),
-        "--permission-mode", "total_access",
-        "--max-iterations", str(max_iter),
-        "--disable-prompt-optimization"
-    ]
+    if use_docker:
+        api_key = os.environ.get(f"{PROVIDER.upper()}_API_KEY", "")
+        cmd = [
+            "docker", "run", "--rm",
+            "-v", f"{workspace_path}:/workspace",
+            "-v", f"{BINARY}:/crom-agente",
+            "-e", f"{PROVIDER.upper()}_API_KEY={api_key}",
+            "python:3.10-slim",
+            "/crom-agente", "run", prompt,
+            "--provider", PROVIDER,
+            "--model", MODEL,
+            "--workspace", "/workspace",
+            "--permission-mode", "total_access",
+            "--max-iterations", str(max_iter),
+            "--disable-prompt-optimization"
+        ]
+    else:
+        cmd = [
+            str(BINARY), "run", prompt,
+            "--provider", PROVIDER,
+            "--model", MODEL,
+            "--workspace", str(workspace_path),
+            "--permission-mode", "total_access",
+            "--max-iterations", str(max_iter),
+            "--disable-prompt-optimization"
+        ]
     
     start = time.time()
     try:
@@ -159,6 +260,14 @@ def run_agent(prompt, workspace, max_iter=MAX_ITER, timeout=TIMEOUT):
     state["elapsed_seconds"] = elapsed
     state["exit_ok"] = exit_ok
     state["output"] = output
+    
+    logs_dir = REPORTS_DIR / "logs"
+    logs_dir.mkdir(exist_ok=True)
+    safe_tid = str(task_id).replace("/", "_")
+    log_path = logs_dir / f"{safe_tid}.log"
+    with open(log_path, "w") as lf:
+        lf.write(output)
+        
     return state
 
 
@@ -209,10 +318,10 @@ def run_evalplus(limit=5, workers=1):
         tid = task["task_id"]
         cached = progress.get_result("evalplus", tid)
         if cached:
-            print(f"  [SKIP] {tid} (already processed)")
+            prog.skip_task(tid)
             return cached
             
-        print(f"  [START] {tid}...")
+        prog.start_task(tid)
         
         with tempfile.TemporaryDirectory() as tmpdir:
             prompt = (
@@ -225,7 +334,7 @@ def run_evalplus(limit=5, workers=1):
                 f"Salve em solucao.py agora."
             )
             
-            stats = run_agent(prompt, tmpdir, max_iter=MAX_ITER, timeout=TIMEOUT)
+            stats = run_agent(prompt, tmpdir, max_iter=MAX_ITER, timeout=TIMEOUT, task_id=tid)
             
             # Tenta encontrar a solução
             sol_file = Path(tmpdir) / "solucao.py"
@@ -277,12 +386,16 @@ def run_evalplus(limit=5, workers=1):
                 except Exception as e:
                     status = f"error: {e}"
             
+            if not stats.get("exit_ok"):
+                success = False
+                status = "crashed"
+            
             if stats.get("limit_exceeded"):
                 success = False
                 status = "failed_token_limit"
             
             sym = "✅" if success else "❌"
-            print(f"  [DONE] {sym} {tid} | turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s status={status}")
+            prog.update_task(tid, success, stats, sym, f"status={status}")
             
             res = {
                 "task_id": tid,
@@ -296,9 +409,17 @@ def run_evalplus(limit=5, workers=1):
             progress.save_result("evalplus", tid, res)
             return res
 
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(process_task, task, idx) for idx, task in enumerate(tasks)]
-        results = [f.result() for f in futures]
+    with BenchProgress("EvalPlus (HumanEval)") as prog:
+        prog.set_total(len(tasks))
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [executor.submit(process_task, task, idx) for idx, task in enumerate(tasks)]
+        results = []
+        for f in futures:
+            try:
+                results.append(f.result(timeout=TIMEOUT + 60))
+            except Exception as e:
+                print(f"  [ERROR] Future timed out or failed: {e}")
+                results.append({"error": str(e)})
     
     return {"benchmark": "evalplus", "results": results}
 
@@ -336,10 +457,10 @@ def run_swebench(limit=3, workers=1):
         iid = task["instance_id"]
         cached = progress.get_result("swe-bench", iid)
         if cached:
-            print(f"  [SKIP] {iid} (already processed)")
+            prog.skip_task(iid)
             return cached
             
-        print(f"  [START] {iid}...")
+        prog.start_task(iid)
         
         with tempfile.TemporaryDirectory() as tmpdir:
             prompt = (
@@ -357,7 +478,7 @@ def run_swebench(limit=3, workers=1):
                 f"5. O arquivo fix.patch final DEVE ter o formato unificado de diff gerado pelo git e DEVE estar no diretório raiz do seu ambiente (junto com analise.md)."
             )
             
-            stats = run_agent(prompt, tmpdir, max_iter=MAX_ITER, timeout=TIMEOUT)
+            stats = run_agent(prompt, tmpdir, max_iter=MAX_ITER, timeout=TIMEOUT, use_docker=True, task_id=iid)
             
             # Validação honesta: patch precisa existir E conter marcadores de diff reais
             has_patch = (Path(tmpdir) / "fix.patch").exists()
@@ -368,6 +489,21 @@ def run_swebench(limit=3, workers=1):
             if has_patch:
                 patch_content = (Path(tmpdir) / "fix.patch").read_text()
                 valid_patch = ("---" in patch_content and "+++" in patch_content) or ("diff" in patch_content.lower())
+            if has_patch:
+                try:
+                    patch_content = (Path(tmpdir) / "fix.patch").read_text()
+                    pred = {
+                        "instance_id": iid,
+                        "model_name_or_path": "crom-agente",
+                        "model_patch": patch_content
+                    }
+                    pred_file = REPORTS_DIR / "predictions.jsonl"
+                    with open(pred_file, "a") as pf:
+                        import json
+                        pf.write(json.dumps(pred) + "\n")
+                except Exception as e:
+                    print(f"Error saving prediction for {iid}: {e}")
+
             
             success = valid_patch  # Só conta como sucesso se produziu um patch válido
             if valid_patch:
@@ -379,12 +515,16 @@ def run_swebench(limit=3, workers=1):
             else:
                 status = "no_output"
             
+            if not stats.get("exit_ok"):
+                success = False
+                status = "crashed"
+            
             if stats.get("limit_exceeded"):
                 success = False
                 status = "failed_token_limit"
             
             sym = "✅" if success else "❌"
-            print(f"  [DONE] {sym} {iid} | turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s patch={has_patch} analysis={has_analysis}")
+            prog.update_task(iid, success, stats, sym, f"patch={has_patch} analysis={has_analysis}")
             
             res = {
                 "task_id": iid,
@@ -398,12 +538,54 @@ def run_swebench(limit=3, workers=1):
                 "has_analysis": has_analysis
             }
             progress.save_result("swe-bench", iid, res)
+            # Limpa arquivos criados como root pelo Docker para evitar erro de permissão no context manager
+            try:
+                subprocess.run([
+                    "docker", "run", "--rm",
+                    "-v", f"{tmpdir}:/workspace",
+                    "alpine", "rm", "-rf", "/workspace/.crom"
+                ], capture_output=True)
+            except Exception:
+                pass
             return res
 
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(process_task, task, idx) for idx, task in enumerate(tasks)]
-        results = [f.result() for f in futures]
+    with BenchProgress("EvalPlus (HumanEval)") as prog:
+        prog.set_total(len(tasks))
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [executor.submit(process_task, task, idx) for idx, task in enumerate(tasks)]
+        results = []
+        for f in futures:
+            try:
+                results.append(f.result(timeout=TIMEOUT + 60))
+            except Exception as e:
+                print(f"  [ERROR] Future timed out or failed: {e}")
+                results.append({"error": str(e)})
     
+
+    # Run SWE-bench evaluation harness if possible
+    pred_file = REPORTS_DIR / "predictions.jsonl"
+    if pred_file.exists():
+        print("\n🚀 Iniciando avaliação nativa do SWE-bench a partir de predictions.jsonl...")
+        import subprocess
+        try:
+            # Check if swebench is installed
+            res = subprocess.run(["python3", "-m", "swebench.harness.run_evaluation", "--help"], capture_output=True)
+            if res.returncode == 0:
+                print("⏳ Executando swebench harness (isso pode demorar MUITO tempo para buildar as imagens docker)...")
+                subprocess.Popen(
+                    ["python3", "-m", "swebench.harness.run_evaluation", 
+                     "--dataset_name", "princeton-nlp/SWE-bench_Lite", 
+                     "--predictions_path", str(pred_file),
+                     "--max_workers", str(workers),
+                     "--run_id", "crom_agente_run"],
+                    cwd=str(BASE_DIR)
+                )
+            else:
+                print("⚠️ Pacote 'swebench' não está instalado no ambiente. Ignorando avaliação nativa.")
+                print("   Instale com: pip install swebench docker")
+        except Exception as e:
+            print(f"⚠️ Erro ao tentar rodar SWE-bench harness: {e}")
+            
     return {"benchmark": "swe-bench", "results": results}
 
 
@@ -416,35 +598,19 @@ def run_terminalbench(limit=3, workers=1):
     print("=" * 60)
     
     # Tarefas realistas de terminal (baseadas no formato Terminal-Bench)
-    tasks = [
-        {"task_id": "tb-001", "name": "file_search_replace",
-         "instruction": "Crie um arquivo chamado data.csv com o conteúdo:\nname,age,city\nAlice,30,NYC\nBob,25,SF\nCharlie,35,NYC\n\nDepois, use sed ou awk para substituir todas as ocorrências de 'NYC' por 'New York City' no arquivo. Salve o resultado no mesmo arquivo data.csv.",
-         "validation": lambda d: (Path(d) / "data.csv").exists() and "New York City" in (Path(d) / "data.csv").read_text()},
-        {"task_id": "tb-002", "name": "json_processing",
-         "instruction": "Crie um script Python chamado process.py que:\n1. Cria um arquivo users.json com: [{\"name\": \"Alice\", \"age\": 30}, {\"name\": \"Bob\", \"age\": 25}, {\"name\": \"Charlie\", \"age\": 35}]\n2. Lê o arquivo users.json\n3. Filtra apenas os usuários com idade > 28\n4. Salva o resultado em filtered.json\n\nDepois execute o script com: python3 process.py",
-         "validation": lambda d: (Path(d) / "filtered.json").exists()},
-        {"task_id": "tb-003", "name": "git_operations",
-         "instruction": "Neste diretório:\n1. Inicialize um repositório git com 'git init'\n2. Configure git user: git config user.email 'test@test.com' && git config user.name 'Test'\n3. Crie um arquivo README.md com o conteúdo '# Test Project\\nThis is a test.'\n4. Faça git add e commit com a mensagem 'initial commit'\n5. Crie um arquivo chamado status.txt contendo a saída de 'git log --oneline'",
-         "validation": lambda d: (Path(d) / ".git").exists() and (Path(d) / "README.md").exists() and (Path(d) / "status.txt").exists()},
-        {"task_id": "tb-004", "name": "directory_analysis",
-         "instruction": "Crie a seguinte estrutura de diretórios:\nsrc/main.py (com 'print(\"hello\")')\nsrc/utils/helpers.py (com 'def add(a,b): return a+b')\ntests/test_main.py (com 'assert True')\n\nDepois, crie um arquivo tree.txt que contenha a saída do comando 'find . -name \"*.py\" | sort'",
-         "validation": lambda d: (Path(d) / "src" / "main.py").exists() and (Path(d) / "tree.txt").exists()},
-        {"task_id": "tb-005", "name": "network_config_parse",
-         "instruction": "Crie um arquivo hosts.txt com:\n192.168.1.1 router\n192.168.1.10 server1\n192.168.1.20 server2\n10.0.0.1 gateway\n\nDepois crie um script bash chamado parse.sh que lê hosts.txt e gera um arquivo report.txt contendo apenas as linhas da subnet 192.168.x.x, uma por linha. Execute o script.",
-         "validation": lambda d: (Path(d) / "report.txt").exists() and "192.168" in (Path(d) / "report.txt").read_text()},
-    ][:limit]
+    tasks = []
     
     def process_task(task, idx):
         tid = task["task_id"]
         cached = progress.get_result("terminal-bench", tid)
         if cached:
-            print(f"  [SKIP] {tid} (already processed)")
+            prog.skip_task(tid)
             return cached
             
-        print(f"  [START] {tid} ({task['name']})...")
+        prog.start_task(tid, task["name"])
         
         with tempfile.TemporaryDirectory() as tmpdir:
-            stats = run_agent(task["instruction"], tmpdir, max_iter=MAX_ITER, timeout=TIMEOUT)
+            stats = run_agent(task["instruction"], tmpdir, max_iter=MAX_ITER, timeout=TIMEOUT, task_id=tid)
             
             try:
                 success = task["validation"](tmpdir)
@@ -452,12 +618,16 @@ def run_terminalbench(limit=3, workers=1):
                 success = False
             
             status = "success" if success else "failed_validation"
+            if not stats.get("exit_ok"):
+                success = False
+                status = "crashed"
+            
             if stats.get("limit_exceeded"):
                 success = False
                 status = "failed_token_limit"
             
             sym = "✅" if success else "❌"
-            print(f"  [DONE] {sym} {tid} | turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s status={status}")
+            prog.update_task(tid, success, stats, sym, f"status={status}")
             
             res = {
                 "task_id": tid,
@@ -472,9 +642,17 @@ def run_terminalbench(limit=3, workers=1):
             progress.save_result("terminal-bench", tid, res)
             return res
 
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(process_task, task, idx) for idx, task in enumerate(tasks)]
-        results = [f.result() for f in futures]
+    with BenchProgress("EvalPlus (HumanEval)") as prog:
+        prog.set_total(len(tasks))
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [executor.submit(process_task, task, idx) for idx, task in enumerate(tasks)]
+        results = []
+        for f in futures:
+            try:
+                results.append(f.result(timeout=TIMEOUT + 60))
+            except Exception as e:
+                print(f"  [ERROR] Future timed out or failed: {e}")
+                results.append({"error": str(e)})
     
     return {"benchmark": "terminal-bench", "results": results}
 
@@ -528,10 +706,10 @@ def run_livecodebench(limit=3, workers=1):
         tid = task["task_id"]
         cached = progress.get_result("mbpp", tid)
         if cached:
-            print(f"  [SKIP] {tid} (already processed)")
+            prog.skip_task(tid)
             return cached
             
-        print(f"  [START] {tid} ({task['name']})...")
+        prog.start_task(tid, task["name"])
         
         with tempfile.TemporaryDirectory() as tmpdir:
             prompt = (
@@ -544,7 +722,7 @@ def run_livecodebench(limit=3, workers=1):
                 f"Salve em solucao.py."
             )
             
-            stats = run_agent(prompt, tmpdir, max_iter=MAX_ITER, timeout=TIMEOUT)
+            stats = run_agent(prompt, tmpdir, max_iter=MAX_ITER, timeout=TIMEOUT, task_id=tid)
             
             sol_file = Path(tmpdir) / "solucao.py"
             success = False
@@ -579,12 +757,16 @@ def run_livecodebench(limit=3, workers=1):
                 except Exception as e:
                     status = f"error: {e}"
             
+            if not stats.get("exit_ok"):
+                success = False
+                status = "crashed"
+            
             if stats.get("limit_exceeded"):
                 success = False
                 status = "failed_token_limit"
             
             sym = "✅" if success else "❌"
-            print(f"  [DONE] {sym} {tid} | turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s status={status}")
+            prog.update_task(tid, success, stats, sym, f"status={status}")
             
             res = {
                 "task_id": tid,
@@ -599,9 +781,17 @@ def run_livecodebench(limit=3, workers=1):
             progress.save_result("mbpp", tid, res)
             return res
 
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(process_task, task, idx) for idx, task in enumerate(tasks)]
-        results = [f.result() for f in futures]
+    with BenchProgress("EvalPlus (HumanEval)") as prog:
+        prog.set_total(len(tasks))
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [executor.submit(process_task, task, idx) for idx, task in enumerate(tasks)]
+        results = []
+        for f in futures:
+            try:
+                results.append(f.result(timeout=TIMEOUT + 60))
+            except Exception as e:
+                print(f"  [ERROR] Future timed out or failed: {e}")
+                results.append({"error": str(e)})
     
     return {"benchmark": "mbpp", "results": results}
 
@@ -641,10 +831,10 @@ def run_bigcodebench(limit=3, workers=1):
         tid = task["task_id"]
         cached = progress.get_result("bigcodebench", tid)
         if cached:
-            print(f"  [SKIP] {tid} (already processed)")
+            prog.skip_task(tid)
             return cached
             
-        print(f"  [START] {tid} ({task['name']})...")
+        prog.start_task(tid, task["name"])
         
         with tempfile.TemporaryDirectory() as tmpdir:
             prompt = (
@@ -658,7 +848,7 @@ def run_bigcodebench(limit=3, workers=1):
                 f"Salve em solucao.py."
             )
             
-            stats = run_agent(prompt, tmpdir, max_iter=MAX_ITER, timeout=TIMEOUT)
+            stats = run_agent(prompt, tmpdir, max_iter=MAX_ITER, timeout=TIMEOUT, task_id=tid)
             
             sol_file = Path(tmpdir) / "solucao.py"
             success = False
@@ -692,12 +882,16 @@ def run_bigcodebench(limit=3, workers=1):
                 except Exception as e:
                     status = f"error: {e}"
             
+            if not stats.get("exit_ok"):
+                success = False
+                status = "crashed"
+            
             if stats.get("limit_exceeded"):
                 success = False
                 status = "failed_token_limit"
             
             sym = "✅" if success else "❌"
-            print(f"  [DONE] {sym} {tid} | turns={stats['turns']} tokens={stats['tokens']} time={stats['elapsed_seconds']:.1f}s status={status}")
+            prog.update_task(tid, success, stats, sym, f"status={status}")
             
             res = {
                 "task_id": tid,
@@ -712,9 +906,17 @@ def run_bigcodebench(limit=3, workers=1):
             progress.save_result("bigcodebench", tid, res)
             return res
 
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(process_task, task, idx) for idx, task in enumerate(tasks)]
-        results = [f.result() for f in futures]
+    with BenchProgress("EvalPlus (HumanEval)") as prog:
+        prog.set_total(len(tasks))
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [executor.submit(process_task, task, idx) for idx, task in enumerate(tasks)]
+        results = []
+        for f in futures:
+            try:
+                results.append(f.result(timeout=TIMEOUT + 60))
+            except Exception as e:
+                print(f"  [ERROR] Future timed out or failed: {e}")
+                results.append({"error": str(e)})
     
     return {"benchmark": "bigcodebench", "results": results}
 
@@ -755,12 +957,13 @@ def consolidate(all_results, elapsed_total):
         results = bench_data["results"]
         
         total = len(results)
-        passed = sum(1 for r in results if r["success"])
+        valid_results = [r for r in results if isinstance(r, dict) and "error" not in r]
+        passed = sum(1 for r in valid_results if r.get("success", False))
         rate = (passed / total * 100) if total > 0 else 0
-        avg_turns = sum(r["turns"] for r in results) / total if total > 0 else 0
-        avg_tokens = sum(r["tokens"] for r in results) / total if total > 0 else 0
-        avg_elapsed = sum(r["elapsed"] for r in results) / total if total > 0 else 0
-        total_tokens = sum(r["tokens"] for r in results)
+        avg_turns = sum(r.get("turns", 0) for r in valid_results) / len(valid_results) if valid_results else 0
+        avg_tokens = sum(r.get("tokens", 0) for r in valid_results) / len(valid_results) if valid_results else 0
+        avg_elapsed = sum(r.get("elapsed", 0.0) for r in valid_results) / len(valid_results) if valid_results else 0
+        total_tokens = sum(r.get("tokens", 0) for r in valid_results)
         total_cost = calculate_costs(total_tokens)
         
         report["benchmarks"][name] = {
@@ -797,8 +1000,25 @@ def main():
     parser.add_argument("--limit", type=int, default=5, help="Limite de tarefas por benchmark")
     parser.add_argument("--workers", type=int, default=3, help="Número de threads/workers para execução paralela")
     parser.add_argument("--clear-progress", action="store_true", help="Limpa o progresso salvo antes de iniciar")
+    parser.add_argument("--api-key", type=str, default="", help="API Key dinâmica (sobrepõe o .env)")
+    parser.add_argument("--temp", type=float, default=0.0, help="Temperatura do LLM")
+    parser.add_argument("--provider", type=str, default="", help="Provedor de LLM")
+    parser.add_argument("--model", type=str, default="", help="Modelo de LLM")
     args = parser.parse_args()
     
+    global PROVIDER, MODEL
+    if args.provider:
+        PROVIDER = args.provider
+    if args.model:
+        MODEL = args.model
+    
+    if args.api_key:
+        os.environ[f"{PROVIDER.upper()}_API_KEY"] = args.api_key
+        print("🔑 Usando API Key passada via flag.")
+    if args.temp > 0.0:
+        os.environ["CROM_TEMPERATURE"] = str(args.temp)
+        print(f"🌡️ Configurando Temperature para {args.temp}")
+
     if args.clear_progress:
         progress.clear()
         print("🗑️ Progresso anterior limpo.")

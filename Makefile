@@ -10,7 +10,7 @@ all: lint test build
 build:
 	@echo "==> Building $(APP_NAME)..."
 	@mkdir -p $(BIN_DIR)
-	go build -v -o $(BIN_DIR)/$(APP_NAME) ./...
+	go build -v -ldflags="-s -w" -o $(BIN_DIR)/$(APP_NAME) ./...
 
 test:
 	@echo "==> Running tests..."

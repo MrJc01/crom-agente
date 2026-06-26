@@ -530,6 +530,9 @@ func parseFilePathFromComment(line string) string {
 	if strings.HasPrefix(lower, "caminho:") {
 		return strings.TrimSpace(line[8:])
 	}
+	if strings.HasPrefix(lower, "arquivo:") {
+		return strings.TrimSpace(line[8:])
+	}
 	if strings.HasPrefix(lower, "path:") {
 		return strings.TrimSpace(line[5:])
 	}

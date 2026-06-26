@@ -12,13 +12,18 @@ import (
 	"github.com/crom/crom-agente/internal/tools/computer_control"
 	"github.com/crom/crom-agente/internal/tools/database_tester"
 	"github.com/crom/crom-agente/internal/tools/delete_file"
-	"github.com/crom/crom-agente/internal/tools/diff_replace"
+	"github.com/crom/crom-agente/internal/tools/dependency_graph"
+	"github.com/crom/crom-agente/internal/tools/edit_file"
+	"github.com/crom/crom-agente/internal/tools/edit_file_by_line"
 	"github.com/crom/crom-agente/internal/tools/doc_generator"
+	"github.com/crom/crom-agente/internal/tools/error_histogram"
+	"github.com/crom/crom-agente/internal/tools/find_file"
 	"github.com/crom/crom-agente/internal/tools/git_add"
 	"github.com/crom/crom-agente/internal/tools/git_branch"
 	"github.com/crom/crom-agente/internal/tools/git_commit"
 	"github.com/crom/crom-agente/internal/tools/git_conflict"
 	"github.com/crom/crom-agente/internal/tools/git_diff"
+	"github.com/crom/crom-agente/internal/tools/git_diff_summary"
 	"github.com/crom/crom-agente/internal/tools/git_log"
 	"github.com/crom/crom-agente/internal/tools/git_status"
 	"github.com/crom/crom-agente/internal/tools/grep"
@@ -32,6 +37,7 @@ import (
 	"github.com/crom/crom-agente/internal/tools/autofix"
 	"github.com/crom/crom-agente/internal/tools/bug_explainer"
 	"github.com/crom/crom-agente/internal/tools/checkpoint"
+	"github.com/crom/crom-agente/internal/tools/pytest_isolated"
 	"github.com/crom/crom-agente/internal/tools/read_file"
 	"github.com/crom/crom-agente/internal/tools/read_session_messages"
 	"github.com/crom/crom-agente/internal/tools/record_decision"
@@ -45,12 +51,12 @@ import (
 	"github.com/crom/crom-agente/internal/tools/syntax_check"
 	"github.com/crom/crom-agente/internal/tools/terminal_command"
 	"github.com/crom/crom-agente/internal/tools/tree"
+	"github.com/crom/crom-agente/internal/tools/undo_last_edit"
+	"github.com/crom/crom-agente/internal/tools/view_function"
 	"github.com/crom/crom-agente/internal/tools/write_file"
 	"github.com/crom/crom-agente/internal/tools/ast_analyzer"
 	"github.com/crom/crom-agente/internal/tools/concurrency_lock"
 	"github.com/crom/crom-agente/internal/tools/cost_estimator"
-	"github.com/crom/crom-agente/internal/tools/dependency_graph"
-	"github.com/crom/crom-agente/internal/tools/error_histogram"
 	"github.com/crom/crom-agente/internal/tools/git_diff_advanced"
 	"github.com/crom/crom-agente/internal/tools/import_validator"
 	"github.com/crom/crom-agente/internal/tools/inject_local_env"
@@ -100,17 +106,22 @@ func GetBuiltinTools(cfg RegistrationConfig) []tools.Tool {
 	list = append(list, termTool)
 
 	// 4. Edição, renomeação, deleção e navegação de arquivos
-	list = append(list, diff_replace.NewDiffReplaceTool(cfg.WorkspacePath, cfg.WorkspaceJail))
+	list = append(list, edit_file.NewEditFileTool(cfg.WorkspacePath, cfg.WorkspaceJail))
+	list = append(list, edit_file_by_line.NewEditFileByLineTool(cfg.WorkspacePath, cfg.WorkspaceJail))
+	list = append(list, undo_last_edit.NewUndoLastEditTool(cfg.WorkspacePath, cfg.WorkspaceJail))
+	list = append(list, view_function.NewViewFunctionTool(cfg.WorkspacePath, cfg.WorkspaceJail))
 	list = append(list, rename_file.NewRenameFileTool(cfg.WorkspacePath, cfg.WorkspaceJail))
 	list = append(list, delete_file.NewDeleteFileTool(cfg.WorkspacePath, cfg.WorkspaceJail))
 	list = append(list, tree.NewTreeTool(cfg.WorkspacePath, cfg.WorkspaceJail))
 	list = append(list, grep.NewGrepTool(cfg.WorkspacePath, cfg.WorkspaceJail))
+	list = append(list, find_file.NewFindFileTool(cfg.WorkspacePath, cfg.WorkspaceJail))
 
 	// 5. Port monitor & Git Tools
 	list = append(list, port_monitor.NewPortMonitorTool(cfg.WorkspacePath))
 	list = append(list, git_status.NewGitStatusTool(cfg.WorkspacePath))
 	list = append(list, git_log.NewGitLogTool(cfg.WorkspacePath))
 	list = append(list, git_diff.NewGitDiffTool(cfg.WorkspacePath))
+	list = append(list, git_diff_summary.NewGitDiffSummaryTool(cfg.WorkspacePath))
 	list = append(list, git_add.NewGitAddTool(cfg.WorkspacePath))
 	list = append(list, git_commit.NewGitCommitTool(cfg.WorkspacePath))
 	list = append(list, git_branch.NewGitBranchTool(cfg.WorkspacePath))
@@ -155,6 +166,7 @@ func GetBuiltinTools(cfg RegistrationConfig) []tools.Tool {
 
 	// Novas ferramentas nativas avançadas
 	list = append(list, ast_analyzer.NewASTAnalyzerTool(cfg.WorkspacePath, cfg.WorkspaceJail))
+	list = append(list, pytest_isolated.NewPytestIsolatedTool(cfg.WorkspacePath))
 	list = append(list, call_graph.NewCallGraphTool(cfg.WorkspacePath))
 	list = append(list, concurrency_lock.NewConcurrencyLockTool(cfg.WorkspacePath))
 	list = append(list, cost_estimator.NewCostEstimatorTool(cfg.WorkspacePath, cfg.StateManager))

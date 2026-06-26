@@ -230,3 +230,9 @@ func (p *GeminiProvider) SendMessages(ctx context.Context, messages []llm.Messag
 		Usage:   apiResp.Usage,
 	}, nil
 }
+
+func (p *GeminiProvider) StreamMessages(ctx context.Context, messages []llm.Message, opts llm.RequestOptions, chunkChan chan<- string) (*llm.Response, error) {
+	defer close(chunkChan)
+	// Fallback to non-streaming for now
+	return p.SendMessages(ctx, messages, opts)
+}

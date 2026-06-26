@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -44,6 +45,7 @@ var cliDisablePromptOptimization bool
 var cliRetry bool
 var cliRetryLimit int
 var cliRetryDelay int
+var cliReadOnly bool
 
 // rootCmd é o comando raiz do crom-agente
 var rootCmd = &cobra.Command{
@@ -112,12 +114,26 @@ var stateCmd = &cobra.Command{
 }
 
 // cliEventHandler imprime eventos no terminal em tempo real
+
+const (
+        ColorReset  = "\033[0m"
+        ColorRed    = "\033[31m"
+        ColorGreen  = "\033[32m"
+        ColorYellow = "\033[33m"
+        ColorBlue   = "\033[34m"
+        ColorCyan   = "\033[36m"
+)
+
 type cliEventHandler struct {
 	out io.Writer
 }
 
 func (h *cliEventHandler) OnStatusChange(status string) {
 	fmt.Fprintf(h.out, " [status] %s...\n", status)
+}
+
+func (h *cliEventHandler) OnStreamChunk(chunk string) {
+	fmt.Fprint(h.out, chunk)
 }
 
 func (h *cliEventHandler) OnMessage(role string, content string) {
@@ -161,10 +177,28 @@ func (h *cliEventHandler) OnEvent(event loop.AgentEvent) {
 				fmt.Fprintf(h.out, "  ⚠️  [iter %d] ERRO: %v\n", event.Iteration, errData)
 			}
 		}
-	case "finished":
-		reason, _ := event.Data["reason"].(string)
-		totalIter, _ := event.Data["total_iterations"].(int)
-		fmt.Fprintf(h.out, "  🏁 Finalizado (%s) em %d iterações.\n", reason, totalIter)
+	        case "finished":
+                reason, _ := event.Data["reason"].(string)
+                totalIter, _ := event.Data["total_iterations"].(int)
+                tokensUsed, _ := event.Data["tokens_used"].(int)
+                costUSD, _ := event.Data["cost_usd"].(float64)
+                elapsedSec, _ := event.Data["elapsed_seconds"].(float64)
+                
+                fmt.Fprintf(h.out, "\n%s=======================================================\n", ColorCyan)
+                fmt.Fprintf(h.out, "              📊 Métricas da Sessão\n")
+                fmt.Fprintf(h.out, "=======================================================%s\n", ColorReset)
+                fmt.Fprintf(h.out, "  %sStatus:%s      %s (%s)\n", ColorBlue, ColorReset, reason, func() string { if reason == "completed" { return ColorGreen + "✓" + ColorReset } else { return ColorRed + "✗" + ColorReset } }())
+                fmt.Fprintf(h.out, "  %sIterações:%s   %d\n", ColorBlue, ColorReset, totalIter)
+                fmt.Fprintf(h.out, "  %sTokens:%s      %d\n", ColorBlue, ColorReset, tokensUsed)
+                fmt.Fprintf(h.out, "  %sCusto:%s       $%.4f\n", ColorBlue, ColorReset, costUSD)
+                fmt.Fprintf(h.out, "  %sTempo:%s       %.1fs\n", ColorBlue, ColorReset, elapsedSec)
+                fmt.Fprintf(h.out, "%s=======================================================%s\n\n", ColorCyan, ColorReset)
+                
+                // Show git diff summary
+                cmd := exec.Command("bash", "-c", "git diff --stat 2>/dev/null")
+                cmd.Stdout = h.out
+                cmd.Stderr = h.out
+                _ = cmd.Run()
 	}
 }
 
@@ -452,6 +486,9 @@ func getCLIFlags(cmd *cobra.Command) config.CLIFlags {
 	if cmd.Flags().Changed("retry-delay") {
 		flags.ConsecutiveFailureRetryDelay = &cliRetryDelay
 	}
+	if cmd.Flags().Changed("readonly") {
+		flags.ReadOnly = &cliReadOnly
+	}
 	return flags
 }
 
@@ -471,6 +508,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&cliRetry, "retry", true, "Override: Habilita retry automático em falhas consecutivas")
 	rootCmd.PersistentFlags().IntVar(&cliRetryLimit, "retry-limit", 0, "Override: Limite de retries automáticos (0 = infinito)")
 	rootCmd.PersistentFlags().IntVar(&cliRetryDelay, "retry-delay", 5, "Override: Tempo de espera entre retries (segundos)")
+	rootCmd.PersistentFlags().BoolVar(&cliReadOnly, "readonly", false, "Executa o agente em modo Read-Only (impede modificações e comandos bash)")
 
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(stateCmd)

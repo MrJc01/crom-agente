@@ -1,5 +1,15 @@
-package core
+/*
+Package core implementa o motor central de execução ReAct do crom-agente.
+O AgenticLoop é responsável por gerenciar iterações de chamadas de LLM,
+rastreamento de estado através do StateManager, parseamento de chamadas de ferramentas,
+e a orquestração segura do ambiente.
 
+Principais responsabilidades:
+- Injeção contextual (Árvore de diretórios, regras locais, memória de erros)
+- Parseamento robusto multimodais (Texto puro vs chamadas nativas)
+- Limites agressivos e circuit breakers (early stopping por OOM ou Loops)
+*/
+package core
 import (
 	"context"
 	"sync"
@@ -16,6 +26,7 @@ import (
 type EventHandler interface {
 	OnStatusChange(status string)
 	OnMessage(role string, content string)
+	OnStreamChunk(chunk string)
 	OnEvent(event loop.AgentEvent) // Eventos estruturados com metadados completos
 }
 
@@ -24,6 +35,7 @@ type noopHandler struct{}
 
 func (n noopHandler) OnStatusChange(string)    {}
 func (n noopHandler) OnMessage(string, string) {}
+func (n noopHandler) OnStreamChunk(string)     {}
 func (n noopHandler) OnEvent(loop.AgentEvent)  {}
 
 type fastPathCacheEntry struct {
@@ -51,6 +63,7 @@ type AgenticLoop struct {
 	linterFailures      map[string]int
 	mistakeMemory       *MistakeMemory
 	timelineMemory      *TimelineMemory
+	startTime           time.Time
 }
 
 // QueueUserMessage adiciona uma mensagem do usuário na fila de injeção em tempo real

@@ -1,0 +1,4 @@
+{
+  "id": "edit_file_by_line",
+  "description": "Substitui um intervalo exato de linhas de um arquivo pelo novo conteúdo, sem precisar adivinhar o texto original. Muito útil quando a ferramenta edit_file falha por causa de indentação."
+}

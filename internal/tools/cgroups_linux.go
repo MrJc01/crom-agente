@@ -31,8 +31,7 @@ func WrapCommandWithCgroup(command string, memoryLimitMB int, cpuQuota int) (str
 	memMax := fmt.Sprintf("MemoryMax=%dM", memoryLimitMB)
 	cpuQ := fmt.Sprintf("CPUQuota=%d%%", cpuQuota)
 
-	// Utiliza --user para não exigir root (necessita sessão logind ou persistência pro user)
-	// --scope cria um cgroup temporário. -p TasksMax limita fork-bombs.
+	// --scope cria um cgroup temporário. -p TasksMax limita fork-bombs. -p LimitNOFILE previne file descriptor exhaustion.
 	args := []string{
 		"--user",
 		"--scope",

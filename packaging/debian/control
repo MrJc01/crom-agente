@@ -1,0 +1,15 @@
+Source: crom-agente
+Section: devel
+Priority: optional
+Maintainer: Crom Team <dev@crom.run>
+Build-Depends: debhelper (>= 12), golang-go (>= 1.21)
+Standards-Version: 4.5.0
+Homepage: https://github.com/crom/crom-agente
+
+Package: crom-agente
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Agente autônomo de engenharia de software baseado em LLMs
+ O crom-agente é um agente de codificação autônomo que resolve issues,
+ debugga código e implementa features usando modelos de linguagem como
+ backend. Suporta OpenAI, Gemini, Anthropic, OpenRouter e Ollama.

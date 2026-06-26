@@ -62,7 +62,7 @@ func DetectIneffectiveCorrectionLoop(messages []llm.Message) bool {
 		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
 			var editedFile string
 			for _, tc := range msg.ToolCalls {
-				if tc.Function.Name == "write_file" || tc.Function.Name == "diff_replace" || tc.Function.Name == "autofix" {
+				if tc.Function.Name == "write_file" || tc.Function.Name == "edit_file" || tc.Function.Name == "autofix" {
 					var args struct {
 						Path string `json:"path"`
 					}

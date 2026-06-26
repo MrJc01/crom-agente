@@ -100,6 +100,7 @@ type AgentState struct {
 	LogsRelevantes          []string            `json:"logs_relevantes"`
 	TokensGastos            int                 `json:"tokens_gastos"`
 	TotalTurnos             int                 `json:"total_turnos"`
+	CustoTotalUSD           float64             `json:"custo_total_usd"`
 	Timestamp               time.Time           `json:"timestamp"`
 	Messages                []llm.Message       `json:"messages,omitempty"`
 	Plan                    []TaskItem          `json:"plan,omitempty"`
@@ -343,6 +344,14 @@ func (sm *StateManager) RecordTokens(tokens int) error {
 	return sm.saveStateLocked()
 }
 
+// RecordCost incrementa o custo total em dólares
+func (sm *StateManager) RecordCost(cost float64) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.state.CustoTotalUSD += cost
+	return sm.saveStateLocked()
+}
+
 // FilePath retorna o caminho do arquivo de estado
 func (sm *StateManager) FilePath() string {
 	return sm.filePath
@@ -581,3 +590,23 @@ func (sm *StateManager) ClearActiveProcesses() error {
 	return sm.saveStateLocked()
 }
 
+// CreateSnapshot cria um backup atômico do estado atual na pasta snapshots (Task 1.9)
+func (sm *StateManager) CreateSnapshot(iteration int) error {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	dir := filepath.Join(filepath.Dir(sm.filePath), "snapshots")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("erro ao criar diretório de snapshots: %w", err)
+	}
+
+	fileName := fmt.Sprintf("state_turn_%03d.json", iteration)
+	fullPath := filepath.Join(dir, fileName)
+
+	data, err := json.MarshalIndent(sm.state, "", "  ")
+	if err != nil {
+		return fmt.Errorf("erro ao serializar estado para snapshot: %w", err)
+	}
+
+	return os.WriteFile(fullPath, data, 0644)
+}

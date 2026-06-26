@@ -1,0 +1,4 @@
+{
+  "id": "git_diff_summary",
+  "description": "Exibe o git diff em um formato limpo e resumido, sem metadados inúteis. Aceita um caminho opcional de arquivo."
+}

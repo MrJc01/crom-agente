@@ -1,0 +1,4 @@
+{
+  "id": "find_file",
+  "description": "Busca arquivos no workspace pelo nome, suporta wildcards (ex: *.py). É mais rápido e seguro que usar o terminal."
+}
