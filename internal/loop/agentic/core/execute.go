@@ -412,8 +412,8 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			}
 		}
 
-		// Interceptar chamadas de ferramentas em formato de bloco de código markdown (modo text-only)
-		if al.textOnlyMode {
+		// Interceptar chamadas de ferramentas em formato de bloco de código markdown (modo text-only ou fallback se não houver tool calls nativas)
+		if al.textOnlyMode || len(msg.ToolCalls) == 0 {
 			if markdownToolCalls := loop.TryParseMarkdownToolCalls(msg.Content); len(markdownToolCalls) > 0 {
 				msg.ToolCalls = append(msg.ToolCalls, markdownToolCalls...)
 				if al.stateManager != nil {

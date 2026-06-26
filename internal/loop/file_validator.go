@@ -74,7 +74,7 @@ func ValidateCreatedFile(path string, language string) (bool, string) {
 		}
 
 	case "python":
-		// Validação compilando para bytecode usando 'python3' ou 'python'
+		// Validação compilando para AST usando 'python3' ou 'python'
 		var pythonCmd string
 		if _, err := exec.LookPath("python3"); err == nil {
 			pythonCmd = "python3"
@@ -86,10 +86,30 @@ func ValidateCreatedFile(path string, language string) (bool, string) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 
-			cmd := exec.CommandContext(ctx, pythonCmd, "-m", "py_compile", path)
+			pyScript := `import ast, sys
+try:
+    with open(sys.argv[1], 'rb') as f:
+        ast.parse(f.read(), filename=sys.argv[1])
+except SyntaxError as e:
+    print(f"SyntaxError: {e.msg} at line {e.lineno}, column {e.offset}")
+    try:
+        with open(sys.argv[1], 'r', encoding='utf-8', errors='replace') as f:
+            lines = f.readlines()
+            if 1 <= e.lineno <= len(lines):
+                print(f"Line {e.lineno}: {lines[e.lineno-1].rstrip()}")
+                offset = e.offset if e.offset is not None else 1
+                print(" " * (len(str(e.lineno)) + 7 + offset) + "^")
+    except Exception as read_err:
+        pass
+    sys.exit(1)
+except Exception as e:
+    print(f"Error: {e}")
+    sys.exit(1)
+`
+			cmd := exec.CommandContext(ctx, pythonCmd, "-c", pyScript, path)
 			output, err := cmd.CombinedOutput()
 			if err != nil {
-				return false, fmt.Sprintf("Python compilation error:\n%s", string(output))
+				return false, fmt.Sprintf("Python syntax error:\n%s", string(output))
 			}
 		}
 

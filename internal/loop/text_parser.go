@@ -370,6 +370,7 @@ func TryParseMarkdownToolCalls(content string) []llm.ToolCall {
 	inBlock := false
 	var blockLines []string
 	var detectedPath string
+	var blockLang string
 
 	for i := 0; i < len(lines); i++ {
 		line := lines[i]
@@ -380,6 +381,11 @@ func TryParseMarkdownToolCalls(content string) []llm.ToolCall {
 				inBlock = true
 				blockLines = nil
 				detectedPath = ""
+				blockLang = strings.TrimSpace(strings.TrimPrefix(trimmed, "```"))
+				// remove any parameters after spaces
+				if idx := strings.Index(blockLang, " "); idx != -1 {
+					blockLang = blockLang[:idx]
+				}
 
 				// Tenta detectar o arquivo procurando na linha imediatamente anterior
 				if i > 0 {
@@ -396,6 +402,11 @@ func TryParseMarkdownToolCalls(content string) []llm.ToolCall {
 					if pathInFirstLine != "" {
 						detectedPath = pathInFirstLine
 						blockLines = blockLines[1:] // remove a linha de comentário do path
+					}
+
+					// Fallback: se ainda não detectou o caminho do arquivo, tenta buscar um arquivo único no texto com a extensão correspondente
+					if detectedPath == "" {
+						detectedPath = findUniqueFileInTextWithExtension(content, blockLang)
 					}
 
 					if detectedPath != "" {
@@ -428,6 +439,65 @@ func TryParseMarkdownToolCalls(content string) []llm.ToolCall {
 	}
 
 	return toolCalls
+}
+
+func findUniqueFileInText(content string) string {
+	words := strings.Fields(content)
+	fileMap := make(map[string]bool)
+	for _, word := range words {
+		word = strings.Trim(word, "\"`'*(),.:;!?")
+		if hasCommonExtension(word) {
+			fileMap[word] = true
+		}
+	}
+	if len(fileMap) == 1 {
+		for f := range fileMap {
+			return f
+		}
+	}
+	return ""
+}
+
+func findUniqueFileInTextWithExtension(content string, lang string) string {
+	ext := ""
+	switch strings.ToLower(lang) {
+	case "python", "py":
+		ext = ".py"
+	case "go":
+		ext = ".go"
+	case "json":
+		ext = ".json"
+	case "html", "htm":
+		ext = ".html"
+	case "js", "javascript":
+		ext = ".js"
+	case "ts", "typescript":
+		ext = ".ts"
+	case "sh", "bash":
+		ext = ".sh"
+	case "md":
+		ext = ".md"
+	case "yml", "yaml":
+		ext = ".yml"
+	default:
+		// Se não houver mapeamento direto, busca qualquer extensão comum
+		return findUniqueFileInText(content)
+	}
+
+	words := strings.Fields(content)
+	fileMap := make(map[string]bool)
+	for _, word := range words {
+		word = strings.Trim(word, "\"`'*(),.:;!?")
+		if strings.HasSuffix(strings.ToLower(word), ext) {
+			fileMap[word] = true
+		}
+	}
+	if len(fileMap) == 1 {
+		for f := range fileMap {
+			return f
+		}
+	}
+	return ""
 }
 
 func parseFilePathFromComment(line string) string {

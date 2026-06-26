@@ -346,3 +346,67 @@ xychart-beta
 4. **Variabilidade entre runs é real**: Terminal-Bench variou de 80% a 60% entre runs (mesmas 5 tarefas). Isso é esperado com modelos 8B e temperatura >0, mas indica que amostras maiores são necessárias para estabilizar os resultados.
 
 5. **Custo imbatível**: $0.006/tarefa vs $0.50-$2.00 dos líderes = **80-330x mais barato**. Para cargas de alto volume e baixa complexidade, o crom-agente com 8B é economicamente racional.
+
+---
+
+
+## 🛠️ Recomendações para Melhoria do Scaffold
+
+Com base na análise profunda das falhas lógicas e dos gargalos identificados nos runs do modelo 8B, recomendamos as seguintes melhorias na arquitetura Go do `crom-agente`:
+
+1. **Auto-Linter e Reflexão de Sintaxe**:
+   - **Problema**: O modelo gerou códigos com erros de indentação ou sintaxe (ex: `IndentationError` no HumanEval/29).
+   - **Solução**: Implementar no engine de execução Go uma validação prévia de sintaxe do código gerado (ex: rodar `python -m py_compile` em arquivos python, ou verificar parsing de outras linguagens) antes de finalizar a iteração. Se houver falha, o próprio scaffold injeta o erro de compilação no histórico de conversação do agente para que ele se corrija em uma iteração adicional.
+
+2. **Mecanismo de Extração de Código Nativo no Engine Go**:
+   - **Problema**: Modelos menores às vezes ignoram a chamada de ferramenta estruturada (`write_file`) e apenas geram o código no texto da resposta.
+   - **Solução**: Mover o mecanismo de detecção heurística/regex de blocos de código (ex: `_extract_python_from_output`) para dentro do motor do `crom-agente`. Se o LLM responder com um bloco de código explícito mas não emitir a chamada de ferramenta necessária, o engine detecta e executa a escrita no arquivo implicitamente, prevenindo falhas do tipo `failed_no_file`.
+
+3. **Compactador de Histórico Inteligente Guardião de Instruções (`compactor.go`)**:
+   - **Problema**: Perda de foco e desvio de instrução em tarefas mais longas (ex: 11 turnos no HumanEval/15).
+   - **Solução**: Otimizar a lógica em `CompactMessages` para garantir que o prompt do sistema original, as regras de formato e os prompts das ferramentas NUNCA sejam resumidos ou perdidos, enquanto as mensagens intermediárias de ferramentas e logs de terminal extensos sejam resumidos agressivamente para liberar janela de contexto.
+
+4. **Cache Semântico e Detecção de Loop de Ferramentas**:
+   - **Problema**: Chamar repetidamente comandos idênticos no terminal em turnos adjacentes.
+   - **Solução**: Expandir o `DetectRepetitiveLoop` para além de mensagens de texto, aplicando um bloqueio ou aviso caso o agente execute o exato mesmo comando de terminal com as mesmas saídas sem nenhuma alteração nos arquivos do workspace.
+
+---
+
+## 🤖 Playbook de Automação (Prompt para Agente de Execução)
+
+> [!TIP]
+> **Instrução para Agentes**: Se você foi instruído a executar, re-rodar ou atualizar este benchmark, leia e siga rigorosamente as etapas do prompt estruturado abaixo.
+
+```text
+Você é um agente de execução autônoma responsável por rodar os benchmarks do crom-agente e atualizar este relatório. Siga este fluxo de execução passo a passo:
+
+1. CONFIGURAÇÃO DE AMBIENTE:
+   - Certifique-se de que a API Key para o OpenRouter (ou o provedor de LLM configurado) está disponível na variável de ambiente correspondente (ex: export OPENROUTER_API_KEY="...").
+   - Valide que o python3 e dependências como o módulo 'datasets' do Hugging Face estão instalados (execute 'pip3 install datasets' se necessário).
+
+2. COMPILAÇÃO DO BINÁRIO:
+   - Entre no diretório raiz do projeto: /home/j/Documentos/GitHub/crom-agente
+   - Execute o comando de compilação em modo headless:
+     go build -tags headless -o bin/crom-agente ./cmd/crom-agente
+   - Verifique que o executável em './bin/crom-agente' funciona executando: './bin/crom-agente --help'
+
+3. EXECUÇÃO DO RUNNER DE BENCHMARK:
+   - Execute o script de benchmark passando a flag de limite desejada. Exemplo para rodar 30 tarefas por benchmark:
+     python3 benchmark/run_all.py --limit 30
+   - Monitore a execução e espere a conclusão completa de todos os 5 adaptadores de benchmark.
+   - O runner gerará um relatório em formato JSON em: 'benchmark/reports/full_benchmark_<timestamp>.json'
+
+4. CONSOLIDAÇÃO DOS DADOS:
+   - Abra o último arquivo JSON gerado em 'benchmark/reports/'.
+   - Leia as métricas gerais ("total_tasks", "passed", "success_rate", "total_cost_usd", "total_elapsed_seconds", "avg_turns", "avg_tokens").
+   - Atualize a tabela "Resultados Globais" na seção "Sumário Executivo" deste documento (docs/benchmark_analysis.md) com os novos números.
+
+5. ATUALIZAÇÃO DOS RESULTADOS DETALHADOS:
+   - Para cada um dos 5 benchmarks descritos neste documento, leia a lista de tarefas detalhadas no JSON.
+   - Substitua as tabelas correspondentes ("Resultados Detalhados" e "Métricas Consolidadas") com as informações reais da última execução.
+   - Mapeie as falhas geradas pelo teste (identificadas por success=false no JSON) e atualize os gráficos de análise de root cause (como os diagramas e tabelas de causas).
+
+6. REGISTRO DE HISTÓRICO:
+   - Atualize a linha "Versão", "Publicado em" e "Datas de Execução" no início deste documento para refletir a nova execução.
+   - Salve docs/benchmark_analysis.md e verifique se as tags Markdown continuam íntegras.
+```

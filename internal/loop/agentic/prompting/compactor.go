@@ -78,6 +78,14 @@ func CompactMessages(ctx context.Context, provider llm.Provider, maxMsgs int, ha
 			handler.OnMessage("system", i18n.Get("system.compactor_optimization_log"))
 		}
 		compacted = append(compacted, messages[:middleStart]...)
+		
+		// Preserve any system messages from the middle block
+		for i := middleStart; i < middleEnd; i++ {
+			if messages[i].Role == "system" {
+				compacted = append(compacted, messages[i])
+			}
+		}
+
 		compacted = append(compacted, llm.Message{
 			Role:    "system",
 			Content: i18n.Get("system.compactor_history_summary", resp.Message.Content),

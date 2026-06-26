@@ -439,12 +439,28 @@ func TestDetectRepetitiveLoop(t *testing.T) {
 	}
 
 	if !DetectRepetitiveLoop(msgs) {
-		t.Fatal("esperado detecção de loop repetitivo")
+		t.Fatal("esperado detecção de loop repetitivo direto")
 	}
 
 	msgs[5].Content = "different thing"
 	if DetectRepetitiveLoop(msgs) {
 		t.Fatal("não deveria detectar loop com mensagens diferentes")
+	}
+
+	// Teste de loop de oscilação A -> B -> A -> B
+	oscillationMsgs := []llm.Message{
+		{Role: "user", Content: "start"},
+		{Role: "assistant", Content: "Action A"},
+		{Role: "tool", Content: "Result A"},
+		{Role: "assistant", Content: "Action B"},
+		{Role: "tool", Content: "Result B"},
+		{Role: "assistant", Content: "Action A"},
+		{Role: "tool", Content: "Result A"},
+		{Role: "assistant", Content: "Action B"},
+	}
+
+	if !DetectRepetitiveLoop(oscillationMsgs) {
+		t.Fatal("esperado detecção de loop de oscilação A -> B -> A -> B")
 	}
 }
 

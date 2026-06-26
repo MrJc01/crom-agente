@@ -146,3 +146,35 @@ func TestTryParseMarkdownToolCalls(t *testing.T) {
 		t.Errorf("conteúdo incorreto: %q", args2["content"])
 	}
 }
+
+func TestTryParseMarkdownToolCalls_UniqueFallback(t *testing.T) {
+	content := "Para resolver a tarefa, precisamos atualizar o arquivo test_solution.py com a função adequada.\n" +
+		"Aqui está o novo código:\n" +
+		"```python\n" +
+		"def solution():\n" +
+		"    return True\n" +
+		"```\n"
+
+	calls := TryParseMarkdownToolCalls(content)
+	if len(calls) != 1 {
+		t.Fatalf("esperava 1 chamada de ferramenta extraída via fallback, obteve %d", len(calls))
+	}
+
+	call := calls[0]
+	if call.Function.Name != "write_file" {
+		t.Errorf("esperava write_file, obteve %s", call.Function.Name)
+	}
+
+	var args map[string]string
+	if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
+		t.Fatalf("erro ao desestruturar argumentos: %v", err)
+	}
+
+	if args["path"] != "test_solution.py" {
+		t.Errorf("esperava test_solution.py extraído via fallback, obteve %q", args["path"])
+	}
+
+	if args["content"] != "def solution():\n    return True" {
+		t.Errorf("conteúdo incorreto: %q", args["content"])
+	}
+}
