@@ -181,14 +181,23 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 	}
 
 	maxIterations := 20
-	if al.config != nil && al.config.MaxIterations > 0 {
-		maxIterations = al.config.MaxIterations
+	hasCustomLimit := false
+	if al.config != nil {
+		if al.config.MaxIterations > 0 {
+			maxIterations = al.config.MaxIterations
+			hasCustomLimit = true
+		} else if al.config.MaxIterations == 0 {
+			maxIterations = 999999 // Unlimited
+			hasCustomLimit = true
+		}
 	}
-	lowerIntent := strings.ToLower(intent)
-	if strings.Contains(lowerIntent, "swe-bench") || strings.Contains(lowerIntent, "issue") || len(strings.Fields(intent)) > 300 {
-		maxIterations = 35
-	} else if strings.Contains(lowerIntent, "evalplus") || strings.Contains(lowerIntent, "humaneval") {
-		maxIterations = 12
+	if !hasCustomLimit {
+		lowerIntent := strings.ToLower(intent)
+		if strings.Contains(lowerIntent, "swe-bench") || strings.Contains(lowerIntent, "issue") || len(strings.Fields(intent)) > 300 {
+			maxIterations = 35
+		} else if strings.Contains(lowerIntent, "evalplus") || strings.Contains(lowerIntent, "humaneval") {
+			maxIterations = 12
+		}
 	}
 
 	consecutiveNoToolCallTurns := 0
@@ -228,7 +237,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		}
 
 		if i >= maxIterations {
-			al.handler.OnMessage("system", "Limite de iterações atingido.")
+			al.handler.OnMessage("system", "Limite de iterações atingido. Você pode alterar esse limite acessando as Configurações.")
 			al.handler.OnEvent(loop.AgentEvent{
 				Timestamp: time.Now(),
 				Event:     "finished",
@@ -402,6 +411,22 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				Role:    "system",
 				Content: planCtx,
 			})
+		}
+
+		// Injetar status da última execução de ferramenta (Fase 1.1)
+		if i > 0 {
+			executionStatus := GetLastIterationExecutionStatus(messages)
+			if executionStatus != "" {
+				if !copied {
+					runMessages = make([]llm.Message, len(messages))
+					copy(runMessages, messages)
+					copied = true
+				}
+				runMessages = append(runMessages, llm.Message{
+					Role:    "system",
+					Content: executionStatus,
+				})
+			}
 		}
 
 		// Injetar ciência dos terminais e processos ativos
@@ -647,8 +672,36 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			}
 		}
 
+		// Interceptar chamadas diretas Python estilo write_file(path="...", content="...")
+		if len(msg.ToolCalls) == 0 && (al.textOnlyMode || consecutiveNoToolCallTurns >= 2) {
+			validToolsMap := make(map[string]bool)
+			for name := range al.tools {
+				validToolsMap[name] = true
+			}
+			if pyDirectCalls := loop.TryParsePythonDirectToolCalls(msg.Content, validToolsMap); len(pyDirectCalls) > 0 {
+				msg.ToolCalls = append(msg.ToolCalls, pyDirectCalls...)
+				if al.stateManager != nil {
+					_ = al.stateManager.RecordToolCallsFromTextParse(len(pyDirectCalls))
+				}
+			}
+		}
+
+		// Interceptar chamadas estruturadas JSON estilo OpenAI/Tauri
+		if len(msg.ToolCalls) == 0 && (al.textOnlyMode || consecutiveNoToolCallTurns >= 2) {
+			validToolsMap := make(map[string]bool)
+			for name := range al.tools {
+				validToolsMap[name] = true
+			}
+			if jsonStructuredCalls := loop.TryParseJSONStructuredToolCalls(msg.Content, validToolsMap); len(jsonStructuredCalls) > 0 {
+				msg.ToolCalls = append(msg.ToolCalls, jsonStructuredCalls...)
+				if al.stateManager != nil {
+					_ = al.stateManager.RecordToolCallsFromTextParse(len(jsonStructuredCalls))
+				}
+			}
+		}
+
 		// Interceptar chamadas de ferramentas em formato de bloco de código markdown (modo text-only ou fallback se não houver tool calls nativas)
-		if al.textOnlyMode || len(msg.ToolCalls) == 0 {
+		if al.textOnlyMode || (len(msg.ToolCalls) == 0 && consecutiveNoToolCallTurns >= 2) {
 			if markdownToolCalls := loop.TryParseMarkdownToolCalls(msg.Content); len(markdownToolCalls) > 0 {
 				msg.ToolCalls = append(msg.ToolCalls, markdownToolCalls...)
 				if al.stateManager != nil {
@@ -700,8 +753,12 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		}
 
 		threshold := 3
-		if al.config != nil && al.config.MaxConsecutiveFail > 0 {
-			threshold = al.config.MaxConsecutiveFail
+		if al.config != nil {
+			if al.config.MaxConsecutiveFail > 0 {
+				threshold = al.config.MaxConsecutiveFail
+			} else if al.config.MaxConsecutiveFail == 0 {
+				threshold = 999999 // Unlimited
+			}
 		}
 
 		messages = append(messages, msg)
@@ -2304,4 +2361,68 @@ func (al *AgenticLoop) recordCostForResponse(resp *llm.Response) {
 	}
 	costUSD := (float64(promptTokens)/1000000.0)*promptPriceUSD + (float64(completionTokens)/1000000.0)*completionPriceUSD
 	_ = al.stateManager.RecordCost(costUSD)
+}
+
+// GetLastIterationExecutionStatus analisa as últimas mensagens para ver o status da última execução de ferramenta
+func GetLastIterationExecutionStatus(messages []llm.Message) string {
+	// Acha o índice da última mensagem do assistant
+	lastAssistantIdx := -1
+	for j := len(messages) - 1; j >= 0; j-- {
+		if messages[j].Role == "assistant" {
+			lastAssistantIdx = j
+			break
+		}
+	}
+
+	if lastAssistantIdx == -1 {
+		return ""
+	}
+
+	// Coleta todas as mensagens depois do assistant
+	var executedTools []string
+	var failedTools []string
+	hasToolMsg := false
+	for j := lastAssistantIdx + 1; j < len(messages); j++ {
+		m := messages[j]
+		if m.Role == "tool" {
+			hasToolMsg = true
+			statusStr := "sucesso"
+			if strings.Contains(strings.ToLower(m.Content), "erro") || strings.Contains(strings.ToLower(m.Content), "falha") || strings.Contains(strings.ToLower(m.Content), "failed") || strings.Contains(strings.ToLower(m.Content), "error") {
+				statusStr = "falha"
+				failedTools = append(failedTools, fmt.Sprintf("%s (%s)", m.Name, statusStr))
+			} else {
+				executedTools = append(executedTools, fmt.Sprintf("%s (%s)", m.Name, statusStr))
+			}
+		}
+	}
+
+	// Se tem mensagens de tool executadas
+	if hasToolMsg {
+		var parts []string
+		if len(executedTools) > 0 {
+			parts = append(parts, fmt.Sprintf("executou com sucesso: %s", strings.Join(executedTools, ", ")))
+		}
+		if len(failedTools) > 0 {
+			parts = append(parts, fmt.Sprintf("falhou ao executar: %s", strings.Join(failedTools, ", ")))
+		}
+		return fmt.Sprintf("📋 [STATUS DA ÚLTIMA EXECUÇÃO DE FERRAMENTAS]: Na última iteração, você %s.", strings.Join(parts, " e "))
+	}
+
+	// Se não tem mensagens de tool executadas, mas o assistente tinha ToolCalls na sua mensagem
+	astMsg := messages[lastAssistantIdx]
+	if len(astMsg.ToolCalls) > 0 {
+		var toolNames []string
+		for _, tc := range astMsg.ToolCalls {
+			toolNames = append(toolNames, tc.Function.Name)
+		}
+		return fmt.Sprintf("⚠️ [STATUS DA ÚLTIMA EXECUÇÃO DE FERRAMENTAS]: Você solicitou a execução de %s, mas NENHUMA ferramenta foi executada (talvez porque a chamada continha argumentos inválidos, ou foi recusada).", strings.Join(toolNames, ", "))
+	}
+
+	// Se não tinha ToolCalls, mas o texto contém padrões de tentativa de chamada de ferramenta
+	lowerContent := strings.ToLower(astMsg.Content)
+	if strings.Contains(lowerContent, "{") || strings.Contains(lowerContent, "write_file") || strings.Contains(lowerContent, "terminal_command") || strings.Contains(lowerContent, "edit_file") {
+		return "⚠️ [STATUS DA ÚLTIMA EXECUÇÃO DE FERRAMENTAS]: NENHUMA ferramenta foi executada na última iteração. Percebi que você escreveu código JSON, comandos ou chamadas de função no corpo do texto. Lembre-se de que responder com texto contendo JSON NÃO executa ferramentas no sistema do usuário. Você DEVE usar a chamada de ferramenta nativa (Tool Calling) fornecida pela API do modelo."
+	}
+
+	return "📋 [STATUS DA ÚLTIMA EXECUÇÃO DE FERRAMENTAS]: Nenhuma ferramenta foi solicitada ou executada na última iteração."
 }

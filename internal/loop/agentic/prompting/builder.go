@@ -44,5 +44,8 @@ func BuildToolsInstructions(pm *config.PromptManager, registeredTools []tools.To
 		sb.WriteString(fmt.Sprintf("- **%s**: %s\n", toolID, instruction))
 	}
 
+	sb.WriteString("\n⚠️ **FORMATO OBRIGATÓRIO DE FERRAMENTAS:** NUNCA escreva código Python/JS como `write_file(path=...)` para acionar ferramentas no texto. Você DEVE usar EXCLUSIVAMENTE as chamadas estruturadas JSON (Tool Calling) nativas. Chamadas em texto/código serão ignoradas.\n")
+
 	return sb.String()
 }
+

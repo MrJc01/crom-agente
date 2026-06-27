@@ -121,6 +121,224 @@ func TryParseToolCode(content string) []llm.ToolCall {
 	return toolCalls
 }
 
+// TryParsePythonDirectToolCalls detecta chamadas diretas no estilo Python, como `write_file(path="...", content="...")`, e as converte em chamadas estruturadas.
+func TryParsePythonDirectToolCalls(content string, validTools map[string]bool) []llm.ToolCall {
+	var toolCalls []llm.ToolCall
+
+	for toolName := range validTools {
+		searchPattern := toolName + "("
+		searchStr := content
+		for {
+			idx := strings.Index(searchStr, searchPattern)
+			if idx == -1 {
+				break
+			}
+			if idx > 0 {
+				prevChar := searchStr[idx-1]
+				if (prevChar >= 'a' && prevChar <= 'z') || (prevChar >= 'A' && prevChar <= 'Z') || (prevChar >= '0' && prevChar <= '9') || prevChar == '_' || prevChar == '.' {
+					searchStr = searchStr[idx+len(searchPattern):]
+					continue
+				}
+			}
+
+			argsStart := idx + len(searchPattern)
+			parenCount := 1
+			inSingleQuote := false
+			inDoubleQuote := false
+			escaped := false
+			argsEnd := -1
+
+			for j := argsStart; j < len(searchStr); j++ {
+				char := searchStr[j]
+				if escaped {
+					escaped = false
+					continue
+				}
+				if char == '\\' {
+					escaped = true
+					continue
+				}
+				if char == '\'' && !inDoubleQuote {
+					inSingleQuote = !inSingleQuote
+					continue
+				}
+				if char == '"' && !inSingleQuote {
+					inDoubleQuote = !inDoubleQuote
+					continue
+				}
+				if !inSingleQuote && !inDoubleQuote {
+					if char == '(' {
+						parenCount++
+					} else if char == ')' {
+						parenCount--
+						if parenCount == 0 {
+							argsEnd = j
+							break
+						}
+					}
+				}
+			}
+
+			if argsEnd != -1 {
+				argsStr := searchStr[argsStart:argsEnd]
+				jsonArgs, err := parsePythonKeywordArgs(argsStr)
+				if err == nil && strings.TrimSpace(argsStr) != "" && jsonArgs == "{}" {
+					err = fmt.Errorf("argumentos posicionais ou inválidos")
+				}
+				if err == nil {
+					toolCalls = append(toolCalls, llm.ToolCall{
+						ID:   fmt.Sprintf("pydirect_%d_%d", time.Now().UnixNano(), len(toolCalls)),
+						Type: "function",
+						Function: llm.FunctionCall{
+							Name:      toolName,
+							Arguments: jsonArgs,
+						},
+					})
+					log.Printf("[TryParsePythonDirectToolCalls] Sucesso ao recuperar chamada alucinada Python: %s(%s)", toolName, jsonArgs)
+				} else {
+					log.Printf("[TryParsePythonDirectToolCalls] Erro ao parsear args de %s: %v", toolName, err)
+				}
+				searchStr = searchStr[argsEnd+1:]
+			} else {
+				searchStr = searchStr[idx+len(searchPattern):]
+			}
+		}
+	}
+
+	return toolCalls
+}
+
+// TryParseJSONStructuredToolCalls detecta e converte chamadas estruturadas JSON (estilo OpenAI/Tauri com "name" e "parameters" ou "arguments").
+func TryParseJSONStructuredToolCalls(content string, validTools map[string]bool) []llm.ToolCall {
+	var toolCalls []llm.ToolCall
+
+	// Vamos procurar por blocos JSON no formato { ... }
+	searchStr := content
+	for {
+		idx := strings.Index(searchStr, "{")
+		if idx == -1 {
+			break
+		}
+
+		// Procura o fechamento correspondente pareando chaves
+		braceCount := 0
+		inSingleQuote := false
+		inDoubleQuote := false
+		escaped := false
+		endIdx := -1
+
+		for j := idx; j < len(searchStr); j++ {
+			char := searchStr[j]
+			if escaped {
+				escaped = false
+				continue
+			}
+			if char == '\\' {
+				escaped = true
+				continue
+			}
+			if char == '\'' && !inDoubleQuote {
+				inSingleQuote = !inSingleQuote
+				continue
+			}
+			if char == '"' && !inSingleQuote {
+				inDoubleQuote = !inDoubleQuote
+				continue
+			}
+			if !inSingleQuote && !inDoubleQuote {
+				if char == '{' {
+					braceCount++
+				} else if char == '}' {
+					braceCount--
+					if braceCount == 0 {
+						endIdx = j
+						break
+					}
+				}
+			}
+		}
+
+		if endIdx == -1 {
+			// Sem chaves correspondentes
+			searchStr = searchStr[idx+1:]
+			continue
+		}
+
+		jsonStr := searchStr[idx : endIdx+1]
+		searchStr = searchStr[endIdx+1:]
+
+		// Tenta decodificar o JSON estruturado
+		var obj map[string]interface{}
+		if err := json.Unmarshal([]byte(jsonStr), &obj); err != nil {
+			continue
+		}
+
+		// Checa se tem o campo Name/Tool/Function
+		var toolName string
+		if nameVal, ok := obj["name"].(string); ok {
+			toolName = nameVal
+		} else if toolVal, ok := obj["tool"].(string); ok {
+			toolName = toolVal
+		} else if funcObj, ok := obj["function"].(map[string]interface{}); ok {
+			if fName, ok := funcObj["name"].(string); ok {
+				toolName = fName
+			}
+		}
+
+		// Se o nome não é uma ferramenta válida, ignore
+		if toolName == "" || !validTools[toolName] {
+			continue
+		}
+
+		// Extrai os argumentos
+		var argsMap map[string]interface{}
+		if params, ok := obj["parameters"].(map[string]interface{}); ok {
+			argsMap = params
+		} else if arguments, ok := obj["arguments"].(map[string]interface{}); ok {
+			argsMap = arguments
+		} else if funcObj, ok := obj["function"].(map[string]interface{}); ok {
+			if fArgs, ok := funcObj["arguments"].(map[string]interface{}); ok {
+				argsMap = fArgs
+			} else if fArgsStr, ok := funcObj["arguments"].(string); ok {
+				var parsedArgs map[string]interface{}
+				if err := json.Unmarshal([]byte(fArgsStr), &parsedArgs); err == nil {
+					argsMap = parsedArgs
+				}
+			}
+		} else {
+			// Se o JSON contiver diretamente os argumentos no próprio objeto sem aninhar (ex: {"name": "write_file", "path": "...", "content": "..."})
+			argsMap = make(map[string]interface{})
+			for k, v := range obj {
+				if k != "name" && k != "tool" && k != "type" && k != "function" {
+					argsMap[k] = v
+				}
+			}
+		}
+
+		if argsMap == nil {
+			argsMap = make(map[string]interface{})
+		}
+
+		// Serializa os argumentos em string JSON
+		argsBytes, err := json.Marshal(argsMap)
+		if err != nil {
+			continue
+		}
+
+		log.Printf("[TryParseJSONStructuredToolCalls] Sucesso ao recuperar chamada alucinada JSON: %s(%s)", toolName, string(argsBytes))
+		toolCalls = append(toolCalls, llm.ToolCall{
+			ID:   fmt.Sprintf("jsoncall_%d_%d", time.Now().UnixNano(), len(toolCalls)),
+			Type: "function",
+			Function: llm.FunctionCall{
+				Name:      toolName,
+				Arguments: string(argsBytes),
+			},
+		})
+	}
+
+	return toolCalls
+}
+
 // parsePythonKeywordArgs converte argumentos keyword do Python "k1=v1, k2=v2" em um JSON "{\"k1\": v1, \"k2\": v2}"
 func parsePythonKeywordArgs(argsStr string) (string, error) {
 	argsList := splitTopLevel(argsStr, ',')

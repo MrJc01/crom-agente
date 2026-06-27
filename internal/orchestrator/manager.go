@@ -780,9 +780,8 @@ func (m *MultiAgentManager) GetAgentTelemetry(workspaceName string) (*AgentTelem
 			telemetry.AgentState = sm.GetState()
 		}
 	} else {
-		// Se não está rodando, tenta carregar o último estado salvo
-		storageDir := filepath.Join(target.Path, ".crom")
-		sm := state.NewStateManager(storageDir)
+		// Se não está rodando, tenta carregar o último estado salvo (unificado no raiz)
+		sm := state.NewStateManager(target.Path)
 		if err := sm.LoadState(); err == nil {
 			telemetry.AgentState = sm.GetState()
 		}

@@ -178,3 +178,56 @@ func TestTryParseMarkdownToolCalls_UniqueFallback(t *testing.T) {
 		t.Errorf("conteúdo incorreto: %q", args["content"])
 	}
 }
+
+func TestTryParseJSONStructuredToolCalls(t *testing.T) {
+	validTools := map[string]bool{
+		"write_file":       true,
+		"terminal_command": true,
+	}
+
+	content := `Aqui está a chamada:
+{
+    "type": "function",
+    "name": "write_file",
+    "parameters": {
+        "path": "artigo1.md",
+        "content": "# Introdução às Linguagens de Computador"
+    }
+}
+E uma chamada plana:
+{
+    "name": "terminal_command",
+    "command": "git status"
+}`
+
+	calls := TryParseJSONStructuredToolCalls(content, validTools)
+	if len(calls) != 2 {
+		t.Fatalf("esperava 2 chamadas de ferramentas, obteve %d", len(calls))
+	}
+
+	// 1. Validar write_file
+	call1 := calls[0]
+	if call1.Function.Name != "write_file" {
+		t.Errorf("esperava write_file, obteve %s", call1.Function.Name)
+	}
+	var args1 map[string]interface{}
+	if err := json.Unmarshal([]byte(call1.Function.Arguments), &args1); err != nil {
+		t.Fatalf("erro ao fazer parse do argumento 1: %v", err)
+	}
+	if args1["path"] != "artigo1.md" || args1["content"] != "# Introdução às Linguagens de Computador" {
+		t.Errorf("argumentos 1 incorretos: %v", args1)
+	}
+
+	// 2. Validar terminal_command
+	call2 := calls[1]
+	if call2.Function.Name != "terminal_command" {
+		t.Errorf("esperava terminal_command, obteve %s", call2.Function.Name)
+	}
+	var args2 map[string]interface{}
+	if err := json.Unmarshal([]byte(call2.Function.Arguments), &args2); err != nil {
+		t.Fatalf("erro ao fazer parse do argumento 2: %v", err)
+	}
+	if args2["command"] != "git status" {
+		t.Errorf("argumentos 2 incorretos: %v", args2)
+	}
+}

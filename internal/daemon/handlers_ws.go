@@ -141,6 +141,11 @@ func (s *APIServer) handleWS(w http.ResponseWriter, r *http.Request) {
 				}
 
 				if alreadyActive {
+					s.mu.Lock()
+					if h, exists := s.activeHandlers[msg.Workspace]; exists {
+						h.autoApprove = msg.AutoApprove
+					}
+					s.mu.Unlock()
 					err := s.manager.InjectUserMessage(msg.Workspace, msg.Task)
 					if err != nil {
 						errPayload, _ := json.Marshal(map[string]string{

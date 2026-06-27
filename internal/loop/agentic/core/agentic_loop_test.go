@@ -430,13 +430,15 @@ func TestDetectRepetitiveLoop(t *testing.T) {
 		{Role: "assistant", Content: "same thing"},
 		{Role: "user", Content: "continue"},
 		{Role: "assistant", Content: "same thing"},
+		{Role: "user", Content: "continue again"},
+		{Role: "assistant", Content: "same thing"},
 	}
 
 	if !DetectRepetitiveLoop(msgs) {
 		t.Fatal("esperado detecção de loop repetitivo direto")
 	}
 
-	msgs[5].Content = "different thing"
+	msgs[7].Content = "different thing"
 	if DetectRepetitiveLoop(msgs) {
 		t.Fatal("não deveria detectar loop com mensagens diferentes")
 	}

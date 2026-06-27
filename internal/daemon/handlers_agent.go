@@ -1665,7 +1665,13 @@ func (s *APIServer) handleAgentTelemetryWS(w http.ResponseWriter, r *http.Reques
 	// Envia snapshot inicial
 	telemetry, err := s.manager.GetAgentTelemetry(workspace)
 	if err == nil {
-		_ = conn.WriteJSON(telemetry)
+		if wErr := conn.WriteJSON(telemetry); wErr != nil {
+			log.Printf("[APIServer Telemetry WS] Erro WriteJSON inicial: %v", wErr)
+		} else {
+			log.Printf("[APIServer Telemetry WS] Snapshot inicial enviado com sucesso para %s", workspace)
+		}
+	} else {
+		log.Printf("[APIServer Telemetry WS] Erro no snapshot inicial (GetAgentTelemetry): %v", err)
 	}
 
 	eventCh := make(chan IPCResponse, 100)
@@ -1693,6 +1699,7 @@ func (s *APIServer) handleAgentTelemetryWS(w http.ResponseWriter, r *http.Reques
 	sendUpdate := func() {
 		telemetry, err := s.manager.GetAgentTelemetry(workspace)
 		if err != nil {
+			log.Printf("[APIServer Telemetry WS] Erro GetAgentTelemetry em sendUpdate: %v", err)
 			return
 		}
 		data, err := json.Marshal(telemetry)
