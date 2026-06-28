@@ -4,26 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"regexp"
-	"strings"
-	"time"
-
 	"github.com/crom/crom-agente/internal/agents"
 	"github.com/crom/crom-agente/internal/config"
+	"github.com/crom/crom-agente/internal/i18n"
 	"github.com/crom/crom-agente/internal/llm"
 	"github.com/crom/crom-agente/internal/loop"
-	"github.com/crom/crom-agente/internal/security"
-	"github.com/crom/crom-agente/internal/state"
-	"github.com/crom/crom-agente/internal/tools"
-
-	"github.com/crom/crom-agente/internal/i18n"
 	"github.com/crom/crom-agente/internal/loop/agentic/prompting"
 	"github.com/crom/crom-agente/internal/loop/agentic/tooling"
 	"github.com/crom/crom-agente/internal/loop/agentic/workspace"
+	"github.com/crom/crom-agente/internal/security"
+	"github.com/crom/crom-agente/internal/state"
+	"github.com/crom/crom-agente/internal/tools"
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 )
 
 // Execute roda o loop ReAct completo para a tarefa dada
@@ -640,88 +636,12 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			})
 		}
 
-		compactedMsgs := prompting.CompactMessages(ctx, al.provider, al.config.MaxMessageHistory, al.handler, runMessages)
-		finalMsgs := FormatMessagesForModel(compactedMsgs, al.provider)
+		al.compactHistory(ctx, &runMessages)
+		finalMsgs := FormatMessagesForModel(runMessages, al.provider)
 
-		var resp *llm.Response
-		var err error
-
-		// Sistema Resiliente de Fallback em 3 Rotas (Task 1 / Projeto 0853)
-		for route := 1; route <= 3; route++ {
-			currentOpts := opts // cópia rasa
-
-			if route == 2 {
-				// Rota 2: Fallback Text-Only sem ferramentas nativas da API
-				currentOpts.Tools = nil
-				currentOpts.ToolChoice = ""
-				if !al.textOnlyMode {
-					al.textOnlyMode = true
-					al.handler.OnMessage("system", "[ROTEAMENTO RESILIENTE] Ativando Rota 2 (Modo Text-Only sem ferramentas nativas da API)...")
-				}
-			} else if route == 3 {
-				// Rota 3: Reestruturação de Prompt e simplificação (sem streaming)
-				currentOpts.Tools = nil
-				currentOpts.ToolChoice = ""
-				temp := 0.1
-				currentOpts.Temperature = &temp
-				al.textOnlyMode = true
-				al.handler.OnMessage("system", "[ROTEAMENTO RESILIENTE] Ativando Rota 3 (Reestruturação emergencial de prompt)...")
-
-				recoveryMsg := llm.Message{
-					Role:    "system",
-					Content: "[SYSTEM RECOVERY] A API encontrou dificuldades para processar a estrutura anterior. Responda de forma direta e concisa em texto puro executando a próxima ação necessária.",
-				}
-				finalMsgs = append(finalMsgs, recoveryMsg)
-			}
-
-			if route == 1 || route == 2 { // Tentamos streaming nas rotas 1 e 2
-				chunkChan := make(chan string, 100)
-				go func() {
-					for chunk := range chunkChan {
-						al.handler.OnStreamChunk(chunk)
-					}
-				}()
-				resp, err = al.provider.StreamMessages(ctx, finalMsgs, currentOpts, chunkChan)
-			} else {
-				// Na rota 3 tentamos sem streaming para máxima estabilidade
-				resp, err = al.provider.SendMessages(ctx, finalMsgs, currentOpts)
-			}
-
-			if err == nil {
-				break // Sucesso! Saímos do loop de rotas
-			}
-
-			errMsg := err.Error()
-			log.Printf("[AgenticLoop] Falha na Rota %d (Iteração %d): %s", route, i+1, errMsg)
-
-			// Se for a última rota (3), geramos o erro fatal
-			if route == 3 {
-				al.handler.OnMessage("system", i18n.Get("errors.llm_error", i+1)+": "+errMsg)
-
-				errCode := loop.ErrToolExecution
-				if strings.Contains(errMsg, "429") || strings.Contains(errMsg, "rate") || strings.Contains(errMsg, "Rate") {
-					errCode = loop.ErrLLMRateLimit
-				} else if strings.Contains(errMsg, "401") || strings.Contains(errMsg, "auth") || strings.Contains(errMsg, "Unauthorized") {
-					errCode = loop.ErrLLMAuth
-				}
-
-				al.handler.OnEvent(loop.AgentEvent{
-					Timestamp: time.Now(),
-					Event:     "error",
-					Iteration: i + 1,
-					Data: map[string]interface{}{
-						"error": loop.AgentError{
-							Code:    errCode,
-							Message: errMsg,
-							Details: map[string]interface{}{"provider": al.provider.Name()},
-						},
-					},
-				})
-				return fmt.Errorf("falha na chamada ao LLM após 3 rotas de fallback: %w", err)
-			}
-
-			// Se falhou na rota 1 ou 2, aguardamos 1 segundo antes de tentar a próxima rota
-			time.Sleep(1 * time.Second)
+		resp, err := al.ExecuteResilientLLMCall(ctx, finalMsgs, opts, i)
+		if err != nil {
+			return err
 		}
 
 		if resp != nil && resp.ToolUseDisabled {
@@ -751,55 +671,12 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		iterLog.PromptTokens = resp.Usage.PromptTokens
 		iterLog.CompletionTokens = resp.Usage.CompletionTokens
 		iterLog.TotalTokens = resp.Usage.TotalTokens
-		iterLog.MessagesCount = len(compactedMsgs)
-		iterLog.Messages = make([]llm.Message, len(compactedMsgs))
-		copy(iterLog.Messages, compactedMsgs)
+		iterLog.MessagesCount = len(runMessages)
+		iterLog.Messages = make([]llm.Message, len(runMessages))
+		copy(iterLog.Messages, runMessages)
 
-		// Interceptar chamadas de ferramentas alucinadas no formato Python /tool_code
-		if pyToolCalls := loop.TryParseToolCode(msg.Content); len(pyToolCalls) > 0 {
-			msg.ToolCalls = append(msg.ToolCalls, pyToolCalls...)
-			if al.stateManager != nil {
-				_ = al.stateManager.RecordToolCallsFromTextParse(len(pyToolCalls))
-			}
-		}
-
-		// Interceptar chamadas diretas Python estilo write_file(path="...", content="...")
-		if len(msg.ToolCalls) == 0 && (al.textOnlyMode || consecutiveNoToolCallTurns >= 2) {
-			validToolsMap := make(map[string]bool)
-			for name := range al.tools {
-				validToolsMap[name] = true
-			}
-			if pyDirectCalls := loop.TryParsePythonDirectToolCalls(msg.Content, validToolsMap); len(pyDirectCalls) > 0 {
-				msg.ToolCalls = append(msg.ToolCalls, pyDirectCalls...)
-				if al.stateManager != nil {
-					_ = al.stateManager.RecordToolCallsFromTextParse(len(pyDirectCalls))
-				}
-			}
-		}
-
-		// Interceptar chamadas estruturadas JSON estilo OpenAI/Tauri
-		if len(msg.ToolCalls) == 0 && (al.textOnlyMode || consecutiveNoToolCallTurns >= 2) {
-			validToolsMap := make(map[string]bool)
-			for name := range al.tools {
-				validToolsMap[name] = true
-			}
-			if jsonStructuredCalls := loop.TryParseJSONStructuredToolCalls(msg.Content, validToolsMap); len(jsonStructuredCalls) > 0 {
-				msg.ToolCalls = append(msg.ToolCalls, jsonStructuredCalls...)
-				if al.stateManager != nil {
-					_ = al.stateManager.RecordToolCallsFromTextParse(len(jsonStructuredCalls))
-				}
-			}
-		}
-
-		// Interceptar chamadas de ferramentas em formato de bloco de código markdown (modo text-only ou fallback se não houver tool calls nativas)
-		if al.textOnlyMode || (len(msg.ToolCalls) == 0 && consecutiveNoToolCallTurns >= 2) {
-			if markdownToolCalls := loop.TryParseMarkdownToolCalls(msg.Content); len(markdownToolCalls) > 0 {
-				msg.ToolCalls = append(msg.ToolCalls, markdownToolCalls...)
-				if al.stateManager != nil {
-					_ = al.stateManager.RecordToolCallsFromTextParse(len(markdownToolCalls))
-				}
-			}
-		}
+		// Interceptar e fazer parsing de chamadas de ferramentas de formatos alternativos
+		al.parseAndInterceptToolCalls(&msg, consecutiveNoToolCallTurns)
 
 		// Interceptar recusas do LLM (Task 9.7)
 		lowerContent := strings.ToLower(msg.Content)
@@ -1066,114 +943,18 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				}
 			}
 
-			// Verificação física de arquivos planejados
-			expectedFiles := loop.ParseExpectedFiles(messages)
-			if len(expectedFiles) > 0 && workspaceDir != "" {
-				missingFiles := loop.VerifyExpectedFiles(expectedFiles, workspaceDir)
-				if len(missingFiles) > 0 {
-					warning := fmt.Sprintf("⚠️ [PHYSICAL_FILE_MISSING] Os seguintes arquivos planejados não existem no disco:\n%s\nCrie os arquivos ausentes antes de encerrar.", strings.Join(missingFiles, "\n"))
-					al.handler.OnMessage("system", warning)
-					messages = append(messages, llm.Message{Role: "system", Content: warning})
-					saveMsgs(messages)
-					lastIterFailed = false
-					lastToolWasValidation = false
-					if al.stateManager != nil {
-						_ = al.stateManager.SaveIterationLog(i+1, iterLog)
-					}
-					continue
-				}
-			}
-
-			// Autoverificação e execução de testes unitários locais (Fase 1)
-			if workspaceDir != "" && al.stateManager != nil {
-				st := al.stateManager.GetState()
-				if st.FilesCreated > 0 || st.FilesValidated > 0 {
-					if ok, testErrMsg := runAutoTests(workspaceDir); !ok {
-						warning := fmt.Sprintf("⚠️ [TEST_FAILURE]: A execução de testes unitários ou doctests locais detectou falhas no workspace:\n%s\nPor favor, corrija os erros identificados antes de encerrar.", testErrMsg)
-						al.handler.OnMessage("system", "Testes unitários ou doctests locais falharam. Solicitando correção.")
-						messages = append(messages, llm.Message{Role: "system", Content: warning})
-						saveMsgs(messages)
-						lastIterFailed = true
-						lastToolWasValidation = true
-
-						// Linter de Coerência de Plano (Task 54)
-						plan := al.stateManager.GetPlan()
-						hasCorrectionTask := false
-						for _, item := range plan {
-							if strings.HasPrefix(item.Title, "Corrigir falhas") || strings.Contains(strings.ToLower(item.Title), "corrigir") {
-								hasCorrectionTask = true
-								break
-							}
-						}
-						if !hasCorrectionTask {
-							newPlan := append(plan, state.TaskItem{
-								Title:  "Corrigir falhas detectadas na suíte de testes",
-								Status: "in_progress",
-							})
-							_ = al.stateManager.SetPlan(newPlan)
-						}
-
-						if al.stateManager != nil {
-							_ = al.stateManager.SaveIterationLog(i+1, iterLog)
-						}
-						continue
-					}
-				}
+			// Verificação física de arquivos e testes unitários (Fase 1 e Linter)
+			if al.verifyWorkspaceState(&messages, workspaceDir, i, iterLog, &lastIterFailed, &lastToolWasValidation) {
+				continue
 			}
 
 			// Chamar o finalizer para gerar a resposta consolidada explicada usando o LLM
-			var finalResponse string
-			if finalizerInst, ok := agents.GetAgentInst("finalizer", agents.Config{
-				WorkspacePath: workspaceDir,
-				LLMProvider:   al.provider,
-			}); ok {
-				// Coletar as mensagens relevantes desde a última mensagem do usuário
-				var relevantMsgs []llm.Message
-				lastUserIdx := -1
-				for idx := len(messages) - 1; idx >= 0; idx-- {
-					if messages[idx].Role == "user" {
-						lastUserIdx = idx
-						break
-					}
-				}
-				if lastUserIdx != -1 {
-					relevantMsgs = messages[lastUserIdx:]
-				} else {
-					relevantMsgs = messages
-				}
-
-				// Formatar histórico em texto para o Finalizer processar
-				var historyLines []string
-				for _, m := range relevantMsgs {
-					if m.Role == "user" {
-						historyLines = append(historyLines, fmt.Sprintf("Usuário solicitou: %s", m.Content))
-					} else if m.Role == "assistant" && m.Content != "" {
-						historyLines = append(historyLines, fmt.Sprintf("Agente respondeu: %s", m.Content))
-					} else if len(m.ToolCalls) > 0 {
-						for _, tc := range m.ToolCalls {
-							historyLines = append(historyLines, fmt.Sprintf("Agente executou a ferramenta: %s com argumentos %s", tc.Function.Name, tc.Function.Arguments))
-						}
-					} else if m.Role == "tool" {
-						historyLines = append(historyLines, fmt.Sprintf("Resultado da ferramenta (%s): %s", m.Name, m.Content))
-					}
-				}
-				historyText := strings.Join(historyLines, "\n")
-
-				res, err := finalizerInst.Execute(ctx, fmt.Sprintf("Histórico recente da execução da tarefa:\n\n%s", historyText), "")
-				if err == nil && res.Output != "" {
-					finalResponse = res.Output
-				}
-			}
-
-			if finalResponse != "" {
-				// Adiciona a resposta finalizada ao histórico de mensagens
+			if finalResponse := al.executeFinalizer(ctx, &messages, workspaceDir); finalResponse != "" {
 				messages = append(messages, llm.Message{
 					Role:    "assistant",
 					Content: finalResponse,
 				})
 				saveMsgs(messages)
-
-				// Dispara mensagem final para o frontend exibir
 				al.handler.OnMessage("assistant", finalResponse)
 			}
 
@@ -1205,36 +986,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		iterationHasFailure = false
 		for idx := range msg.ToolCalls {
 			tc := &msg.ToolCalls[idx]
-			toolID := tc.Function.Name
-
-			// Fallback para modelos que confundem e chamam "screenshot" diretamente em vez de "browser_action" ou "computer_control"
-			if toolID == "screenshot" {
-				if _, hasBrowser := al.tools["browser_action"]; hasBrowser {
-					toolID = "browser_action"
-					tc.Function.Name = "browser_action"
-					var rawArgs map[string]interface{}
-					if err := json.Unmarshal([]byte(tc.Function.Arguments), &rawArgs); err == nil {
-						if _, hasAction := rawArgs["action"]; !hasAction {
-							rawArgs["action"] = "screenshot"
-							if newArgs, errMar := json.Marshal(rawArgs); errMar == nil {
-								tc.Function.Arguments = string(newArgs)
-							}
-						}
-					}
-				} else if _, hasComputer := al.tools["computer_control"]; hasComputer {
-					toolID = "computer_control"
-					tc.Function.Name = "computer_control"
-					var rawArgs map[string]interface{}
-					if err := json.Unmarshal([]byte(tc.Function.Arguments), &rawArgs); err == nil {
-						if _, hasAction := rawArgs["action"]; !hasAction {
-							rawArgs["action"] = "screenshot"
-							if newArgs, errMar := json.Marshal(rawArgs); errMar == nil {
-								tc.Function.Arguments = string(newArgs)
-							}
-						}
-					}
-				}
-			}
+			toolID := al.normalizeToolCallName(tc)
 
 			tool, exists := al.tools[toolID]
 			if !exists {
@@ -1390,25 +1142,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			}
 
 			// Interceptar se for um subagente especialista adaptado
-			var isAgent bool
-			var priorSummary string
-			var rawArgs = tc.Function.Arguments
-			if _, ok := tool.(*tools.AgentToolAdapter); ok {
-				isAgent = true
-				if al.stateManager != nil {
-					priorSummary = al.stateManager.GetSummaryForAgent(toolID)
-				}
-				// Injeta o prior_summary se não fornecido pelo LLM
-				var argsMap map[string]interface{}
-				if err := json.Unmarshal([]byte(tc.Function.Arguments), &argsMap); err == nil {
-					if _, ok := argsMap["prior_summary"]; !ok || argsMap["prior_summary"] == "" {
-						argsMap["prior_summary"] = priorSummary
-						if newArgs, errMarshal := json.Marshal(argsMap); errMarshal == nil {
-							rawArgs = string(newArgs)
-						}
-					}
-				}
-			}
+			isAgent, rawArgs := al.prepareSubagentArgs(tc, tool, tc.Function.Arguments)
 
 			// Backup setup for write_file/edit_file (Item 13)
 			var backupPath string
@@ -1619,19 +1353,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 					}
 				}
 
-				if isAgent {
-					var agentRes struct {
-						Output         string `json:"output"`
-						ContextSummary string `json:"context_summary"`
-					}
-					if err := json.Unmarshal([]byte(result.Data), &agentRes); err == nil {
-						if al.stateManager != nil {
-							_ = al.stateManager.UpdateSummaryForAgent(toolID, agentRes.ContextSummary)
-						}
-						// Oculta a estrutura interna de ContextSummary do prompt do Supervisor
-						result.Data = agentRes.Output
-					}
-				}
+				result.Data = al.processSubagentResult(toolID, isAgent, result.Data)
 
 				redactedArgs := security.Redact(rawArgs)
 				redactedData := result.Data
@@ -1870,658 +1592,143 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 	}
 }
 
-// truncateStr trunca uma string
-func truncateStr(s string, max int) string {
-	if len(s) > max {
-		return s[:max] + "..."
-	}
-	return s
-}
+// ExecuteResilientLLMCall executa a chamada ao LLM utilizando o Sistema Resiliente de Fallback em 3 Rotas.
+// Rota 1: Chamada padrão com Tool Calling nativo e Streaming.
+// Rota 2: Fallback Text-Only sem ferramentas nativas da API (útil para modelos que falham no schema).
+// Rota 3: Reestruturação emergencial de prompt com simplificação e sem streaming.
+func (al *AgenticLoop) ExecuteResilientLLMCall(ctx context.Context, finalMsgs []llm.Message, opts llm.RequestOptions, iteration int) (*llm.Response, error) {
+	var resp *llm.Response
+	var err error
 
-// FormatMessagesForModel formata as mensagens para o LLM. Se o provedor não suportar
-// System Prompt, todas as mensagens de role "system" serão mescladas no início da primeira
-// mensagem de role "user".
-func FormatMessagesForModel(messages []llm.Message, provider llm.Provider) []llm.Message {
-	if provider.SupportsSystemPrompt() {
-		return messages
-	}
+	for route := 1; route <= 3; route++ {
+		currentOpts := opts // cópia rasa
 
-	var systemContents []string
-	var otherMessages []llm.Message
-
-	for _, msg := range messages {
-		if msg.Role == "system" {
-			if msg.Content != "" {
-				systemContents = append(systemContents, msg.Content)
+		if route == 2 {
+			// Rota 2: Fallback Text-Only sem ferramentas nativas da API
+			currentOpts.Tools = nil
+			currentOpts.ToolChoice = ""
+			if !al.textOnlyMode {
+				al.textOnlyMode = true
+				al.handler.OnMessage("system", "[ROTEAMENTO RESILIENTE] Ativando Rota 2 (Modo Text-Only sem ferramentas nativas da API)...")
 			}
+		} else if route == 3 {
+			// Rota 3: Reestruturação de Prompt e simplificação (sem streaming)
+			currentOpts.Tools = nil
+			currentOpts.ToolChoice = ""
+			temp := 0.1
+			currentOpts.Temperature = &temp
+			al.textOnlyMode = true
+			al.handler.OnMessage("system", "[ROTEAMENTO RESILIENTE] Ativando Rota 3 (Reestruturação emergencial de prompt)...")
+
+			recoveryMsg := llm.Message{
+				Role:    "system",
+				Content: "[SYSTEM RECOVERY] A API encontrou dificuldades para processar a estrutura anterior. Responda de forma direta e concisa em texto puro executando a próxima ação necessária.",
+			}
+			finalMsgs = append(finalMsgs, recoveryMsg)
+		}
+
+		if route == 1 || route == 2 { // Tentamos streaming nas rotas 1 e 2
+			chunkChan := make(chan string, 100)
+			go func() {
+				for chunk := range chunkChan {
+					al.handler.OnStreamChunk(chunk)
+				}
+			}()
+			resp, err = al.provider.StreamMessages(ctx, finalMsgs, currentOpts, chunkChan)
 		} else {
-			otherMessages = append(otherMessages, msg)
+			// Na rota 3 tentamos sem streaming para máxima estabilidade
+			resp, err = al.provider.SendMessages(ctx, finalMsgs, currentOpts)
 		}
-	}
 
-	if len(systemContents) > 0 && len(otherMessages) > 0 {
-		// Encontra a primeira mensagem user para mesclar
-		for i, msg := range otherMessages {
-			if msg.Role == "user" {
-				// Mescla os conteúdos
-				instructions := strings.Join(systemContents, "\n\n")
-				merged := fmt.Sprintf("=== INSTRUÇÕES DO SISTEMA ===\n%s\n=============================\n\n%s", instructions, msg.Content)
-				otherMessages[i].Content = merged
-				break
+		if err == nil {
+			break // Sucesso! Saímos do loop de rotas
+		}
+
+		errMsg := err.Error()
+		log.Printf("[AgenticLoop] Falha na Rota %d (Iteração %d): %s", route, iteration+1, errMsg)
+
+		// Se for a última rota (3), geramos o erro fatal
+		if route == 3 {
+			al.handler.OnMessage("system", i18n.Get("errors.llm_error", iteration+1)+": "+errMsg)
+
+			errCode := loop.ErrToolExecution
+			if strings.Contains(errMsg, "429") || strings.Contains(errMsg, "rate") || strings.Contains(errMsg, "Rate") {
+				errCode = loop.ErrLLMRateLimit
+			} else if strings.Contains(errMsg, "401") || strings.Contains(errMsg, "auth") || strings.Contains(errMsg, "Unauthorized") {
+				errCode = loop.ErrLLMAuth
 			}
+
+			al.handler.OnEvent(loop.AgentEvent{
+				Timestamp: time.Now(),
+				Event:     "error",
+				Iteration: iteration + 1,
+				Data: map[string]interface{}{
+					"error": loop.AgentError{
+						Code:    errCode,
+						Message: errMsg,
+						Details: map[string]interface{}{"provider": al.provider.Name()},
+					},
+				},
+			})
+			return nil, fmt.Errorf("falha na chamada ao LLM após 3 rotas de fallback: %w", err)
 		}
+
+		// Se falhou na rota 1 ou 2, aguardamos 1 segundo antes de tentar a próxima rota
+		time.Sleep(1 * time.Second)
 	}
 
-	return otherMessages
+	return resp, nil
 }
 
-func isValidationAction(toolID string, rawArgs string) bool {
-	if toolID == "terminal_command" {
-		var args struct {
-			Command string `json:"command"`
-		}
-		if err := json.Unmarshal([]byte(rawArgs), &args); err == nil {
-			cmd := strings.ToLower(args.Command)
-			for _, word := range []string{"test", "lint", "vet", "compile", "build"} {
-				if strings.Contains(cmd, word) {
-					return true
-				}
-			}
-		}
-	}
-	if strings.Contains(toolID, "test") || strings.Contains(toolID, "lint") || strings.Contains(toolID, "vet") {
-		return true
-	}
-	return false
+// compactHistory avalia e comprime o histórico se exceder limites (Task 90, 100)
+func (al *AgenticLoop) compactHistory(ctx context.Context, messages *[]llm.Message) {
+	compactedMsgs := prompting.CompactMessages(ctx, al.provider, al.config.MaxMessageHistory, al.handler, *messages)
+	*messages = compactedMsgs
 }
 
-func isSimpleIntent(intent string) bool {
-	clean := strings.TrimSpace(strings.ToLower(intent))
-	clean = strings.TrimRight(clean, ".!?")
-	greetings := []string{
-		"oi", "olá", "ola", "bom dia", "boa tarde", "boa noite", "hello", "hi", "test", "teste",
-		"hey", "opa", "tudo bem", "tudo bem?", "como vai?", "tchau", "bye", "flw",
-		"good morning", "good afternoon", "good evening",
-	}
-	for _, g := range greetings {
-		if clean == g {
-			return true
-		}
-	}
-	replies := []string{
-		"sim", "não", "nao", "yes", "no", "ok", "confirmar", "confirma", "cancelar", "cancela", "fechar", "rejeitar", "aprovar", "aprovado", "rejeitado", "obrigado", "obrigada", "valeu", "thanks",
-		"start", "stop", "iniciar", "parar", "status", "ready", "pronto", "go",
-	}
-	for _, r := range replies {
-		if clean == r {
-			return true
-		}
-	}
-	return false
-}
-
-// isConversationalResponse detecta se a resposta do modelo é uma conversa simples
-// (saudação, agradecimento, etc.) que não deveria ter gerado um plano de tarefas.
-// Isso evita que o loop de auto-continuação rode infinitamente quando o modelo
-// gera checkboxes desnecessárias para respostas conversacionais.
-func isConversationalResponse(response string, originalIntent string) bool {
-	// Se o intent original era simples, qualquer resposta sem tool calls é conversacional
-	if isSimpleIntent(originalIntent) {
-		return true
-	}
-
-	// Verificar se a resposta é curta e parece conversacional
-	clean := strings.TrimSpace(response)
-	// Remove checkboxes markdown para avaliar o conteúdo real
-	lines := strings.Split(clean, "\n")
-	var contentLines []string
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		// Pula linhas de checkbox
-		if strings.HasPrefix(trimmed, "- [ ]") || strings.HasPrefix(trimmed, "- [x]") || strings.HasPrefix(trimmed, "- [/]") {
-			continue
-		}
-		if trimmed != "" {
-			contentLines = append(contentLines, trimmed)
-		}
-	}
-
-	// Se o conteúdo real (sem checkboxes) é curto e tem padrões de conversa
-	realContent := strings.Join(contentLines, " ")
-	if len(contentLines) <= 3 && len(realContent) < 200 {
-		conversationalPatterns := []string{
-			"como posso ajudar", "como posso te ajudar", "em que posso ajudar",
-			"olá", "oi!", "tudo bem", "como vai", "prazer",
-			"hello", "hi!", "how can i help", "how may i help",
-			"obrigado", "de nada", "até logo",
-		}
-		lowerContent := strings.ToLower(realContent)
-		for _, p := range conversationalPatterns {
-			if strings.Contains(lowerContent, p) {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
-func (al *AgenticLoop) generateSimpleResponse(ctx context.Context, intent string) (string, error) {
-	clean := strings.TrimSpace(strings.ToLower(intent))
-
-	// 10.3. Verificar cache local com TTL
-	al.fastPathCacheMu.Lock()
-	entry, found := al.fastPathCache[clean]
-	al.fastPathCacheMu.Unlock()
-
-	if found && time.Now().Before(entry.expiresAt) {
-		return entry.response, nil
-	}
-
-	// 10.4. Definir timeout para resposta rápida (15s para acomodar latência de gateways remotos + retries)
-	fastCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-
-	prompt := []llm.Message{
-		{
-			Role:    "system",
-			Content: "Você é um Agente, um assistente de IA. Responda à saudação, agradecimento ou resposta curta do usuário de forma extremamente amigável, natural e muito curta (máximo 1 frase).",
-		},
-		{
-			Role:    "user",
-			Content: intent,
-		},
-	}
-	resp, err := al.provider.SendMessages(fastCtx, prompt, llm.RequestOptions{})
-	if err != nil {
-		return "", err
-	}
-	if al.stateManager != nil {
-		_ = al.stateManager.RecordTokens(resp.Usage.TotalTokens)
-	}
-	al.recordCostForResponse(resp)
-
-	resContent := resp.Message.Content
-
-	// Salvar no cache com TTL de 5 minutos
-	al.fastPathCacheMu.Lock()
-	al.fastPathCache[clean] = fastPathCacheEntry{
-		response:  resContent,
-		expiresAt: time.Now().Add(5 * time.Minute),
-	}
-	al.fastPathCacheMu.Unlock()
-
-	return resContent, nil
-}
-
-func detectHallucinatedToolCalls(content string, toolsMap map[string]tools.Tool) []string {
-	if content == "" {
-		return nil
-	}
-
-	// Remover blocos de código para evitar falsos positivos em comentários legítimos
-	cleanedContent := stripCodeBlocks(content)
-
-	var found []string
-	seen := make(map[string]bool)
-
-	for name := range toolsMap {
-		if seen[name] {
-			continue
-		}
-
-		// Padrões diretos (legado)
-		directPatterns := []string{
-			name + "(",
-			name + " {",
-			name + ": {",
-			"tool_call: " + name,
-			"tool: " + name,
-			"call: " + name,
-		}
-		for _, pat := range directPatterns {
-			if strings.Contains(cleanedContent, pat) {
-				found = append(found, name)
-				seen[name] = true
-				break
-			}
-		}
-		if seen[name] {
-			continue
-		}
-
-		// Padrões narrativos (modelos 3B/8B frequentemente emitem esses formatos)
-		lowerContent := strings.ToLower(cleanedContent)
-		lowerName := strings.ToLower(name)
-		narrativePatterns := []string{
-			"[chamando " + lowerName + "]",
-			"[chamando ferramenta " + lowerName + "]",
-			"[calling " + lowerName + "]",
-			"[calling tool " + lowerName + "]",
-			"executar " + lowerName,
-			"execute " + lowerName,
-			"usar ferramenta " + lowerName,
-			"using tool " + lowerName,
-			"invocar " + lowerName,
-			"invoke " + lowerName,
-			"chamar " + lowerName,
-			"vou usar " + lowerName,
-			"vou chamar " + lowerName,
-			"i'll call " + lowerName,
-			"i will call " + lowerName,
-			"running " + lowerName,
-			"executando " + lowerName,
-		}
-		for _, pat := range narrativePatterns {
-			if strings.Contains(lowerContent, pat) {
-				found = append(found, name)
-				seen[name] = true
-				break
-			}
-		}
-		if seen[name] {
-			continue
-		}
-
-		// Padrão de JSON inline não-estruturado: {"tool": "name", ...} ou {"name": "tool_name", ...}
-		jsonPatterns := []string{
-			`"tool": "` + name + `"`,
-			`"name": "` + name + `"`,
-			`"function": "` + name + `"`,
-			`"tool_name": "` + name + `"`,
-			`"action": "` + name + `"`,
-		}
-		for _, pat := range jsonPatterns {
-			if strings.Contains(cleanedContent, pat) {
-				found = append(found, name)
-				seen[name] = true
-				break
-			}
-		}
-	}
-	return found
-}
-
-// stripCodeBlocks remove blocos de código markdown e /tool_code do conteúdo para que
-// menções a ferramentas dentro de código legítimo não sejam tratadas como alucinações.
-func stripCodeBlocks(content string) string {
-	lines := strings.Split(content, "\n")
-	var result []string
-	inBlock := false
-	inToolCode := false
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-
-		// Detectar blocos /tool_code
-		if trimmed == "/tool_code" {
-			inToolCode = !inToolCode
-			continue
-		}
-		if inToolCode {
-			continue
-		}
-
-		// Detectar blocos de código markdown
-		if strings.HasPrefix(trimmed, "```") {
-			inBlock = !inBlock
-			continue
-		}
-		if inBlock {
-			continue
-		}
-
-		result = append(result, line)
-	}
-	return strings.Join(result, "\n")
-}
-
-func taskRequiresFiles(intent string) bool {
-	lower := strings.ToLower(intent)
-	keywords := []string{
-		"crie", "salve", "escreva", "código", "arquivo", "create", "write", "save", "code", "file", "organize", "generat", "gerar",
-	}
-	for _, kw := range keywords {
-		if strings.Contains(lower, kw) {
-			return true
-		}
-	}
-	return false
-}
-
-func extractEntryPointFromPrompt(intent string) string {
-	// Padrão 1: entry_point: has_close_elements ou entry_point = 'has_close_elements' ou similar
-	re1 := regexp.MustCompile(`(?i)entry_point["'\s:=]+([\w_]+)`)
-	matches1 := re1.FindStringSubmatch(intent)
-	if len(matches1) > 1 {
-		return matches1[1]
-	}
-
-	// Padrão 2: "def target_func(" ou "def target_func ("
-	re2 := regexp.MustCompile(`def\s+([\w_]+)\s*\(`)
-	matches2 := re2.FindStringSubmatch(intent)
-	if len(matches2) > 1 {
-		name := matches2[1]
-		if name != "check" && name != "candidate" && name != "solve" {
-			return name
-		}
-	}
-	return ""
-}
-
-// extractTargetFromArgs extrai o alvo (path, command) dos argumentos JSON de uma chamada de ferramenta
-func extractTargetFromArgs(rawArgs string) string {
-	var args map[string]interface{}
-	if err := json.Unmarshal([]byte(rawArgs), &args); err != nil {
-		return "unknown"
-	}
-	// Tentar campos comuns
-	for _, key := range []string{"path", "file", "command", "query", "url"} {
-		if v, ok := args[key]; ok {
-			if s, ok := v.(string); ok && s != "" {
-				if len(s) > 100 {
-					return s[:100]
-				}
-				return s
-			}
-		}
-	}
-	return "unknown"
-}
-
-func runAutoTests(workspaceDir string) (bool, string) {
-	if workspaceDir == "" {
-		return true, ""
-	}
-
-	// 1. Detectar se é projeto Go (existe go.mod)
-	goMod := filepath.Join(workspaceDir, "go.mod")
-	if _, err := os.Stat(goMod); err == nil {
-		if _, err := exec.LookPath("go"); err == nil {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			cmd := exec.CommandContext(ctx, "go", "test", "./...")
-			cmd.Dir = workspaceDir
-			out, err := cmd.CombinedOutput()
-			if err != nil {
-				return false, fmt.Sprintf("Go test execution failed:\n%s", string(out))
-			}
-		}
-	}
-
-	// 2. Detectar se existem arquivos Python modificados/criados ou se é projeto Python
-	files, err := os.ReadDir(workspaceDir)
-	if err != nil {
-		return true, ""
-	}
-
-	var pyFiles []string
-	var testFiles []string
-	for _, f := range files {
-		if !f.IsDir() {
-			name := f.Name()
-			if strings.HasSuffix(name, ".py") {
-				if strings.Contains(name, "test") {
-					testFiles = append(testFiles, name)
-				} else {
-					pyFiles = append(pyFiles, name)
-				}
-			}
-		}
-	}
-
-	// Se tiver arquivos de teste explícitos (ex: test_solucao.py), rodar com python3
-	if len(testFiles) > 0 {
-		if _, err := exec.LookPath("python3"); err == nil {
-			for _, tf := range testFiles {
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer cancel()
-				cmd := exec.CommandContext(ctx, "python3", tf)
-				cmd.Dir = workspaceDir
-				out, err := cmd.CombinedOutput()
-				if err != nil {
-					return false, fmt.Sprintf("Python unit test '%s' failed:\n%s", tf, string(out))
-				}
-			}
-		}
-	}
-
-	// Se tiver arquivos Python regulares, rodar doctest neles se contiverem doctests
-	if _, err := exec.LookPath("python3"); err == nil {
-		for _, pf := range pyFiles {
-			// Ler arquivo para ver se contém ">>>" indicando doctests
-			content, errRead := os.ReadFile(filepath.Join(workspaceDir, pf))
-			if errRead == nil && strings.Contains(string(content), ">>>") {
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer cancel()
-				// python3 -m doctest pf
-				cmd := exec.CommandContext(ctx, "python3", "-m", "doctest", pf)
-				cmd.Dir = workspaceDir
-				out, err := cmd.CombinedOutput()
-				if err != nil || strings.Contains(string(out), "Failed") {
-					return false, fmt.Sprintf("Python doctest in '%s' failed:\n%s", pf, string(out))
-				}
-			}
-		}
-	}
-
-	return true, ""
-}
-
-func DetectCommandLoop(messages []llm.Message) bool {
-	type cmdTrace struct {
-		cmd string
-		out string
-	}
-	var traces []cmdTrace
-	for i := len(messages) - 1; i >= 0; i-- {
-		m := messages[i]
-		if m.Role == "assistant" {
-			for _, tc := range m.ToolCalls {
-				if tc.Function.Name == "terminal_command" || tc.Function.Name == "run_command" {
-					var out string
-					for j := i + 1; j < len(messages); j++ {
-						if messages[j].Role == "tool" && messages[j].ToolCallID == tc.ID {
-							out = messages[j].Content
-							break
-						}
-					}
-					traces = append(traces, cmdTrace{
-						cmd: tc.Function.Arguments,
-						out: out,
-					})
-				}
-			}
-		}
-	}
-	if len(traces) < 3 {
-		return false
-	}
-	if traces[0].cmd == traces[1].cmd && traces[0].out == traces[1].out &&
-		traces[1].cmd == traces[2].cmd && traces[1].out == traces[2].out {
-		return true
-	}
-	return false
-}
-
-func countConsecutiveEmptyResponses(messages []llm.Message) int {
-	count := 0
-	for i := len(messages) - 1; i >= 0; i-- {
-		m := messages[i]
-		if m.Role == "assistant" {
-			if m.Content == "" && len(m.ToolCalls) == 0 {
-				count++
-			} else {
-				break
-			}
-		}
-	}
-	return count
-}
-
-func runAutoFormatter(path string) {
-	ext := strings.ToLower(filepath.Ext(path))
-	switch ext {
-	case ".go":
-		if _, err := exec.LookPath("gofmt"); err == nil {
-			cmd := exec.Command("gofmt", "-w", path)
-			_ = cmd.Run()
-		}
-	case ".py":
-		if _, err := exec.LookPath("black"); err == nil {
-			cmd := exec.Command("black", path)
-			_ = cmd.Run()
-		} else if _, err := exec.LookPath("ruff"); err == nil {
-			cmd := exec.Command("ruff", "format", path)
-			_ = cmd.Run()
-		}
-	}
-}
-
-func isCompletionResponse(content string) bool {
-	lower := strings.ToLower(content)
-	return strings.Contains(lower, "tarefa concluída") ||
-		strings.Contains(lower, "task is complete") ||
-		strings.Contains(lower, "concluí a tarefa") ||
-		strings.Contains(lower, "i have completed the task") ||
-		strings.Contains(lower, "tudo pronto") ||
-		strings.Contains(lower, "finalizei as alterações")
-}
-
-func countConsecutiveReadOnlyTurns(messages []llm.Message) int {
-	count := 0
-	for i := len(messages) - 1; i >= 0; i-- {
-		m := messages[i]
-		if m.Role == "assistant" {
-			hasWriteOrExec := false
-			for _, tc := range m.ToolCalls {
-				name := tc.Function.Name
-				if name == "write_file" || name == "edit_file" || name == "terminal_command" || name == "run_command" {
-					hasWriteOrExec = true
-					break
-				}
-			}
-			if !hasWriteOrExec {
-				count++
-			} else {
-				break
-			}
-		}
-	}
-	return count
-}
-
-func truncateTraceback(s string) string {
-	lines := strings.Split(s, "\n")
-	if len(lines) <= 20 {
-		return s
-	}
-	lower := strings.ToLower(s)
-	isError := strings.Contains(lower, "traceback") || strings.Contains(lower, "error") || strings.Contains(lower, "fail") || strings.Contains(lower, "exception") || strings.Contains(lower, "undefined")
-	if isError {
-		firstFive := lines[:5]
-		lastTen := lines[len(lines)-10:]
-		return strings.Join(firstFive, "\n") + "\n\n... [TRUNCATED LOGS / TRACEBACKS FOR CONTEXT SIZE (Item 46)] ...\n\n" + strings.Join(lastTen, "\n")
-	}
-	return s
-}
-
-func (al *AgenticLoop) recordCostForResponse(resp *llm.Response) {
-	if al.stateManager == nil || resp == nil {
-		return
-	}
-	model := strings.ToLower(al.config.Model)
-	var promptPriceUSD, completionPriceUSD float64
-	switch {
-	case strings.Contains(model, "gpt-4o-mini"):
-		promptPriceUSD = 0.150
-		completionPriceUSD = 0.600
-	case strings.Contains(model, "gpt-4o"):
-		promptPriceUSD = 5.00
-		completionPriceUSD = 15.00
-	case strings.Contains(model, "claude-3-5-sonnet") || strings.Contains(model, "sonnet"):
-		promptPriceUSD = 3.00
-		completionPriceUSD = 15.00
-	case strings.Contains(model, "gemini-2.5-pro") || strings.Contains(model, "pro"):
-		promptPriceUSD = 1.25
-		completionPriceUSD = 5.00
-	case strings.Contains(model, "gemini-2.5-flash") || strings.Contains(model, "flash"):
-		promptPriceUSD = 0.075
-		completionPriceUSD = 0.30
-	default:
-		promptPriceUSD = 5.00
-		completionPriceUSD = 15.00
-	}
-	promptTokens := resp.Usage.PromptTokens
-	completionTokens := resp.Usage.CompletionTokens
-	if promptTokens == 0 && completionTokens == 0 {
-		promptTokens = int(float64(resp.Usage.TotalTokens) * 0.8)
-		completionTokens = resp.Usage.TotalTokens - promptTokens
-	}
-	costUSD := (float64(promptTokens)/1000000.0)*promptPriceUSD + (float64(completionTokens)/1000000.0)*completionPriceUSD
-	_ = al.stateManager.RecordCost(costUSD)
-}
-
-// GetLastIterationExecutionStatus analisa as últimas mensagens para ver o status da última execução de ferramenta
-func GetLastIterationExecutionStatus(messages []llm.Message) string {
-	// Acha o índice da última mensagem do assistant
-	lastAssistantIdx := -1
-	for j := len(messages) - 1; j >= 0; j-- {
-		if messages[j].Role == "assistant" {
-			lastAssistantIdx = j
-			break
-		}
-	}
-
-	if lastAssistantIdx == -1 {
+// executeFinalizer invoca o subagente finalizer para gerar um sumário executivo com base no histórico da sessão (Task 95)
+func (al *AgenticLoop) executeFinalizer(ctx context.Context, messages *[]llm.Message, workspaceDir string) string {
+	finalizerInst, ok := agents.GetAgentInst("finalizer", agents.Config{
+		WorkspacePath: workspaceDir,
+		LLMProvider:   al.provider,
+	})
+	if !ok {
 		return ""
 	}
 
-	// Coleta todas as mensagens depois do assistant
-	var executedTools []string
-	var failedTools []string
-	hasToolMsg := false
-	for j := lastAssistantIdx + 1; j < len(messages); j++ {
-		m := messages[j]
-		if m.Role == "tool" {
-			hasToolMsg = true
-			statusStr := "sucesso"
-			if strings.Contains(strings.ToLower(m.Content), "erro") || strings.Contains(strings.ToLower(m.Content), "falha") || strings.Contains(strings.ToLower(m.Content), "failed") || strings.Contains(strings.ToLower(m.Content), "error") {
-				statusStr = "falha"
-				failedTools = append(failedTools, fmt.Sprintf("%s (%s)", m.Name, statusStr))
-			} else {
-				executedTools = append(executedTools, fmt.Sprintf("%s (%s)", m.Name, statusStr))
+	var relevantMsgs []llm.Message
+	lastUserIdx := -1
+	for idx := len(*messages) - 1; idx >= 0; idx-- {
+		if (*messages)[idx].Role == "user" {
+			lastUserIdx = idx
+			break
+		}
+	}
+	if lastUserIdx != -1 {
+		relevantMsgs = (*messages)[lastUserIdx:]
+	} else {
+		relevantMsgs = *messages
+	}
+
+	var historyLines []string
+	for _, m := range relevantMsgs {
+		if m.Role == "user" {
+			historyLines = append(historyLines, fmt.Sprintf("Usuário solicitou: %s", m.Content))
+		} else if m.Role == "assistant" && m.Content != "" {
+			historyLines = append(historyLines, fmt.Sprintf("Agente respondeu: %s", m.Content))
+		} else if len(m.ToolCalls) > 0 {
+			for _, tc := range m.ToolCalls {
+				historyLines = append(historyLines, fmt.Sprintf("Agente executou a ferramenta: %s com argumentos %s", tc.Function.Name, tc.Function.Arguments))
 			}
+		} else if m.Role == "tool" {
+			historyLines = append(historyLines, fmt.Sprintf("Resultado da ferramenta (%s): %s", m.Name, m.Content))
 		}
 	}
+	historyText := strings.Join(historyLines, "\n")
 
-	// Se tem mensagens de tool executadas
-	if hasToolMsg {
-		var parts []string
-		if len(executedTools) > 0 {
-			parts = append(parts, fmt.Sprintf("executou com sucesso: %s", strings.Join(executedTools, ", ")))
-		}
-		if len(failedTools) > 0 {
-			parts = append(parts, fmt.Sprintf("falhou ao executar: %s", strings.Join(failedTools, ", ")))
-		}
-		return fmt.Sprintf("📋 [STATUS DA ÚLTIMA EXECUÇÃO DE FERRAMENTAS]: Na última iteração, você %s.", strings.Join(parts, " e "))
+	res, err := finalizerInst.Execute(ctx, fmt.Sprintf("Histórico recente da execução da tarefa:\n\n%s", historyText), "")
+	if err == nil && res.Output != "" {
+		return res.Output
 	}
-
-	// Se não tem mensagens de tool executadas, mas o assistente tinha ToolCalls na sua mensagem
-	astMsg := messages[lastAssistantIdx]
-	if len(astMsg.ToolCalls) > 0 {
-		var toolNames []string
-		for _, tc := range astMsg.ToolCalls {
-			toolNames = append(toolNames, tc.Function.Name)
-		}
-		return fmt.Sprintf("⚠️ [STATUS DA ÚLTIMA EXECUÇÃO DE FERRAMENTAS]: Você solicitou a execução de %s, mas NENHUMA ferramenta foi executada (talvez porque a chamada continha argumentos inválidos, ou foi recusada).", strings.Join(toolNames, ", "))
-	}
-
-	// Se não tinha ToolCalls, mas o texto contém padrões de tentativa de chamada de ferramenta
-	lowerContent := strings.ToLower(astMsg.Content)
-	if strings.Contains(lowerContent, "{") || strings.Contains(lowerContent, "write_file") || strings.Contains(lowerContent, "terminal_command") || strings.Contains(lowerContent, "edit_file") {
-		return "⚠️ [STATUS DA ÚLTIMA EXECUÇÃO DE FERRAMENTAS]: NENHUMA ferramenta foi executada na última iteração. Percebi que você escreveu código JSON, comandos ou chamadas de função no corpo do texto. Lembre-se de que responder com texto contendo JSON NÃO executa ferramentas no sistema do usuário. Você DEVE usar a chamada de ferramenta nativa (Tool Calling) fornecida pela API do modelo."
-	}
-
-	return "📋 [STATUS DA ÚLTIMA EXECUÇÃO DE FERRAMENTAS]: Nenhuma ferramenta foi solicitada ou executada na última iteração."
+	return ""
 }

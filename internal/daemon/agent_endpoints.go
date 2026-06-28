@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/crom/crom-agente/internal/config"
+	"github.com/crom/crom-agente/internal/orchestrator"
 	"io"
 	"log"
 	"mime/multipart"
@@ -14,14 +16,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strings"
 	"time"
-
-	"github.com/crom/crom-agente/internal/config"
-	"github.com/crom/crom-agente/internal/orchestrator"
-	"github.com/gorilla/websocket"
 )
 
 func (s *APIServer) handleNetwork(w http.ResponseWriter, r *http.Request) {
@@ -262,6 +259,53 @@ func (s *APIServer) handleStop(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"success":true}`))
+}
+
+func (s *APIServer) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if !s.authorize(w, r) {
+		return
+	}
+
+	agents := s.manager.ListRunningAgents()
+	type AgentInfo struct {
+		Workspace string `json:"workspace"`
+		Task      string `json:"task"`
+		Session   string `json:"session"`
+	}
+	activeAgents := []AgentInfo{}
+	for _, a := range agents {
+		activeAgents = append(activeAgents, AgentInfo{
+			Workspace: a.WorkspaceName,
+			Task:      a.Task,
+			Session:   "",
+		})
+	}
+
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
+	uptimeSeconds := int(time.Since(daemonStartTime).Seconds())
+
+	response := map[string]interface{}{
+		"uptime":        uptimeSeconds,
+		"go_version":    runtime.Version(),
+		"num_goroutine": runtime.NumGoroutine(),
+		"alloc_mb":      float64(m.Alloc) / 1024 / 1024,
+		"sys_mb":        float64(m.Sys) / 1024 / 1024,
+		"active_agents": activeAgents,
+		"os":            runtime.GOOS,
+		"arch":          runtime.GOARCH,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 func (s *APIServer) handleFiles(w http.ResponseWriter, r *http.Request) {
@@ -511,325 +555,6 @@ func (s *APIServer) handleReveal(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"success":true}`))
-}
-
-type ScheduledTask struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Cron      string `json:"cron"`
-	Workspace string `json:"workspace"`
-	Task      string `json:"task"`
-	Status    string `json:"status"`
-	CreatedAt string `json:"createdAt"`
-}
-
-func (s *APIServer) tasksPath() (string, error) {
-	gDir, err := config.GlobalDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(gDir, "scheduled_tasks.json"), nil
-}
-
-func (s *APIServer) loadTasks() ([]ScheduledTask, error) {
-	path, err := s.tasksPath()
-	if err != nil {
-		return nil, err
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return []ScheduledTask{}, nil
-		}
-		return nil, err
-	}
-	var list []ScheduledTask
-	if err := json.Unmarshal(data, &list); err != nil {
-		return nil, err
-	}
-	return list, nil
-}
-
-func (s *APIServer) saveTasks(list []ScheduledTask) error {
-	path, err := s.tasksPath()
-	if err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(list, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0644)
-}
-
-func (s *APIServer) triggerScheduledTask(t ScheduledTask) {
-	log.Printf("[CronScheduler] Triggered task: %s in workspace: %s", t.Name, t.Workspace)
-
-	s.mu.Lock()
-	handler := &daemonAPIEventHandler{
-		workspaceName: t.Workspace,
-		router:        s.router,
-		permRespChan:  make(chan permissionResult, 1),
-		autoApprove:   true,
-	}
-	handler.onFinished = func() {
-		s.mu.Lock()
-		delete(s.activeHandlers, t.Workspace)
-		s.mu.Unlock()
-	}
-	s.activeHandlers[t.Workspace] = handler
-	s.mu.Unlock()
-
-	err := s.manager.StartAgent(context.Background(), t.Workspace, "", t.Task, handler)
-	if err != nil {
-		log.Printf("[CronScheduler] Error starting agent for task %s: %v", t.Name, err)
-	}
-}
-
-func (s *APIServer) handleScheduleRoute(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		s.handleGetSchedule(w, r)
-	case http.MethodPost:
-		s.handlePostSchedule(w, r)
-	case http.MethodDelete:
-		s.handleDeleteSchedule(w, r)
-	default:
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		http.Error(w, "Metodo nao permitido", http.StatusMethodNotAllowed)
-	}
-}
-
-func (s *APIServer) handleGetSchedule(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	if !s.authorize(w, r) {
-		return
-	}
-
-	tasks, err := s.loadTasks()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(tasks)
-}
-
-func (s *APIServer) handlePostSchedule(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	if !s.authorize(w, r) {
-		return
-	}
-
-	var req struct {
-		Name      string `json:"name"`
-		Cron      string `json:"cron"`
-		Workspace string `json:"workspace"`
-		Task      string `json:"task"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if req.Name == "" || req.Cron == "" || req.Workspace == "" || req.Task == "" {
-		http.Error(w, "todos os campos sao obrigatorios", http.StatusBadRequest)
-		return
-	}
-
-	tasks, err := s.loadTasks()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	newTask := ScheduledTask{
-		ID:        fmt.Sprintf("task-%d", time.Now().UnixNano()),
-		Name:      req.Name,
-		Cron:      req.Cron,
-		Workspace: req.Workspace,
-		Task:      req.Task,
-		Status:    "Active",
-		CreatedAt: time.Now().Format("2006-01-02"),
-	}
-
-	err = s.cronScheduler.AddJob(newTask.ID, newTask.Cron, func() {
-		s.triggerScheduledTask(newTask)
-	})
-	if err != nil {
-		http.Error(w, fmt.Sprintf("cron invalido: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	tasks = append(tasks, newTask)
-	if err := s.saveTasks(tasks); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(newTask)
-}
-
-func (s *APIServer) handleDeleteSchedule(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	if !s.authorize(w, r) {
-		return
-	}
-
-	id := r.URL.Query().Get("id")
-	if id == "" {
-		http.Error(w, "id obrigatorio", http.StatusBadRequest)
-		return
-	}
-
-	tasks, err := s.loadTasks()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	found := false
-	var updated []ScheduledTask
-	for _, t := range tasks {
-		if t.ID == id {
-			found = true
-			s.cronScheduler.RemoveJob(id)
-			continue
-		}
-		updated = append(updated, t)
-	}
-
-	if !found {
-		http.Error(w, "tarefa nao encontrada", http.StatusNotFound)
-		return
-	}
-
-	if err := s.saveTasks(updated); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"success":true}`))
-}
-
-func (s *APIServer) handleRunSchedule(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	if !s.authorize(w, r) {
-		return
-	}
-
-	id := r.URL.Query().Get("id")
-	if id == "" {
-		http.Error(w, "id obrigatorio", http.StatusBadRequest)
-		return
-	}
-
-	tasks, err := s.loadTasks()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	var target *ScheduledTask
-	for _, t := range tasks {
-		if t.ID == id {
-			target = &t
-			break
-		}
-	}
-
-	if target == nil {
-		http.Error(w, "tarefa nao encontrada", http.StatusNotFound)
-		return
-	}
-
-	go s.triggerScheduledTask(*target)
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"success":true}`))
-}
-
-func (s *APIServer) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	if !s.authorize(w, r) {
-		return
-	}
-
-	agents := s.manager.ListRunningAgents()
-	type AgentInfo struct {
-		Workspace string `json:"workspace"`
-		Task      string `json:"task"`
-		Session   string `json:"session"`
-	}
-	activeAgents := []AgentInfo{}
-	for _, a := range agents {
-		activeAgents = append(activeAgents, AgentInfo{
-			Workspace: a.WorkspaceName,
-			Task:      a.Task,
-			Session:   "",
-		})
-	}
-
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-
-	uptimeSeconds := int(time.Since(daemonStartTime).Seconds())
-
-	response := map[string]interface{}{
-		"uptime":        uptimeSeconds,
-		"go_version":    runtime.Version(),
-		"num_goroutine": runtime.NumGoroutine(),
-		"alloc_mb":      float64(m.Alloc) / 1024 / 1024,
-		"sys_mb":        float64(m.Sys) / 1024 / 1024,
-		"active_agents": activeAgents,
-		"os":            runtime.GOOS,
-		"arch":          runtime.GOARCH,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(response)
 }
 
 func (s *APIServer) handleTranscribe(w http.ResponseWriter, r *http.Request) {
@@ -1405,217 +1130,100 @@ func (s *APIServer) handleDevicesScreens(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(resp)
 }
 
-func (s *APIServer) handleMCPStatus(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	if !s.authorize(w, r) {
-		return
-	}
-	if r.Method != http.MethodGet {
-		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if s.manager.MCPManager == nil {
-		w.Write([]byte("[]"))
-		return
-	}
-
-	data, err := s.manager.MCPManager.MCPStatusJSON()
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Erro ao gerar JSON de status MCP: %v", err), http.StatusInternalServerError)
-		return
-	}
-	w.Write(data)
+type ScheduledTask struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Cron      string `json:"cron"`
+	Workspace string `json:"workspace"`
+	Task      string `json:"task"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"createdAt"`
 }
 
-// handleBrowserProxy atua como um proxy HTTP para carregar páginas web dentro de um iframe,
-// limpando os cabeçalhos de segurança (X-Frame-Options, Content-Security-Policy) e injetando
-// a tag <base href="..."> para que todas as requisições relativas da página apontem de volta
-// ao domínio original.
-func (s *APIServer) handleBrowserProxy(w http.ResponseWriter, r *http.Request) {
-	// Permitir CORS
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
+func (s *APIServer) tasksPath() (string, error) {
+	gDir, err := config.GlobalDir()
+	if err != nil {
+		return "", err
 	}
+	return filepath.Join(gDir, "scheduled_tasks.json"), nil
+}
 
-	if !s.authorize(w, r) {
-		return
+func (s *APIServer) loadTasks() ([]ScheduledTask, error) {
+	path, err := s.tasksPath()
+	if err != nil {
+		return nil, err
 	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []ScheduledTask{}, nil
+		}
+		return nil, err
+	}
+	var list []ScheduledTask
+	if err := json.Unmarshal(data, &list); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
 
-	mode := r.URL.Query().Get("mode")
-	workspace := r.URL.Query().Get("workspace")
+func (s *APIServer) saveTasks(list []ScheduledTask) error {
+	path, err := s.tasksPath()
+	if err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(list, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
+}
 
-	if mode == "agent" && workspace != "" {
-		html, url, err := s.manager.GetBrowserPageContent(workspace)
-		if err != nil {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+func (s *APIServer) triggerScheduledTask(t ScheduledTask) {
+	log.Printf("[CronScheduler] Triggered task: %s in workspace: %s", t.Name, t.Workspace)
+
+	s.mu.Lock()
+	handler := &daemonAPIEventHandler{
+		workspaceName: t.Workspace,
+		router:        s.router,
+		permRespChan:  make(chan permissionResult, 1),
+		autoApprove:   true,
+	}
+	handler.onFinished = func() {
+		s.mu.Lock()
+		delete(s.activeHandlers, t.Workspace)
+		s.mu.Unlock()
+	}
+	s.activeHandlers[t.Workspace] = handler
+	s.mu.Unlock()
+
+	err := s.manager.StartAgent(context.Background(), t.Workspace, "", t.Task, handler)
+	if err != nil {
+		log.Printf("[CronScheduler] Error starting agent for task %s: %v", t.Name, err)
+	}
+}
+
+func (s *APIServer) handleScheduleRoute(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.handleGetSchedule(w, r)
+	case http.MethodPost:
+		s.handlePostSchedule(w, r)
+	case http.MethodDelete:
+		s.handleDeleteSchedule(w, r)
+	default:
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
+		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<style>
-body {
-  background-color: #0b0b0d;
-  color: #a1a1aa;
-  font-family: sans-serif;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 90vh;
-  margin: 0;
-  overflow: hidden;
-}
-.spinner {
-  border: 3px solid rgba(255,255,255,0.05);
-  border-radius: 50%;
-  border-top: 3px solid #10b981;
-  width: 28px;
-  height: 28px;
-  animation: spin 1s linear infinite;
-  margin-bottom: 16px;
-}
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-.msg {
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.025em;
-}
-</style>
-</head>
-<body>
-<div class="spinner"></div>
-<div class="msg">Aguardando o agente iniciar o navegador ou abrir uma página...</div>
-</body>
-</html>`))
 			return
 		}
-
-		baseTag := fmt.Sprintf("<base href=\"%s\">", url)
-		var newHTML string
-		htmlStr := html
-		headIdx := strings.Index(strings.ToLower(htmlStr), "<head>")
-		if headIdx != -1 {
-			insertPos := headIdx + len("<head>")
-			newHTML = htmlStr[:insertPos] + "\n" + baseTag + htmlStr[insertPos:]
-		} else {
-			htmlIdx := strings.Index(strings.ToLower(htmlStr), "<html>")
-			if htmlIdx != -1 {
-				insertPos := htmlIdx + len("<html>")
-				newHTML = htmlStr[:insertPos] + "\n" + baseTag + htmlStr[insertPos:]
-			} else {
-				newHTML = baseTag + "\n" + htmlStr
-			}
-		}
-
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(cleanHTMLIntegrity(newHTML)))
-		return
-	}
-
-	targetURL := r.URL.Query().Get("url")
-	if targetURL == "" {
-		http.Error(w, "Parâmetro 'url' ou 'workspace' ausente", http.StatusBadRequest)
-		return
-	}
-
-	// Tratar requisições sem protocolo (ex: www.google.com)
-	if !strings.HasPrefix(strings.ToLower(targetURL), "http://") && !strings.HasPrefix(strings.ToLower(targetURL), "https://") {
-		targetURL = "http://" + targetURL
-	}
-
-	// Criar a requisição de proxy
-	req, err := http.NewRequestWithContext(r.Context(), "GET", targetURL, nil)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Falha ao criar request: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	// Definir User-Agent padrão para evitar bloqueio por bot-detection
-	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Erro ao buscar a URL via proxy: %v", err), http.StatusBadGateway)
-		return
-	}
-	defer resp.Body.Close()
-
-	// Copiar os cabeçalhos de resposta, EXCLUINDO os cabeçalhos de segurança que impedem iframes
-	for key, values := range resp.Header {
-		lowerKey := strings.ToLower(key)
-		if lowerKey == "x-frame-options" || lowerKey == "content-security-policy" || lowerKey == "content-security-policy-report-only" {
-			continue // Ignora cabeçalhos que bloqueiam iframe
-		}
-		for _, v := range values {
-			w.Header().Add(key, v)
-		}
-	}
-
-	w.WriteHeader(resp.StatusCode)
-
-	contentType := resp.Header.Get("Content-Type")
-	if strings.Contains(strings.ToLower(contentType), "text/html") {
-		// Ler corpo HTML
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return
-		}
-		htmlStr := string(bodyBytes)
-
-		// Injetar tag <base href="..."> para que recursos e rotas relativas funcionem no domínio correto
-		baseTag := fmt.Sprintf("<base href=\"%s\">", targetURL)
-
-		var newHTML string
-		headIdx := strings.Index(strings.ToLower(htmlStr), "<head>")
-		if headIdx != -1 {
-			insertPos := headIdx + len("<head>")
-			newHTML = htmlStr[:insertPos] + "\n" + baseTag + htmlStr[insertPos:]
-		} else {
-			htmlIdx := strings.Index(strings.ToLower(htmlStr), "<html>")
-			if htmlIdx != -1 {
-				insertPos := htmlIdx + len("<html>")
-				newHTML = htmlStr[:insertPos] + "\n" + baseTag + htmlStr[insertPos:]
-			} else {
-				newHTML = baseTag + "\n" + htmlStr
-			}
-		}
-		w.Write([]byte(cleanHTMLIntegrity(newHTML)))
-	} else {
-		// Copiar dados binários ou outro tipo de resposta diretamente
-		_, _ = io.Copy(w, resp.Body)
+		http.Error(w, "Metodo nao permitido", http.StatusMethodNotAllowed)
 	}
 }
 
-var (
-	integrityRegex   = regexp.MustCompile(`(?i)\s+integrity\s*=\s*["'][^"']*["']`)
-	crossoriginRegex = regexp.MustCompile(`(?i)\s+crossorigin\s*=\s*["'][^"']*["']`)
-)
-
-func cleanHTMLIntegrity(html string) string {
-	html = integrityRegex.ReplaceAllString(html, "")
-	html = crossoriginRegex.ReplaceAllString(html, "")
-	return html
-}
-
-func (s *APIServer) handleAgentTelemetry(w http.ResponseWriter, r *http.Request) {
+func (s *APIServer) handleGetSchedule(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
@@ -1627,103 +1235,169 @@ func (s *APIServer) handleAgentTelemetry(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	workspace := r.URL.Query().Get("workspace")
-	if workspace == "" {
-		http.Error(w, "parametro 'workspace' obrigatorio", http.StatusBadRequest)
-		return
-	}
-	session := r.URL.Query().Get("session")
-
-	telemetry, err := s.manager.GetAgentTelemetry(workspace, session)
+	tasks, err := s.loadTasks()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(telemetry)
+	_ = json.NewEncoder(w).Encode(tasks)
 }
 
-func (s *APIServer) handleAgentTelemetryWS(w http.ResponseWriter, r *http.Request) {
+func (s *APIServer) handlePostSchedule(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	if !s.authorize(w, r) {
-		log.Printf("[APIServer Telemetry WS] Rejeitando conexao por falha na autorizacao")
 		return
 	}
 
-	workspace := r.URL.Query().Get("workspace")
-	if workspace == "" {
-		http.Error(w, "parametro 'workspace' obrigatorio", http.StatusBadRequest)
+	var req struct {
+		Name      string `json:"name"`
+		Cron      string `json:"cron"`
+		Workspace string `json:"workspace"`
+		Task      string `json:"task"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	session := r.URL.Query().Get("session")
 
-	conn, err := upgrader.Upgrade(w, r, nil)
+	if req.Name == "" || req.Cron == "" || req.Workspace == "" || req.Task == "" {
+		http.Error(w, "todos os campos sao obrigatorios", http.StatusBadRequest)
+		return
+	}
+
+	tasks, err := s.loadTasks()
 	if err != nil {
-		log.Printf("[APIServer Telemetry WS] Erro ao realizar upgrade: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer conn.Close()
 
-	// Envia snapshot inicial
-	telemetry, err := s.manager.GetAgentTelemetry(workspace, session)
-	if err == nil {
-		if wErr := conn.WriteJSON(telemetry); wErr != nil {
-			log.Printf("[APIServer Telemetry WS] Erro WriteJSON inicial: %v", wErr)
-		} else {
-			log.Printf("[APIServer Telemetry WS] Snapshot inicial enviado com sucesso para %s", workspace)
-		}
-	} else {
-		log.Printf("[APIServer Telemetry WS] Erro no snapshot inicial (GetAgentTelemetry): %v", err)
+	newTask := ScheduledTask{
+		ID:        fmt.Sprintf("task-%d", time.Now().UnixNano()),
+		Name:      req.Name,
+		Cron:      req.Cron,
+		Workspace: req.Workspace,
+		Task:      req.Task,
+		Status:    "Active",
+		CreatedAt: time.Now().Format("2006-01-02"),
 	}
 
-	eventCh := make(chan IPCResponse, 100)
-	s.router.Register(workspace, eventCh)
-	defer s.router.Unregister(workspace, eventCh)
+	err = s.cronScheduler.AddJob(newTask.ID, newTask.Cron, func() {
+		s.triggerScheduledTask(newTask)
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("cron invalido: %v", err), http.StatusBadRequest)
+		return
+	}
 
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
+	tasks = append(tasks, newTask)
+	if err := s.saveTasks(tasks); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
-	closeChan := make(chan struct{})
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(newTask)
+}
 
-	// Read loop (apenas para detectar desconexao ou mensagens do cliente)
-	go func() {
-		defer close(closeChan)
-		for {
-			_, _, err := conn.ReadMessage()
-			if err != nil {
-				return
-			}
+func (s *APIServer) handleDeleteSchedule(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if !s.authorize(w, r) {
+		return
+	}
+
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "id obrigatorio", http.StatusBadRequest)
+		return
+	}
+
+	tasks, err := s.loadTasks()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	found := false
+	var updated []ScheduledTask
+	for _, t := range tasks {
+		if t.ID == id {
+			found = true
+			s.cronScheduler.RemoveJob(id)
+			continue
 		}
-	}()
+		updated = append(updated, t)
+	}
 
-	var lastJSON string
+	if !found {
+		http.Error(w, "tarefa nao encontrada", http.StatusNotFound)
+		return
+	}
 
-	sendUpdate := func() {
-		telemetry, err := s.manager.GetAgentTelemetry(workspace, session)
-		if err != nil {
-			log.Printf("[APIServer Telemetry WS] Erro GetAgentTelemetry em sendUpdate: %v", err)
-			return
-		}
-		data, err := json.Marshal(telemetry)
-		if err != nil {
-			return
-		}
-		currentJSON := string(data)
-		if currentJSON != lastJSON {
-			lastJSON = currentJSON
-			_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			_ = conn.WriteMessage(websocket.TextMessage, data)
+	if err := s.saveTasks(updated); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"success":true}`))
+}
+
+func (s *APIServer) handleRunSchedule(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Session-Token")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if !s.authorize(w, r) {
+		return
+	}
+
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "id obrigatorio", http.StatusBadRequest)
+		return
+	}
+
+	tasks, err := s.loadTasks()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var target *ScheduledTask
+	for _, t := range tasks {
+		if t.ID == id {
+			target = &t
+			break
 		}
 	}
 
-	for {
-		select {
-		case <-eventCh:
-			sendUpdate()
-		case <-ticker.C:
-			sendUpdate()
-		case <-closeChan:
-			return
-		}
+	if target == nil {
+		http.Error(w, "tarefa nao encontrada", http.StatusNotFound)
+		return
 	}
+
+	go s.triggerScheduledTask(*target)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"success":true}`))
 }
