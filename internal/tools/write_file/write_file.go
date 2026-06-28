@@ -86,8 +86,8 @@ func (t *WriteFileTool) Execute(ctx context.Context, args json.RawMessage) (tool
 		return tools.Result{Success: false, Error: err.Error()}, nil
 	}
 
-	if err := os.MkdirAll(filepath.Dir(targetFile), 0755); err != nil {
-		return tools.Result{Success: false, Error: fmt.Sprintf("erro ao criar diretórios pai: %s", err.Error())}, nil
+	if err := tools.EnsureDir(filepath.Dir(targetFile)); err != nil {
+		return tools.Result{Success: false, Error: err.Error()}, nil
 	}
 
 	if err := os.WriteFile(targetFile, []byte(input.Content), 0644); err != nil {

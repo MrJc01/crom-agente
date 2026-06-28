@@ -94,8 +94,8 @@ func (t *RenameFileTool) Execute(ctx context.Context, args json.RawMessage) (too
 
 	// Certificar que a pasta de destino existe
 	destDir := filepath.Dir(destFile)
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return tools.Result{Success: false, Error: fmt.Sprintf("erro ao criar subdiretórios de destino: %s", err.Error())}, nil
+	if err := tools.EnsureDir(destDir); err != nil {
+		return tools.Result{Success: false, Error: err.Error()}, nil
 	}
 
 	// Executar o rename

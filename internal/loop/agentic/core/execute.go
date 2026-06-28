@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -57,6 +58,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 	if al.stateManager != nil {
 		messages = al.stateManager.GetMessages()
 	}
+	initialMessagesLen := len(messages)
 
 	if isSimpleIntent(intent) && len(messages) == 0 {
 		resp, err := al.generateSimpleResponse(ctx, intent)
@@ -201,6 +203,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 	}
 
 	consecutiveNoToolCallTurns := 0
+	pendingWarningCount := 0
 	consecutiveReadOnlyTurns := 0
 	circuitBreakerSoftTriggered := false
 	consecutiveFailures := 0
@@ -226,13 +229,29 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		}
 
 		// Controle dinâmico de MaxIterations baseado no custo em dólares (Task 1.13)
-		if al.stateManager != nil {
+		if al.config != nil && al.config.EnableCostLimit && al.stateManager != nil {
 			cost := al.stateManager.GetState().CustoTotalUSD
 			if cost > 0.30 && maxIterations > i+3 {
 				al.handler.OnMessage("system", fmt.Sprintf("⚠️ ALERTA DE CUSTO: A tarefa já custou $%.2f. Reduzindo janela de iterações restantes para forçar conclusão rápida.", cost))
 				maxIterations = i + 3
 			} else if cost > 0.15 && maxIterations > 30 {
 				maxIterations = 30
+			}
+		}
+
+		// Circuit Breaker Financeiro (Trava de Segurança de Custo e Turnos)
+		if al.stateManager != nil {
+			cost := al.stateManager.GetState().CustoTotalUSD
+			if cost > 1.50 && i > 30 {
+				al.handler.OnMessage("system", fmt.Sprintf("[CIRCUIT BREAKER FINANCEIRO] A tarefa atingiu 30+ turnos e acumulou $%.2f USD sem conclusão. Abortando sessão por segurança financeira.", cost))
+				al.handler.OnEvent(loop.AgentEvent{
+					Timestamp: time.Now(),
+					Event:     "finished",
+					Iteration: i,
+					Data:      map[string]interface{}{"reason": "financial_circuit_breaker", "cost_usd": cost},
+				})
+				al.handler.OnStatusChange("idle")
+				return fmt.Errorf("circuit breaker financeiro: limite de $1.50 excedido em sessão longa")
 			}
 		}
 
@@ -321,59 +340,71 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			},
 		})
 
-		// Detectar loops repetitivos (Item 16) - Agora aborta para economizar tokens
-		if DetectRepetitiveLoop(messages) {
-			al.handler.OnMessage("system", "[EARLY-STOP] Loop repetitivo infinito detectado (mesma ferramenta/raciocínio). Encerrando para evitar desperdício de tokens.")
-			al.handler.OnEvent(loop.AgentEvent{
-				Timestamp: time.Now(),
-				Event:     "early_stop",
-				Data:      map[string]interface{}{"reason": "repetitive_loop"},
-			})
-			return fmt.Errorf("hard-stop: loop repetitivo detectado")
+		// Detectar loops apenas se já geramos pelo menos uma mensagem do assistant nesta execução.
+		// Isso evita falsos positivos imediatos na etapa 0 baseados em loops históricos.
+		hasNewAssistantMsg := false
+		for idx := initialMessagesLen; idx < len(messages); idx++ {
+			if messages[idx].Role == "assistant" {
+				hasNewAssistantMsg = true
+				break
+			}
 		}
 
-		// Injetar aviso corretivo caso o modelo repita a mesma ação consecutiva 1x (A -> A)
-		if DetectRepetitiveWarning(messages) {
-			al.handler.OnMessage("system", "Detectado loop repetitivo. Injetando aviso de correção de rota.")
-			messages = append(messages, llm.Message{
-				Role:    "system",
-				Content: "[SYSTEM INTERVENTION] Você acabou de executar exatamente a mesma ação/chamada de ferramenta com os mesmos argumentos que no turno anterior. Se você repetir esta ação novamente, a tarefa será cancelada automaticamente por loop repetitivo. Mude sua abordagem de forma cirúrgica ou parta para testes/validação agora.",
-			})
-			saveMsgs(messages)
-		}
-
-		if DetectCommandLoop(messages) {
-			al.handler.OnMessage("system", "[EARLY-STOP] Loop repetitivo na execução de comandos detectado. O agente continuou executando o mesmo erro/comando sem mudança. Encerrando.")
-			al.handler.OnEvent(loop.AgentEvent{
-				Timestamp: time.Now(),
-				Event:     "early_stop",
-				Data:      map[string]interface{}{"reason": "command_loop"},
-			})
-			return fmt.Errorf("hard-stop: loop de comandos detectado")
-		}
-
-		if DetectIneffectiveCorrectionLoop(messages) {
-			ineffectiveCorrectionCount++
-			if ineffectiveCorrectionCount >= 2 {
-				// Hard-stop: o modelo tentou a mesma correção ineficaz repetidamente.
-				// Modelos pequenos (8B) não conseguem "mudar de estratégia" via instrução textual.
-				al.handler.OnMessage("system", "[EARLY-STOP] Loop de correção ineficaz detectado 2x consecutivas. Encerrando para evitar desperdício de tokens.")
+		if hasNewAssistantMsg {
+			// Detectar loops repetitivos (Item 16) - Agora aborta para economizar tokens
+			if DetectRepetitiveLoop(messages) {
+				al.handler.OnMessage("system", "[EARLY-STOP] Loop repetitivo infinito detectado (mesma ferramenta/raciocínio). Encerrando para evitar desperdício de tokens.")
 				al.handler.OnEvent(loop.AgentEvent{
 					Timestamp: time.Now(),
-					Event:     "finished",
-					Iteration: i + 1,
-					Data:      map[string]interface{}{"reason": "ineffective_correction_loop", "total_iterations": i + 1},
+					Event:     "early_stop",
+					Data:      map[string]interface{}{"reason": "repetitive_loop"},
 				})
-				al.handler.OnStatusChange("idle")
-				saveMsgs(messages)
-				return fmt.Errorf("loop de correção ineficaz detectado após %d iterações", i+1)
+				return fmt.Errorf("hard-stop: loop repetitivo detectado")
 			}
-			al.handler.OnMessage("system", "Detectado loop de correção ineficaz (mesmo arquivo modificado com a mesma falha de teste 3 vezes).")
-			messages = append(messages, llm.Message{
-				Role:    "system",
-				Content: "[SYSTEM INTERVENTION] Você tentou corrigir o mesmo arquivo e obteve o mesmo erro/resultado de testes 3 vezes consecutivas. Você deve alterar sua estratégia. Analise detalhadamente o fluxo do código, procure variáveis globais, certifique-se de que os mocks ou o arquivo de teste não estão bloqueados e formule um novo plano de correção em vez de insistir na mesma alteração.",
-			})
-			saveMsgs(messages)
+
+			// Injetar aviso corretivo caso o modelo repita a mesma ação consecutiva 1x (A -> A)
+			if DetectRepetitiveWarning(messages) {
+				al.handler.OnMessage("system", "Detectado loop repetitivo. Injetando aviso de correção de rota.")
+				messages = append(messages, llm.Message{
+					Role:    "system",
+					Content: "[SYSTEM INTERVENTION] Você acabou de executar exatamente a mesma ação/chamada de ferramenta com os mesmos argumentos que no turno anterior. Se você repetir esta ação novamente, a tarefa será cancelada automaticamente por loop repetitivo. Mude sua abordagem de forma cirúrgica ou parta para testes/validação agora.",
+				})
+				saveMsgs(messages)
+			}
+
+			if DetectCommandLoop(messages) {
+				al.handler.OnMessage("system", "[EARLY-STOP] Loop repetitivo na execução de comandos detectado. O agente continuou executando o mesmo erro/comando sem mudança. Encerrando.")
+				al.handler.OnEvent(loop.AgentEvent{
+					Timestamp: time.Now(),
+					Event:     "early_stop",
+					Data:      map[string]interface{}{"reason": "command_loop"},
+				})
+				return fmt.Errorf("hard-stop: loop de comandos detectado")
+			}
+
+			if DetectIneffectiveCorrectionLoop(messages) {
+				ineffectiveCorrectionCount++
+				if ineffectiveCorrectionCount >= 2 {
+					// Hard-stop: o modelo tentou a mesma correção ineficaz repetidamente.
+					// Modelos pequenos (8B) não conseguem "mudar de estratégia" via instrução textual.
+					al.handler.OnMessage("system", "[EARLY-STOP] Loop de correção ineficaz detectado 2x consecutivas. Encerrando para evitar desperdício de tokens.")
+					al.handler.OnEvent(loop.AgentEvent{
+						Timestamp: time.Now(),
+						Event:     "finished",
+						Iteration: i + 1,
+						Data:      map[string]interface{}{"reason": "ineffective_correction_loop", "total_iterations": i + 1},
+					})
+					al.handler.OnStatusChange("idle")
+					saveMsgs(messages)
+					return fmt.Errorf("loop de correção ineficaz detectado após %d iterações", i+1)
+				}
+				al.handler.OnMessage("system", "Detectado loop de correção ineficaz (mesmo arquivo modificado com a mesma falha de teste 3 vezes).")
+				messages = append(messages, llm.Message{
+					Role:    "system",
+					Content: "[SYSTEM INTERVENTION] Você tentou corrigir o mesmo arquivo e obteve o mesmo erro/resultado de testes 3 vezes consecutivas. Você deve alterar sua estratégia. Analise detalhadamente o fluxo do código, procure variáveis globais, certifique-se de que os mocks ou o arquivo de teste não estão bloqueados e formule um novo plano de correção em vez de insistir na mesma alteração.",
+				})
+				saveMsgs(messages)
+			}
 		}
 
 		// Impedir loops de mensagens vazias (Item 17)
@@ -387,6 +418,26 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 
 		// Construir definições de ferramentas para o LLM
 		opts := tooling.BuildRequestOptions(al.tools, intent)
+
+		// Modo Compacto para Modelos Menores (3B / 7B / 8B)
+		if al.config != nil && al.config.Model != "" {
+			modelLower := strings.ToLower(al.config.Model)
+			if strings.Contains(modelLower, "3b") || strings.Contains(modelLower, "7b") || strings.Contains(modelLower, "8b") {
+				coreToolNames := map[string]bool{
+					"read_file": true, "write_file": true, "edit_file": true, "list_dir": true,
+					"terminal_command": true, "ask_user": true, "grep_search": true, "view_file": true,
+					"replace_file_content": true, "multi_replace_file_content": true,
+				}
+				var filteredTools []llm.ToolDefinition
+				for _, td := range opts.Tools {
+					if coreToolNames[td.Function.Name] {
+						filteredTools = append(filteredTools, td)
+					}
+				}
+				opts.Tools = filteredTools
+			}
+		}
+
 		maxTokensLimit := 1500
 		opts.MaxTokens = &maxTokensLimit
 
@@ -595,45 +646,85 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		var resp *llm.Response
 		var err error
 
-		if true { // Padrão: tentar usar streaming sempre
-			chunkChan := make(chan string, 100)
-			go func() {
-				for chunk := range chunkChan {
-					al.handler.OnStreamChunk(chunk)
-				}
-			}()
-			resp, err = al.provider.StreamMessages(ctx, finalMsgs, opts, chunkChan)
-		} else {
-			resp, err = al.provider.SendMessages(ctx, finalMsgs, opts)
-		}
-		if err != nil {
-			errMsg := err.Error()
-			al.handler.OnMessage("system", i18n.Get("errors.llm_error", i+1)+": "+errMsg)
+		// Sistema Resiliente de Fallback em 3 Rotas (Task 1 / Projeto 0853)
+		for route := 1; route <= 3; route++ {
+			currentOpts := opts // cópia rasa
 
-			// Determinar código de erro tipado
-			errCode := loop.ErrToolExecution
-			if strings.Contains(errMsg, "429") || strings.Contains(errMsg, "rate") || strings.Contains(errMsg, "Rate") {
-				errCode = loop.ErrLLMRateLimit
-			} else if strings.Contains(errMsg, "401") || strings.Contains(errMsg, "auth") || strings.Contains(errMsg, "Unauthorized") {
-				errCode = loop.ErrLLMAuth
+			if route == 2 {
+				// Rota 2: Fallback Text-Only sem ferramentas nativas da API
+				currentOpts.Tools = nil
+				currentOpts.ToolChoice = ""
+				if !al.textOnlyMode {
+					al.textOnlyMode = true
+					al.handler.OnMessage("system", "[ROTEAMENTO RESILIENTE] Ativando Rota 2 (Modo Text-Only sem ferramentas nativas da API)...")
+				}
+			} else if route == 3 {
+				// Rota 3: Reestruturação de Prompt e simplificação (sem streaming)
+				currentOpts.Tools = nil
+				currentOpts.ToolChoice = ""
+				temp := 0.1
+				currentOpts.Temperature = &temp
+				al.textOnlyMode = true
+				al.handler.OnMessage("system", "[ROTEAMENTO RESILIENTE] Ativando Rota 3 (Reestruturação emergencial de prompt)...")
+
+				recoveryMsg := llm.Message{
+					Role:    "system",
+					Content: "[SYSTEM RECOVERY] A API encontrou dificuldades para processar a estrutura anterior. Responda de forma direta e concisa em texto puro executando a próxima ação necessária.",
+				}
+				finalMsgs = append(finalMsgs, recoveryMsg)
 			}
 
-			al.handler.OnEvent(loop.AgentEvent{
-				Timestamp: time.Now(),
-				Event:     "error",
-				Iteration: i + 1,
-				Data: map[string]interface{}{
-					"error": loop.AgentError{
-						Code:    errCode,
-						Message: errMsg,
-						Details: map[string]interface{}{"provider": al.provider.Name()},
+			if route == 1 || route == 2 { // Tentamos streaming nas rotas 1 e 2
+				chunkChan := make(chan string, 100)
+				go func() {
+					for chunk := range chunkChan {
+						al.handler.OnStreamChunk(chunk)
+					}
+				}()
+				resp, err = al.provider.StreamMessages(ctx, finalMsgs, currentOpts, chunkChan)
+			} else {
+				// Na rota 3 tentamos sem streaming para máxima estabilidade
+				resp, err = al.provider.SendMessages(ctx, finalMsgs, currentOpts)
+			}
+
+			if err == nil {
+				break // Sucesso! Saímos do loop de rotas
+			}
+
+			errMsg := err.Error()
+			log.Printf("[AgenticLoop] Falha na Rota %d (Iteração %d): %s", route, i+1, errMsg)
+
+			// Se for a última rota (3), geramos o erro fatal
+			if route == 3 {
+				al.handler.OnMessage("system", i18n.Get("errors.llm_error", i+1)+": "+errMsg)
+
+				errCode := loop.ErrToolExecution
+				if strings.Contains(errMsg, "429") || strings.Contains(errMsg, "rate") || strings.Contains(errMsg, "Rate") {
+					errCode = loop.ErrLLMRateLimit
+				} else if strings.Contains(errMsg, "401") || strings.Contains(errMsg, "auth") || strings.Contains(errMsg, "Unauthorized") {
+					errCode = loop.ErrLLMAuth
+				}
+
+				al.handler.OnEvent(loop.AgentEvent{
+					Timestamp: time.Now(),
+					Event:     "error",
+					Iteration: i + 1,
+					Data: map[string]interface{}{
+						"error": loop.AgentError{
+							Code:    errCode,
+							Message: errMsg,
+							Details: map[string]interface{}{"provider": al.provider.Name()},
+						},
 					},
-				},
-			})
-			return fmt.Errorf("falha na chamada ao LLM: %w", err)
+				})
+				return fmt.Errorf("falha na chamada ao LLM após 3 rotas de fallback: %w", err)
+			}
+
+			// Se falhou na rota 1 ou 2, aguardamos 1 segundo antes de tentar a próxima rota
+			time.Sleep(1 * time.Second)
 		}
 
-		if resp.ToolUseDisabled {
+		if resp != nil && resp.ToolUseDisabled {
 			if !al.textOnlyMode {
 				al.textOnlyMode = true
 				al.handler.OnMessage("system", i18n.Get("system.text_only_mode_activated"))
@@ -729,6 +820,7 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		// Circuit Breaker logic
 		if len(msg.ToolCalls) > 0 {
 			consecutiveNoToolCallTurns = 0
+			pendingWarningCount = 0
 			if al.stateManager != nil {
 				for range msg.ToolCalls {
 					_ = al.stateManager.RecordToolCallEmitted()
@@ -950,19 +1042,26 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 						_ = al.stateManager.SetPlan(nil)
 						al.handler.OnMessage("system", "Foco conversacional ou conclusão detectada. Plano limpo automaticamente.")
 					} else {
-						warning := loop.GeneratePendingTasksWarning(plan)
-						al.handler.OnMessage("system", "Aviso de tarefas pendentes no plano. Solicitando continuação.")
-						messages = append(messages, llm.Message{
-							Role:    "system",
-							Content: warning,
-						})
-						saveMsgs(messages)
-						lastIterFailed = false
-						lastToolWasValidation = false
-						if al.stateManager != nil {
-							_ = al.stateManager.SaveIterationLog(i+1, iterLog)
+						pendingWarningCount++
+						if pendingWarningCount >= 5 {
+							_ = al.stateManager.SetPlan(nil)
+							pendingWarningCount = 0
+							al.handler.OnMessage("system", "⚠️ Limite de alertas de checklist atingido (5 falhas consecutivas em concluir tarefas). Limpando plano para evitar loop infinito e liberando o agente.")
+						} else {
+							warning := loop.GeneratePendingTasksWarning(plan)
+							al.handler.OnMessage("system", fmt.Sprintf("Aviso de tarefas pendentes no plano (%d/5). Solicitando continuação.", pendingWarningCount))
+							messages = append(messages, llm.Message{
+								Role:    "system",
+								Content: warning,
+							})
+							saveMsgs(messages)
+							lastIterFailed = false
+							lastToolWasValidation = false
+							if al.stateManager != nil {
+								_ = al.stateManager.SaveIterationLog(i+1, iterLog)
+							}
+							continue
 						}
-						continue
 					}
 				}
 			}

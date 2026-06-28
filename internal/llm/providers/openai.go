@@ -343,7 +343,7 @@ func (p *OpenAIProvider) SendMessages(ctx context.Context, messages []llm.Messag
 			if respRetry.StatusCode != http.StatusOK {
 				return nil, fmt.Errorf("openai: retry de visão failed (%d): %s", respRetry.StatusCode, string(bodyBytes))
 			}
-		} else if len(opts.Tools) > 0 && (strings.Contains(bodyStr, "tool") || strings.Contains(bodyStr, "support") || strings.Contains(bodyStr, "parameter")) {
+		} else if len(opts.Tools) > 0 && (strings.Contains(bodyStr, "tool") || strings.Contains(bodyStr, "support") || strings.Contains(bodyStr, "parameter") || strings.Contains(bodyStr, "endpoint")) {
 			capabilitiesMu.Lock()
 			toolUseCache[p.URL+"|"+p.model] = false
 			capabilitiesMu.Unlock()
@@ -550,7 +550,44 @@ func (p *OpenAIProvider) StreamMessages(ctx context.Context, messages []llm.Mess
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("openai: status HTTP inválido (%d) (stream): %s", resp.StatusCode, string(bodyBytes))
+		bodyStr := strings.ToLower(string(bodyBytes))
+
+		if len(opts.Tools) > 0 && (strings.Contains(bodyStr, "tool") || strings.Contains(bodyStr, "support") || strings.Contains(bodyStr, "parameter") || strings.Contains(bodyStr, "endpoint")) {
+			capabilitiesMu.Lock()
+			toolUseCache[p.URL+"|"+p.model] = false
+			capabilitiesMu.Unlock()
+			isToolUseDisabled = true
+
+			reqBody.Tools = nil
+			reqBody.ToolChoice = nil
+			reqBody.Messages = sanitizeMessagesForTextOnly(reqMessages)
+
+			jsonData, err = json.Marshal(reqBody)
+			if err != nil {
+				return nil, fmt.Errorf("openai: erro ao serializar request de retry stream: %w", err)
+			}
+			req, err = http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+			if err != nil {
+				return nil, fmt.Errorf("openai: erro ao criar request de retry stream: %w", err)
+			}
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer "+p.apiKey)
+			req.Header.Set("Accept", "text/event-stream")
+
+			respRetry, err := client.Do(req)
+			if err != nil {
+				return nil, fmt.Errorf("openai: falha na requisição de retry stream: %w", err)
+			}
+			defer respRetry.Body.Close()
+
+			if respRetry.StatusCode != http.StatusOK {
+				retryBytes, _ := io.ReadAll(respRetry.Body)
+				return nil, fmt.Errorf("openai: retry stream failed (%d): %s", respRetry.StatusCode, string(retryBytes))
+			}
+			resp = respRetry
+		} else {
+			return nil, fmt.Errorf("openai: status HTTP inválido (%d) (stream): %s", resp.StatusCode, string(bodyBytes))
+		}
 	}
 
 	if len(opts.Tools) > 0 && !isToolUseDisabled {

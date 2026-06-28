@@ -271,8 +271,8 @@ func TestResolve_WorkspaceOverridesGlobal(t *testing.T) {
 		t.Fatalf("esperado workspace override 25, obteve %d", resolved.MaxIterations)
 	}
 	// Campos não overridden devem manter global defaults
-	if resolved.MaxConsecutiveFail != 3 {
-		t.Fatalf("esperado global default 3, obteve %d", resolved.MaxConsecutiveFail)
+	if resolved.MaxConsecutiveFail != 0 {
+		t.Fatalf("esperado global default 0, obteve %d", resolved.MaxConsecutiveFail)
 	}
 }
 
@@ -336,9 +336,9 @@ func TestResolve_FullHierarchy(t *testing.T) {
 	if resolved.ToolTimeoutSeconds != 60 {
 		t.Fatalf("esperado 60, obteve %d", resolved.ToolTimeoutSeconds)
 	}
-	// MaxConsecutiveFail: somente global (3)
-	if resolved.MaxConsecutiveFail != 3 {
-		t.Fatalf("esperado 3, obteve %d", resolved.MaxConsecutiveFail)
+	// MaxConsecutiveFail: somente global (0)
+	if resolved.MaxConsecutiveFail != 0 {
+		t.Fatalf("esperado 0, obteve %d", resolved.MaxConsecutiveFail)
 	}
 	// PermissionMode: workspace (total_access)
 	if resolved.PermissionMode != "total_access" {

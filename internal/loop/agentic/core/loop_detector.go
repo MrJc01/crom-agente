@@ -2,16 +2,26 @@ package core
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/crom/crom-agente/internal/llm"
 )
+
+func isContinueMessage(content string) bool {
+	c := strings.ToLower(strings.TrimSpace(content))
+	return strings.Contains(c, "continue") || c == "ok" || c == "go" || c == "proceed" || c == "confirm" || c == "yes" || c == "sim"
+}
 
 // DetectRepetitiveLoop verifica se as últimas mensagens do assistant indicam um loop repetitivo.
 // Compara assinaturas que incluem tanto texto quanto tool calls, capturando repetições consecutivas (A->A) e oscilações (A->B->A->B).
 func DetectRepetitiveLoop(messages []llm.Message) bool {
 	// Coleta as assinaturas das últimas mensagens do assistant (da mais recente para a mais antiga)
+	// apenas desde a última instrução real do usuário, para evitar falsos positivos de loops históricos.
 	var assistantSigs []string
 	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "user" && !isContinueMessage(messages[i].Content) {
+			break
+		}
 		if messages[i].Role == "assistant" {
 			sig := assistantSignature(messages[i])
 			if sig != "" {
@@ -45,6 +55,9 @@ func DetectRepetitiveLoop(messages []llm.Message) bool {
 func DetectRepetitiveWarning(messages []llm.Message) bool {
 	var assistantSigs []string
 	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "user" && !isContinueMessage(messages[i].Content) {
+			break
+		}
 		if messages[i].Role == "assistant" {
 			sig := assistantSignature(messages[i])
 			if sig != "" {

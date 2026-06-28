@@ -1632,8 +1632,9 @@ func (s *APIServer) handleAgentTelemetry(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "parametro 'workspace' obrigatorio", http.StatusBadRequest)
 		return
 	}
+	session := r.URL.Query().Get("session")
 
-	telemetry, err := s.manager.GetAgentTelemetry(workspace)
+	telemetry, err := s.manager.GetAgentTelemetry(workspace, session)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1654,6 +1655,7 @@ func (s *APIServer) handleAgentTelemetryWS(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "parametro 'workspace' obrigatorio", http.StatusBadRequest)
 		return
 	}
+	session := r.URL.Query().Get("session")
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -1663,7 +1665,7 @@ func (s *APIServer) handleAgentTelemetryWS(w http.ResponseWriter, r *http.Reques
 	defer conn.Close()
 
 	// Envia snapshot inicial
-	telemetry, err := s.manager.GetAgentTelemetry(workspace)
+	telemetry, err := s.manager.GetAgentTelemetry(workspace, session)
 	if err == nil {
 		if wErr := conn.WriteJSON(telemetry); wErr != nil {
 			log.Printf("[APIServer Telemetry WS] Erro WriteJSON inicial: %v", wErr)
@@ -1697,7 +1699,7 @@ func (s *APIServer) handleAgentTelemetryWS(w http.ResponseWriter, r *http.Reques
 	var lastJSON string
 
 	sendUpdate := func() {
-		telemetry, err := s.manager.GetAgentTelemetry(workspace)
+		telemetry, err := s.manager.GetAgentTelemetry(workspace, session)
 		if err != nil {
 			log.Printf("[APIServer Telemetry WS] Erro GetAgentTelemetry em sendUpdate: %v", err)
 			return

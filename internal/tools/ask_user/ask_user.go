@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/crom/crom-agente/internal/tools"
 )
@@ -79,25 +80,34 @@ func (t *AskUserTool) RequiresApproval() bool {
 
 // Execute executa a chamada
 func (t *AskUserTool) Execute(ctx context.Context, args json.RawMessage) (tools.Result, error) {
-	var input struct {
-		Question    string   `json:"question"`
-		Options     []string `json:"options"`
-		AllowCustom bool     `json:"allow_custom"`
+	var rawInput struct {
+		Question    string      `json:"question"`
+		Options     []string    `json:"options"`
+		AllowCustom interface{} `json:"allow_custom"`
 	}
 
-	// Define padrão
-	input.AllowCustom = true
-
-	if err := json.Unmarshal(args, &input); err != nil {
+	if err := json.Unmarshal(args, &rawInput); err != nil {
 		return tools.Result{Success: false, Error: "argumentos inválidos de JSON"}, nil
 	}
 
-	if input.Question == "" {
+	allowCustom := true
+	if rawInput.AllowCustom != nil {
+		switch v := rawInput.AllowCustom.(type) {
+		case bool:
+			allowCustom = v
+		case string:
+			lower := strings.ToLower(strings.TrimSpace(v))
+			allowCustom = (lower == "true" || lower == "yes" || lower == "1")
+		}
+	}
+	_ = allowCustom
+
+	if rawInput.Question == "" {
 		return tools.Result{Success: false, Error: "a pergunta não pode estar vazia"}, nil
 	}
 
 	return tools.Result{
 		Success: true,
-		Data:    fmt.Sprintf("Pergunta enviada ao usuário: %q", input.Question),
+		Data:    fmt.Sprintf("Pergunta enviada ao usuário: %q", rawInput.Question),
 	}, nil
 }

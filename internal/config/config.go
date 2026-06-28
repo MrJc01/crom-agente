@@ -93,6 +93,7 @@ type WorkspaceConfig struct {
 	DisableTerminalAwareness     *bool `json:"disable_terminal_awareness,omitempty"`
 	ReadOnly                     *bool `json:"readonly,omitempty"`
 	DisableInteraction           *bool `json:"disable_interaction,omitempty"`
+	EnableCostLimit              *bool `json:"enable_cost_limit,omitempty"`
 }
 
 // ResolvedConfig é o resultado do merge de todas as camadas de configuração
@@ -120,6 +121,7 @@ type ResolvedConfig struct {
 	DisableTerminalAwareness     bool
 	ReadOnly                     bool
 	DisableInteraction           bool
+	EnableCostLimit              bool
 }
 
 // CLIFlags contém flags passados via linha de comando (prioridade máxima)
@@ -139,6 +141,7 @@ type CLIFlags struct {
 	DisableTerminalAwareness     *bool
 	ReadOnly                     *bool
 	DisableInteraction           *bool
+	EnableCostLimit              *bool
 }
 
 // --- Defaults ---
@@ -149,8 +152,8 @@ func DefaultGlobalConfig() *GlobalConfig {
 		DefaultProvider:                  "openai",
 		DefaultModel:                     "gpt-4o",
 		MaxIterationsDefault:             0,
-		MaxConsecutiveFailDefault:        3,
-		MaxTokensPerTaskDefault:          100000,
+		MaxConsecutiveFailDefault:        0,
+		MaxTokensPerTaskDefault:          200000,
 		ToolTimeoutSecondsDefault:        30,
 		MaxMessageHistoryDefault:         40,
 		LogLevel:                         "info",
@@ -408,6 +411,7 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 		DisablePlanCacheProtection:   global.DisablePlanCacheProtectionDefault,
 		DisableTerminalAwareness:     false,
 		DisableInteraction:           false,
+		EnableCostLimit:              false,
 	}
 
 	// Camada 2: Workspace overrides
@@ -468,6 +472,9 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 		if workspace.DisableInteraction != nil {
 			resolved.DisableInteraction = *workspace.DisableInteraction
 		}
+		if workspace.EnableCostLimit != nil {
+			resolved.EnableCostLimit = *workspace.EnableCostLimit
+		}
 	}
 
 	// Camada 3: CLI Flags (prioridade máxima)
@@ -515,6 +522,9 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 	}
 	if flags.DisableInteraction != nil {
 		resolved.DisableInteraction = *flags.DisableInteraction
+	}
+	if flags.EnableCostLimit != nil {
+		resolved.EnableCostLimit = *flags.EnableCostLimit
 	}
 
 	return resolved

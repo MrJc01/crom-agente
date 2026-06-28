@@ -40,6 +40,7 @@ type Workspace struct {
 // RunningAgent representa uma instância ativa de agente em execução de fundo
 type RunningAgent struct {
 	WorkspaceName string
+	SessionName   string
 	Task          string
 	Cancel        context.CancelFunc
 	Loop          *core.AgenticLoop
@@ -536,6 +537,7 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 
 	agent := &RunningAgent{
 		WorkspaceName: wsName,
+		SessionName:   sessionName,
 		Task:          task,
 		Cancel:        cancel,
 		Loop:          al,
@@ -728,8 +730,8 @@ type AgentTelemetry struct {
 	MCPServers    []MCPServerStatus  `json:"mcp_servers"`
 }
 
-// GetAgentTelemetry consolida a telemetria do agente de um determinado workspace
-func (m *MultiAgentManager) GetAgentTelemetry(workspaceName string) (*AgentTelemetry, error) {
+// GetAgentTelemetry consolida a telemetria do agente de um determinado workspace e sessão
+func (m *MultiAgentManager) GetAgentTelemetry(workspaceName string, sessionName string) (*AgentTelemetry, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -771,17 +773,25 @@ func (m *MultiAgentManager) GetAgentTelemetry(workspaceName string) (*AgentTelem
 
 	// 1. Verificar se está rodando no momento
 	agent, running := m.runningAgents[wsName]
-	telemetry.IsRunning = running
+	sessionRunning := running
+	if sessionName != "" && running && agent.SessionName != "" && agent.SessionName != sessionName {
+		sessionRunning = false
+	}
+	telemetry.IsRunning = sessionRunning
 
 	// 2. Obter estado do agente
-	if running && agent.Loop != nil {
+	if sessionRunning && agent.Loop != nil {
 		sm := agent.Loop.GetStateManager()
 		if sm != nil {
 			telemetry.AgentState = sm.GetState()
 		}
 	} else {
-		// Se não está rodando, tenta carregar o último estado salvo (unificado no raiz)
-		sm := state.NewStateManager(target.Path)
+		var sm *state.StateManager
+		if sessionName != "" {
+			sm = state.NewSessionStateManager(filepath.Join(target.Path, ".crom"), sessionName)
+		} else {
+			sm = state.NewStateManager(target.Path)
+		}
 		if err := sm.LoadState(); err == nil {
 			telemetry.AgentState = sm.GetState()
 		}
