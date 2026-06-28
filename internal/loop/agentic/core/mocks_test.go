@@ -75,4 +75,3 @@ func (h *cancelOnRetryHandler) OnEvent(event loop.AgentEvent) {
 }
 
 // --- Testes ---
-

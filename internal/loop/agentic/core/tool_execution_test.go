@@ -13,8 +13,8 @@ import (
 
 	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/llm/providers"
-	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/loop/agentic/tooling"
+	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/tools"
 )
 
@@ -360,8 +360,8 @@ func TestAgenticLoop_ConsecutiveFailuresRetryDisabled(t *testing.T) {
 	sm := state.NewStateManager(t.TempDir())
 
 	cfg := &config.ResolvedConfig{
-		MaxIterations:             15,
-		MaxConsecutiveFail:        3,
+		MaxIterations:                15,
+		MaxConsecutiveFail:           3,
 		ConsecutiveFailureRetry:      false, // retry desabilitado
 		ConsecutiveFailureRetryLimit: 0,
 		ConsecutiveFailureRetryDelay: 0,
@@ -396,8 +396,8 @@ func TestAgenticLoop_ConsecutiveFailuresRetryLimit(t *testing.T) {
 	handler := &testEventHandler{}
 
 	cfg := &config.ResolvedConfig{
-		MaxIterations:             15,
-		MaxConsecutiveFail:        3,
+		MaxIterations:                15,
+		MaxConsecutiveFail:           3,
 		ConsecutiveFailureRetry:      true,
 		ConsecutiveFailureRetryLimit: 2, // Limite de 2 retries
 		ConsecutiveFailureRetryDelay: 0,
@@ -650,4 +650,3 @@ func TestAgenticLoop_FileValidationFail(t *testing.T) {
 		t.Fatal("esperava mensagem do tipo tool contendo [VALIDATION_ERROR] após a falha de validação sintática do python")
 	}
 }
-

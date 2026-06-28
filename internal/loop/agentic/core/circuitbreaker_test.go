@@ -163,10 +163,10 @@ func TestAgenticLoop_CircuitBreaker(t *testing.T) {
 
 	// Verifica se a mensagem de aviso do sistema foi adicionada ao histórico
 	fmt.Printf("MESSAGES DUMP:\n")
-        for _, msg := range sm.GetMessages() {
-            fmt.Printf("Role: %s, Content: %s\n", msg.Role, msg.Content)
-        }
-        foundSystemWarning := false
+	for _, msg := range sm.GetMessages() {
+		fmt.Printf("Role: %s, Content: %s\n", msg.Role, msg.Content)
+	}
+	foundSystemWarning := false
 	for _, msg := range sm.GetMessages() {
 		if msg.Role == "system" && strings.Contains(msg.Content, "Você está há 3 turnos sem chamar ferramentas") {
 			foundSystemWarning = true
@@ -185,8 +185,6 @@ func TestAgenticLoop_CircuitBreaker_ReadOnly(t *testing.T) {
 	for i := range responses {
 		responses[i] = providers.MockToolCallResponse("read_file", fmt.Sprintf(`{"path":"somefile%d.txt"}`, i), 10)
 	}
-	
-	
 
 	provider := providers.NewMockProvider(responses...)
 	sm := state.NewStateManager(t.TempDir())
@@ -204,7 +202,7 @@ func TestAgenticLoop_CircuitBreaker_ReadOnly(t *testing.T) {
 	}
 
 	al := New(provider, sm, handler, cfg)
-	
+
 	// mock read_file tool to succeed
 	al.RegisterTool(&mockTool{
 		id: "read_file",
@@ -220,10 +218,10 @@ func TestAgenticLoop_CircuitBreaker_ReadOnly(t *testing.T) {
 
 	// Verifica se a mensagem de aviso de arquivos inalterados foi adicionada ao histórico
 	fmt.Printf("MESSAGES DUMP:\n")
-        for _, msg := range sm.GetMessages() {
-            fmt.Printf("Role: %s, Content: %s\n", msg.Role, msg.Content)
-        }
-        foundSystemWarning := false
+	for _, msg := range sm.GetMessages() {
+		fmt.Printf("Role: %s, Content: %s\n", msg.Role, msg.Content)
+	}
+	foundSystemWarning := false
 	for _, msg := range sm.GetMessages() {
 		if msg.Role == "system" && strings.Contains(msg.Content, "sem modificar arquivos ou chamar ferramentas de escrita/execução") {
 			foundSystemWarning = true
@@ -235,5 +233,3 @@ func TestAgenticLoop_CircuitBreaker_ReadOnly(t *testing.T) {
 		t.Fatal("esperava que o histórico de mensagens contivesse o aviso de inatividade de escrita de arquivos")
 	}
 }
-
-

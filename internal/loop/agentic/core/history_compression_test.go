@@ -12,8 +12,8 @@ import (
 	"github.com/crom/crom-agente/internal/config"
 	"github.com/crom/crom-agente/internal/llm"
 	"github.com/crom/crom-agente/internal/llm/providers"
-	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/loop/agentic/prompting"
+	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/tools"
 )
 
@@ -181,6 +181,3 @@ func TestAgenticLoop_Metrics(t *testing.T) {
 		t.Errorf("esperava ToolCallsEmitted=1, obteve %d", s.ToolCallsEmitted)
 	}
 }
-
-
-

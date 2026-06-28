@@ -317,4 +317,3 @@ func TestAgenticLoop_TextOnlyModeFallback(t *testing.T) {
 		t.Errorf("conteúdo incorreto gravado: %q", lastContent)
 	}
 }
-

@@ -508,10 +508,15 @@ func stripCodeBlocks(content string) string {
 	return strings.Join(result, "\n")
 }
 
-func taskRequiresFiles(intent string) bool {
+func (al *AgenticLoop) taskRequiresFiles(intent string) bool {
 	lower := strings.ToLower(intent)
 	keywords := []string{
 		"crie", "salve", "escreva", "código", "arquivo", "create", "write", "save", "code", "file", "organize", "generat", "gerar",
+	}
+	if al != nil && al.promptManager != nil {
+		if pm, ok := al.promptManager.GetPrompt("file_creation_keywords"); ok && pm.Enabled && pm.Content != "" {
+			keywords = strings.Split(pm.Content, ",")
+		}
 	}
 	for _, kw := range keywords {
 		if strings.Contains(lower, kw) {

@@ -10,6 +10,7 @@ Principais responsabilidades:
 - Limites agressivos e circuit breakers (early stopping por OOM ou Loops)
 */
 package core
+
 import (
 	"context"
 	"sync"

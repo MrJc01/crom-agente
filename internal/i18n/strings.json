@@ -24,7 +24,33 @@
     "summarizer_role": "Sumarizar contexto do especialista para manter memória. Seja extremamente direto.",
     "agents_browser_prompt": "Você é o BrowserAgent, um agente especialista em navegação web e automação visual de navegadores. Use as ferramentas de navegação disponíveis para atingir o objetivo com sucesso.",
     "agents_coder_prompt": "Você é o CoderAgent, um especialista em engenharia de software e codificação limpa. Analise a base de código e aplique alterações cirúrgicas mantendo testes verdes.",
-    "text_only_mode_activated": "⚠️ Modo Text-Only ativado: O modelo/provedor atual não suporta chamadas de função (tool use) nativas. O sistema passará a interpretar blocos de código markdown como ações de ferramenta."
+    "text_only_mode_activated": "⚠️ Modo Text-Only ativado: O modelo/provedor atual não suporta chamadas de função (tool use) nativas. O sistema passará a interpretar blocos de código markdown como ações de ferramenta.",
+    "early_stop_tokens": "[EARLY-STOP] Limite de %d tokens excedido. Encerrando para evitar desperdício.",
+    "cost_alert": "⚠️ ALERTA DE CUSTO: A tarefa já custou $%.2f. Reduzindo janela de iterações restantes para forçar conclusão rápida.",
+    "financial_circuit_breaker": "[CIRCUIT BREAKER FINANCEIRO] A tarefa atingiu 30+ turnos e acumulou $%.2f USD sem conclusão. Abortando sessão por segurança financeira.",
+    "iteration_limit_reached": "Limite de iterações atingido. Você pode alterar esse limite acessando as Configurações.",
+    "early_stop_repetitive_loop": "[EARLY-STOP] Loop repetitivo infinito detectado (mesma ferramenta/raciocínio). Encerrando para evitar desperdício de tokens.",
+    "repetitive_loop_warning_injected": "Detectado loop repetitivo. Injetando aviso de correção de rota.",
+    "early_stop_command_loop": "[EARLY-STOP] Loop repetitivo na execução de comandos detectado. O agente continuou executando o mesmo erro/comando sem mudança. Encerrando.",
+    "early_stop_ineffective_correction": "[EARLY-STOP] Loop de correção ineficaz detectado 2x consecutivas. Encerrando para evitar desperdício de tokens.",
+    "ineffective_correction_warning_injected": "Detectado loop de correção ineficaz (mesmo arquivo modificado com a mesma falha de teste 3 vezes).",
+    "refusal_intercept_injected": "[SYSTEM INTERCEPT] Refusal detectado. Injetando roleplay override para forçar a ação.",
+    "circuit_breaker_inactivity": "⚠️ [CIRCUIT_BREAKER] Alerta de inatividade: O modelo executou %d turnos sem chamadas de ferramentas.",
+    "llm_empty_response": "Resposta vazia do LLM. Solicitando resposta válida.",
+    "retry_llm_empty": "Atingido limite de %d falhas consecutivas (LLM vazio). Aguardando %v antes de tentar novamente (retry %d/%s, cancele para interromper)...",
+    "timer_scheduled": "Timer agendado. Suspendendo execução do agente até o timer expirar.",
+    "conversational_focus_detected": "Foco conversacional ou conclusão detectada. Plano limpo automaticamente.",
+    "checklist_alerts_limit_reached": "⚠️ Limite de alertas de checklist atingido (5 falhas consecutivas em concluir tarefas). Limpando plano para evitar loop infinito e liberando o agente.",
+    "pending_tasks_warning": "Aviso de tarefas pendentes no plano (%d/5). Solicitando continuação.",
+    "executing_tool": "Executando ferramenta: %s",
+    "validation_failed": "Validação falhou para %s: %s",
+    "tool_executed_success": "Ferramenta %s executada com sucesso.",
+    "tool_execution_error": "Erro na ferramenta %s: %s",
+    "ask_user_suspended": "Pergunta enviada ao usuário. Suspendendo execução para aguardar resposta no chat.",
+    "retry_execution_failed": "Atingido limite de %d falhas consecutivas (execução). Aguardando %v antes de tentar novamente (retry %d/%s, cancele para interromper)...",
+    "critical_disk_quota": "⚠️ ERRO CRÍTICO: Quota de disco excedida (%.2f MB / %.2f MB). Abortando loop para proteger sistema.",
+    "resilient_route_2": "[ROTEAMENTO RESILIENTE] Ativando Rota 2 (Modo Text-Only sem ferramentas nativas da API)...",
+    "resilient_route_3": "[ROTEAMENTO RESILIENTE] Ativando Rota 3 (Reestruturação emergencial de prompt)..."
   },
   "errors": {
     "optimizer_blank_response": "resposta de otimização em branco",
@@ -32,10 +58,41 @@
     "tool_not_found": "Ferramenta solicitada '%s' não existe. Verifique os nomes das ferramentas.",
     "llm_error": "Erro de API LLM na iteração %d",
     "max_iterations_exceeded": "Limite máximo de iterações atingido sem sucesso",
-    "abort_consecutive_failures": "Abortando: muitas falhas consecutivas (%d)"
+    "abort_consecutive_failures": "Abortando: muitas falhas consecutivas (%d)",
+    "abort_consecutive": "abortando: %d falhas consecutivas",
+    "hard_stop_repetitive": "hard-stop: loop repetitivo detectado",
+    "hard_stop_cmd_loop": "hard-stop: loop de comandos detectado",
+    "ineffective_correction": "loop de correção ineficaz detectado após %d iterações",
+    "hard_cap_tokens": "hard-cap de tokens excedido",
+    "financial_cb_limit": "circuit breaker financeiro: limite de $1.50 excedido em sessão longa",
+    "max_iterations": "limite de %d iterações atingido",
+    "quota_exceeded": "quota de disco excedida (%.2f MB). workspace bloqueado",
+    "json_decode": "JSON Decode Error: Your tool call arguments are not valid JSON. Error details: %v. Please fix the syntax (e.g., escape quotes correctly) and try again.",
+    "fallback_route_failed": "falha na chamada ao LLM após 3 rotas de fallback: %w",
+    "route_failed_iter": "[AgenticLoop] Falha na Rota %d (Iteração %d): %s"
   },
   "ui": {
     "diff_border": "═",
     "tool_error_format": "\n╔%s╗\n║ ERROR: %s\n╟%s╢\n║ %s\n╚%s╝\n"
+  },
+  "telemetry": {
+    "cb_tool_turns": "circuit breaker triggered: model is unable to use tools after %d turns",
+    "cb_no_mods": "circuit breaker triggered: no workspace modifications in %d turns"
+  },
+  "history": {
+    "user_requested": "Usuário solicitou: %s",
+    "agent_replied": "Agente respondeu: %s",
+    "agent_executed_tool": "Agente executou a ferramenta: %s com argumentos %s",
+    "tool_result": "Resultado da ferramenta (%s): %s",
+    "recent_context": "Histórico recente da execução da tarefa:\n\n%s",
+    "task_completed": "Tarefa concluída: %s",
+    "tool_start": "[tool_start] %s"
+  },
+  "verification": {
+    "go_test_failed": "Go test execution failed:\n%s",
+    "python_unit": "Python unit test ",
+    "python_doctest": "Python doctest in ",
+    "exec_success": "executou com sucesso: %s",
+    "exec_failed": "falhou ao executar: %s"
   }
 }

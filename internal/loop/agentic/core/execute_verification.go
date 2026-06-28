@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"github.com/crom/crom-agente/internal/i18n"
 	"github.com/crom/crom-agente/internal/llm"
 	"github.com/crom/crom-agente/internal/loop"
 	"github.com/crom/crom-agente/internal/state"
@@ -28,7 +29,7 @@ func runAutoTests(workspaceDir string) (bool, string) {
 			cmd.Dir = workspaceDir
 			out, err := cmd.CombinedOutput()
 			if err != nil {
-				return false, fmt.Sprintf("Go test execution failed:\n%s", string(out))
+				return false, fmt.Sprintf(i18n.Get("verification.go_test_failed"), string(out))
 			}
 		}
 	}
@@ -122,7 +123,7 @@ func isCompletionResponse(content string) bool {
 }
 
 // GetLastIterationExecutionStatus analisa as últimas mensagens para ver o status da última execução de ferramenta
-func GetLastIterationExecutionStatus(messages []llm.Message) string {
+func (al *AgenticLoop) GetLastIterationExecutionStatus(messages []llm.Message) string {
 	// Acha o índice da última mensagem do assistant
 	lastAssistantIdx := -1
 	for j := len(messages) - 1; j >= 0; j-- {
@@ -154,12 +155,12 @@ func GetLastIterationExecutionStatus(messages []llm.Message) string {
 	if len(executedTools) > 0 || len(failedTools) > 0 {
 		var parts []string
 		if len(executedTools) > 0 {
-			parts = append(parts, fmt.Sprintf("executou com sucesso: %s", strings.Join(executedTools, ", ")))
+			parts = append(parts, fmt.Sprintf(i18n.Get("verification.exec_success"), strings.Join(executedTools, ", ")))
 		}
 		if len(failedTools) > 0 {
-			parts = append(parts, fmt.Sprintf("falhou ao executar: %s", strings.Join(failedTools, ", ")))
+			parts = append(parts, fmt.Sprintf(i18n.Get("verification.exec_failed"), strings.Join(failedTools, ", ")))
 		}
-		return fmt.Sprintf("📋 [STATUS DA ÚLTIMA EXECUÇÃO DE FERRAMENTAS]: Na última iteração, você %s.", strings.Join(parts, " e "))
+		return fmt.Sprintf(getPromptText(al, "system_last_tool_status", "📋 [STATUS DA ÚLTIMA EXECUÇÃO DE FERRAMENTAS]: Na última iteração, você %s."), strings.Join(parts, " e "))
 	}
 
 	// Se não tem mensagens de tool executadas, mas o assistente tinha ToolCalls na sua mensagem
@@ -169,7 +170,7 @@ func GetLastIterationExecutionStatus(messages []llm.Message) string {
 		for _, tc := range astMsg.ToolCalls {
 			toolNames = append(toolNames, tc.Function.Name)
 		}
-		return fmt.Sprintf("⚠️ [STATUS DA ÚLTIMA EXECUÇÃO DE FERRAMENTAS]: Você solicitou a execução de %s, mas NENHUMA ferramenta foi executada (talvez porque a chamada continha argumentos inválidos, ou foi recusada).", strings.Join(toolNames, ", "))
+		return fmt.Sprintf(getPromptText(al, "system_last_tool_missing", "⚠️ [STATUS DA ÚLTIMA EXECUÇÃO DE FERRAMENTAS]: Você solicitou a execução de %s, mas NENHUMA ferramenta foi executada (talvez porque a chamada continha argumentos inválidos, ou foi recusada)."), strings.Join(toolNames, ", "))
 	}
 
 	// Se não tinha ToolCalls, mas o texto contém padrões de tentativa de chamada de ferramenta
@@ -186,7 +187,7 @@ func (al *AgenticLoop) verifyWorkspaceState(messages *[]llm.Message, workspaceDi
 	if len(expectedFiles) > 0 && workspaceDir != "" {
 		missingFiles := loop.VerifyExpectedFiles(expectedFiles, workspaceDir)
 		if len(missingFiles) > 0 {
-			warning := fmt.Sprintf("⚠️ [PHYSICAL_FILE_MISSING] Os seguintes arquivos planejados não existem no disco:\n%s\nCrie os arquivos ausentes antes de encerrar.", strings.Join(missingFiles, "\n"))
+			warning := fmt.Sprintf(getPromptText(al, "system_physical_file_missing", "⚠️ [PHYSICAL_FILE_MISSING] Os seguintes arquivos planejados não existem no disco:\n%s\nCrie os arquivos ausentes antes de encerrar."), strings.Join(missingFiles, "\n"))
 			al.handler.OnMessage("system", warning)
 			*messages = append(*messages, llm.Message{Role: "system", Content: warning})
 			if al.stateManager != nil {
@@ -203,7 +204,7 @@ func (al *AgenticLoop) verifyWorkspaceState(messages *[]llm.Message, workspaceDi
 		st := al.stateManager.GetState()
 		if st.FilesCreated > 0 || st.FilesValidated > 0 {
 			if ok, testErrMsg := runAutoTests(workspaceDir); !ok {
-				warning := fmt.Sprintf("⚠️ [TEST_FAILURE]: A execução de testes unitários ou doctests locais detectou falhas no workspace:\n%s\nPor favor, corrija os erros identificados antes de encerrar.", testErrMsg)
+				warning := fmt.Sprintf(getPromptText(al, "system_test_failure", "⚠️ [TEST_FAILURE]: A execução de testes unitários ou doctests locais detectou falhas no workspace:\n%s\nPor favor, corrija os erros identificados antes de encerrar."), testErrMsg)
 				al.handler.OnMessage("system", "Testes unitários ou doctests locais falharam. Solicitando correção.")
 				*messages = append(*messages, llm.Message{Role: "system", Content: warning})
 				if al.stateManager != nil {
