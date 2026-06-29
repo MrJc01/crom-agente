@@ -9,9 +9,9 @@ import (
 	"testing"
 
 	"github.com/crom/crom-agente/internal/agents"
+	browser_subagent "github.com/crom/crom-agente/internal/agents/specialists/browser"
 	"github.com/crom/crom-agente/internal/tools"
 	"github.com/crom/crom-agente/internal/tools/browser"
-	browser_subagent "github.com/crom/crom-agente/internal/agents/specialists/browser"
 	"github.com/crom/crom-agente/internal/tools/computer_control"
 )
 
@@ -233,8 +233,6 @@ func TestBrowserSubagentTool_E2E(t *testing.T) {
 		t.Skipf("pulando teste do browser_subagent (falha ao executar etapas): %s", res.Error)
 		return
 	}
-
-
 
 	// Verifica se a screenshot foi salva no disco
 	expectedFile := filepath.Join(tempDir, "sub/subagent_screenshot.png")

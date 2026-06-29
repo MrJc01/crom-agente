@@ -32,7 +32,7 @@ func getPromptText(al *AgenticLoop, key string, defaultText string) string {
 	return defaultText
 }
 
-func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
+func (al *AgenticLoop) executeCoreLoop(ctx context.Context, intent string) error {
 	al.textOnlyMode = false
 	al.startTime = time.Now()
 	if al.config != nil && al.config.ToolTimeoutSeconds > 0 {
@@ -132,12 +132,15 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			}
 
 			// Task 9.1: Injetar a árvore de diretórios reduzida (Depth 2)
-			treeDump := workspace.GenerateDirectoryTree(workspaceDir, 2)
-			if treeDump != "" {
-				messages = append(messages, llm.Message{
-					Role:    "system",
-					Content: fmt.Sprintf(getPromptText(al, "system_workspace_tree", "[WORKSPACE DIRECTORY TREE]\n%s\n\nAnalise essa estrutura antes de começar para ter uma visão macro de onde os arquivos residem."), treeDump),
-				})
+			// Em "os_style" memory, a árvore de diretórios só é obtida via ferramentas para economizar tokens
+			if al.config == nil || al.config.CognitiveArchitecture.MemoryStyle != "os_style" {
+				treeDump := workspace.GenerateDirectoryTree(workspaceDir, 2)
+				if treeDump != "" {
+					messages = append(messages, llm.Message{
+						Role:    "system",
+						Content: fmt.Sprintf(getPromptText(al, "system_workspace_tree", "[WORKSPACE DIRECTORY TREE]\n%s\n\nAnalise essa estrutura antes de começar para ter uma visão macro de onde os arquivos residem."), treeDump),
+					})
+				}
 			}
 
 			// 2.3. Diretório de Sessão para Artefatos, Tasks e Scripts (Dinâmico)
@@ -150,6 +153,18 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 				messages = append(messages, llm.Message{
 					Role:    "system",
 					Content: i18n.Get("system.session_isolation", displayDir),
+				})
+			}
+
+			// 2.3.5 Injetar Core Memory (OS-Style)
+			if al.config != nil && al.config.CognitiveArchitecture.MemoryStyle == "os_style" {
+				coreMem := al.stateManager.GetCoreMemory()
+				if coreMem == "" {
+					coreMem = "(vazia)"
+				}
+				messages = append(messages, llm.Message{
+					Role:    "system",
+					Content: "[CORE MEMORY]\n" + coreMem + "\n\nVocê tem acesso às ferramentas 'core_memory_append' e 'core_memory_replace' para gerenciar este bloco de memória persistente.",
 				})
 			}
 
@@ -458,6 +473,29 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 		// Injetar plano de trabalho atualizado de forma dinâmica no contexto
 		runMessages := messages
 		copied := false
+
+		// Em "os_style", o histórico é fortemente decapitado para forçar o LLM a usar o CoreMemory e não estourar tokens
+		if al.config != nil && al.config.CognitiveArchitecture.MemoryStyle == "os_style" {
+			var osMessages []llm.Message
+			for _, m := range messages {
+				if m.Role == "system" {
+					osMessages = append(osMessages, m)
+				}
+			}
+			var recent []llm.Message
+			for i := len(messages) - 1; i >= 0; i-- {
+				if messages[i].Role != "system" {
+					recent = append([]llm.Message{messages[i]}, recent...)
+					if len(recent) >= 4 { // Mantém os últimos 4 frames de histórico ativo
+						break
+					}
+				}
+			}
+			osMessages = append(osMessages, recent...)
+			runMessages = osMessages
+			copied = true
+		}
+
 		if planCtx := loop.SyncPlanToContext(al.stateManager); planCtx != "" {
 			// Cria uma cópia rasa para injetar a mensagem do sistema sem corromper o histórico salvo
 			runMessages = make([]llm.Message, len(messages))
@@ -677,6 +715,11 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 
 		msg := resp.Message
 
+		// Se Fase 3 estiver ativa, extrai fatos assincronamente da resposta do assistente ou intenção do usuário
+		if al.GraphStore != nil && len(msg.Content) > 50 {
+			go al.extractFactsAsync(msg.Content)
+		}
+
 		iterLog.PromptTokens = resp.Usage.PromptTokens
 		iterLog.CompletionTokens = resp.Usage.CompletionTokens
 		iterLog.TotalTokens = resp.Usage.TotalTokens
@@ -875,6 +918,20 @@ func (al *AgenticLoop) Execute(ctx context.Context, intent string) error {
 			lastToolWasValidation = false
 			continue
 		} else if len(msg.ToolCalls) == 0 {
+			log.Printf("DEBUG ASSISTANT MSG: %q\n", msg.Content)
+			// Anti-Bypass (Fase 2): Rejeitar texto puro se a regra estiver ativa, MAS SÓ na primeira iteração,
+			// para permitir que o modelo responda 'sucesso' nas iterações seguintes após já ter usado uma ferramenta.
+			if i == 0 && strings.Contains(intent, "[REGRA ESTRITA ANTI-BYPASS]") {
+				warning := "⚠️ [ANTI-BYPASS] Você está tentando concluir a tarefa gerando apenas texto. Como exigido na regra, você DEVE usar uma ferramenta para validar sua conclusão."
+				al.handler.OnMessage("system", warning)
+				messages = append(messages, llm.Message{Role: "system", Content: warning})
+				saveMsgs(messages)
+				if al.stateManager != nil {
+					_ = al.stateManager.SaveIterationLog(i+1, iterLog)
+				}
+				continue
+			}
+			
 			// Scanner de alucinações: detectar menções a ferramentas no texto sem tool calls
 			if hallucinatedTools := detectHallucinatedToolCalls(msg.Content, al.tools); len(hallucinatedTools) > 0 {
 				warning := fmt.Sprintf(getPromptText(al, "system_invalid_tool_format", "⚠️ [INVALID_TOOL_CALL_FORMAT] Você mencionou as ferramentas %s no texto, mas não emitiu chamadas de ferramenta JSON/XML estruturadas. Emita as chamadas corretamente."),

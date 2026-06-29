@@ -97,6 +97,7 @@ type AgentState struct {
 	UltimoStatus            string              `json:"ultimo_status"` // Mapeia para StatusOperacional (compatibilidade)
 	StatusOperacional       string              `json:"status_operacional"` // idle, thinking, reading, etc.
 	ModoCognitivo           string              `json:"modo_cognitivo"`     // planning, executing, etc.
+	CoreMemory              string              `json:"core_memory,omitempty"`
 	LogsRelevantes          []string            `json:"logs_relevantes"`
 	TokensGastos            int                 `json:"tokens_gastos"`
 	TotalTurnos             int                 `json:"total_turnos"`
@@ -609,4 +610,20 @@ func (sm *StateManager) CreateSnapshot(iteration int) error {
 	}
 
 	return os.WriteFile(fullPath, data, 0644)
+}
+
+// GetCoreMemory retorna a memória central do agente (para OS-Style Memory)
+func (sm *StateManager) GetCoreMemory() string {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.state.CoreMemory
+}
+
+// SetCoreMemory atualiza a memória central do agente
+func (sm *StateManager) SetCoreMemory(mem string) error {
+	sm.mu.Lock()
+	sm.state.CoreMemory = mem
+	err := sm.saveStateLocked()
+	sm.mu.Unlock()
+	return err
 }

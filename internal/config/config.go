@@ -43,23 +43,39 @@ type MCPServerConfig struct {
 	Env     []string `json:"env,omitempty"`     // Variáveis de ambiente extras: ["KEY=VALUE"]
 }
 
+// KnowledgeGraphConfig define a configuração para a Fase 3 (Temporal Fact Store)
+type KnowledgeGraphConfig struct {
+	Enabled          bool   `json:"enabled"`            // Padrão: false
+	StorageType      string `json:"storage_type"`       // "sqlite_disk"
+	AutoExtractFacts bool   `json:"auto_extract_facts"` // Padrão: false
+}
+
+// CognitiveArchitecture agrupa as configurações das fases cognitivas avançadas
+type CognitiveArchitecture struct {
+	MemoryStyle             string               `json:"memory_style"`             // "standard" ou "os_style"
+	MaxCoreMemoryBytes      int                  `json:"max_core_memory_bytes"`    // Limite da RAM do agente
+	StructuralDecomposition bool                 `json:"structural_decomposition"` // Ativa Planner/Executor separados
+	KnowledgeGraph          KnowledgeGraphConfig `json:"knowledge_graph"`          // Camada semântica stateful
+}
+
 // GlobalConfig contém configurações globais compartilhadas por todos os workspaces
 type GlobalConfig struct {
-	DefaultProvider                  string            `json:"default_provider"`
-	DefaultModel                     string            `json:"default_model"`
-	MaxIterationsDefault             int               `json:"max_iterations_default"`
-	MaxConsecutiveFailDefault        int               `json:"max_consecutive_failures_default"`
-	MaxTokensPerTaskDefault          int               `json:"max_tokens_per_task_default"`
-	ToolTimeoutSecondsDefault        int               `json:"tool_timeout_seconds_default"`
-	MaxMessageHistoryDefault         int               `json:"max_message_history_default"`
-	LogLevel                         string            `json:"log_level"`
-	TelemetryEnabled                 bool              `json:"telemetry_enabled"`
-	DisablePromptOptimizationDefault bool              `json:"disable_prompt_optimization_default"`
-	ConsecutiveFailureRetryDefault      bool              `json:"consecutive_failure_retry_default"`
-	ConsecutiveFailureRetryLimitDefault int               `json:"consecutive_failure_retry_limit_default"`
-	ConsecutiveFailureRetryDelayDefault int               `json:"consecutive_failure_retry_delay_default"`
-	DisablePlanCacheProtectionDefault  bool              `json:"disable_plan_cache_protection_default"`
-	MCPServers                       []MCPServerConfig `json:"mcp_servers,omitempty"` // Servidores MCP globais
+	DefaultProvider                     string                `json:"default_provider"`
+	DefaultModel                        string                `json:"default_model"`
+	MaxIterationsDefault                int                   `json:"max_iterations_default"`
+	MaxConsecutiveFailDefault           int                   `json:"max_consecutive_failures_default"`
+	MaxTokensPerTaskDefault             int                   `json:"max_tokens_per_task_default"`
+	ToolTimeoutSecondsDefault           int                   `json:"tool_timeout_seconds_default"`
+	MaxMessageHistoryDefault            int                   `json:"max_message_history_default"`
+	LogLevel                            string                `json:"log_level"`
+	TelemetryEnabled                    bool                  `json:"telemetry_enabled"`
+	DisablePromptOptimizationDefault    bool                  `json:"disable_prompt_optimization_default"`
+	ConsecutiveFailureRetryDefault      bool                  `json:"consecutive_failure_retry_default"`
+	ConsecutiveFailureRetryLimitDefault int                   `json:"consecutive_failure_retry_limit_default"`
+	ConsecutiveFailureRetryDelayDefault int                   `json:"consecutive_failure_retry_delay_default"`
+	DisablePlanCacheProtectionDefault   bool                  `json:"disable_plan_cache_protection_default"`
+	CognitiveArchitectureDefault        CognitiveArchitecture `json:"cognitive_architecture_default"`
+	MCPServers                          []MCPServerConfig     `json:"mcp_servers,omitempty"` // Servidores MCP globais
 }
 
 // EnvVars contém variáveis carregadas do .env (segredos)
@@ -70,50 +86,51 @@ type EnvVars struct {
 
 // WorkspaceConfig contém configurações específicas de um workspace
 type WorkspaceConfig struct {
-	WorkspaceName             string   `json:"workspace_name"`
-	Provider                  string   `json:"provider,omitempty"`
-	Model                     string   `json:"model,omitempty"`
-	MaxIterations             *int     `json:"max_iterations,omitempty"`
-	MaxConsecutiveFail        *int     `json:"max_consecutive_failures,omitempty"`
-	MaxTokensPerTask          *int     `json:"max_tokens_per_task,omitempty"`
-	ToolTimeoutSeconds        *int     `json:"tool_timeout_seconds,omitempty"`
-	MaxMessageHistory         *int     `json:"max_message_history,omitempty"`
-	PermissionMode            string   `json:"permission_mode"`
-	WorkspaceJail             bool     `json:"workspace_jail"`
-	AllowedTools              []string `json:"allowed_tools,omitempty"`
-	BlockedCommands           []string `json:"blocked_commands,omitempty"`
-	AutoVerify                bool     `json:"auto_verify"`
-	AutoSelfCheck             bool     `json:"auto_self_check"`
-	BrowserHeadless           *bool    `json:"browser_headless,omitempty"`
-	DisablePromptOptimization *bool    `json:"disable_prompt_optimization,omitempty"`
-	ConsecutiveFailureRetry      *bool `json:"consecutive_failure_retry,omitempty"`
-	ConsecutiveFailureRetryLimit *int  `json:"consecutive_failure_retry_limit,omitempty"`
-	ConsecutiveFailureRetryDelay *int  `json:"consecutive_failure_retry_delay,omitempty"`
-	DisablePlanCacheProtection   *bool `json:"disable_plan_cache_protection,omitempty"`
-	DisableTerminalAwareness     *bool `json:"disable_terminal_awareness,omitempty"`
-	ReadOnly                     *bool `json:"readonly,omitempty"`
-	DisableInteraction           *bool `json:"disable_interaction,omitempty"`
-	EnableCostLimit              *bool `json:"enable_cost_limit,omitempty"`
+	WorkspaceName                string                 `json:"workspace_name"`
+	Provider                     string                 `json:"provider,omitempty"`
+	Model                        string                 `json:"model,omitempty"`
+	MaxIterations                *int                   `json:"max_iterations,omitempty"`
+	MaxConsecutiveFail           *int                   `json:"max_consecutive_failures,omitempty"`
+	MaxTokensPerTask             *int                   `json:"max_tokens_per_task,omitempty"`
+	ToolTimeoutSeconds           *int                   `json:"tool_timeout_seconds,omitempty"`
+	MaxMessageHistory            *int                   `json:"max_message_history,omitempty"`
+	PermissionMode               string                 `json:"permission_mode"`
+	WorkspaceJail                bool                   `json:"workspace_jail"`
+	AllowedTools                 []string               `json:"allowed_tools,omitempty"`
+	BlockedCommands              []string               `json:"blocked_commands,omitempty"`
+	AutoVerify                   bool                   `json:"auto_verify"`
+	AutoSelfCheck                bool                   `json:"auto_self_check"`
+	BrowserHeadless              *bool                  `json:"browser_headless,omitempty"`
+	DisablePromptOptimization    *bool                  `json:"disable_prompt_optimization,omitempty"`
+	ConsecutiveFailureRetry      *bool                  `json:"consecutive_failure_retry,omitempty"`
+	ConsecutiveFailureRetryLimit *int                   `json:"consecutive_failure_retry_limit,omitempty"`
+	ConsecutiveFailureRetryDelay *int                   `json:"consecutive_failure_retry_delay,omitempty"`
+	DisablePlanCacheProtection   *bool                  `json:"disable_plan_cache_protection,omitempty"`
+	DisableTerminalAwareness     *bool                  `json:"disable_terminal_awareness,omitempty"`
+	ReadOnly                     *bool                  `json:"readonly,omitempty"`
+	DisableInteraction           *bool                  `json:"disable_interaction,omitempty"`
+	EnableCostLimit              *bool                  `json:"enable_cost_limit,omitempty"`
+	CognitiveArchitecture        *CognitiveArchitecture `json:"cognitive_architecture,omitempty"`
 }
 
 // ResolvedConfig é o resultado do merge de todas as camadas de configuração
 type ResolvedConfig struct {
-	Provider                  string
-	Model                     string
-	MaxIterations             int
-	MaxConsecutiveFail        int
-	MaxTokensPerTask          int
-	ToolTimeoutSeconds        int
-	MaxMessageHistory         int
-	PermissionMode            string
-	WorkspaceJail             bool
-	AutoVerify                bool
-	AutoSelfCheck             bool
-	AllowedTools              []string
-	BlockedCommands           []string
-	LogLevel                  string
-	BrowserHeadless           bool
-	DisablePromptOptimization bool
+	Provider                     string
+	Model                        string
+	MaxIterations                int
+	MaxConsecutiveFail           int
+	MaxTokensPerTask             int
+	ToolTimeoutSeconds           int
+	MaxMessageHistory            int
+	PermissionMode               string
+	WorkspaceJail                bool
+	AutoVerify                   bool
+	AutoSelfCheck                bool
+	AllowedTools                 []string
+	BlockedCommands              []string
+	LogLevel                     string
+	BrowserHeadless              bool
+	DisablePromptOptimization    bool
 	ConsecutiveFailureRetry      bool
 	ConsecutiveFailureRetryLimit int
 	ConsecutiveFailureRetryDelay int
@@ -122,18 +139,19 @@ type ResolvedConfig struct {
 	ReadOnly                     bool
 	DisableInteraction           bool
 	EnableCostLimit              bool
+	CognitiveArchitecture        CognitiveArchitecture
 }
 
 // CLIFlags contém flags passados via linha de comando (prioridade máxima)
 type CLIFlags struct {
-	Provider                  string
-	Model                     string
-	MaxIterations             *int
-	MaxConsecutiveFail        *int
-	ToolTimeoutSeconds        *int
-	MaxMessageHistory         *int
-	PermissionMode            string
-	DisablePromptOptimization *bool
+	Provider                     string
+	Model                        string
+	MaxIterations                *int
+	MaxConsecutiveFail           *int
+	ToolTimeoutSeconds           *int
+	MaxMessageHistory            *int
+	PermissionMode               string
+	DisablePromptOptimization    *bool
 	ConsecutiveFailureRetry      *bool
 	ConsecutiveFailureRetryLimit *int
 	ConsecutiveFailureRetryDelay *int
@@ -142,6 +160,7 @@ type CLIFlags struct {
 	ReadOnly                     *bool
 	DisableInteraction           *bool
 	EnableCostLimit              *bool
+	CognitiveArchitecture        *CognitiveArchitecture
 }
 
 // --- Defaults ---
@@ -149,20 +168,30 @@ type CLIFlags struct {
 // DefaultGlobalConfig retorna uma configuração global com valores padrão sensatos
 func DefaultGlobalConfig() *GlobalConfig {
 	return &GlobalConfig{
-		DefaultProvider:                  "openai",
-		DefaultModel:                     "gpt-4o",
-		MaxIterationsDefault:             0,
-		MaxConsecutiveFailDefault:        0,
-		MaxTokensPerTaskDefault:          200000,
-		ToolTimeoutSecondsDefault:        30,
-		MaxMessageHistoryDefault:         40,
-		LogLevel:                         "info",
-		TelemetryEnabled:                 false,
-		DisablePromptOptimizationDefault: false,
+		DefaultProvider:                     "openai",
+		DefaultModel:                        "gpt-4o",
+		MaxIterationsDefault:                0,
+		MaxConsecutiveFailDefault:           0,
+		MaxTokensPerTaskDefault:             200000,
+		ToolTimeoutSecondsDefault:           30,
+		MaxMessageHistoryDefault:            40,
+		LogLevel:                            "info",
+		TelemetryEnabled:                    false,
+		DisablePromptOptimizationDefault:    false,
 		ConsecutiveFailureRetryDefault:      true,
 		ConsecutiveFailureRetryLimitDefault: 0,
 		ConsecutiveFailureRetryDelayDefault: 5,
-		DisablePlanCacheProtectionDefault:  false,
+		DisablePlanCacheProtectionDefault:   false,
+		CognitiveArchitectureDefault: CognitiveArchitecture{
+			MemoryStyle:             "standard",
+			MaxCoreMemoryBytes:      4000,
+			StructuralDecomposition: false,
+			KnowledgeGraph: KnowledgeGraphConfig{
+				Enabled:          false,
+				StorageType:      "sqlite_disk",
+				AutoExtractFacts: false,
+			},
+		},
 	}
 }
 
@@ -391,20 +420,20 @@ func SaveWorkspaceConfig(workspacePath string, cfg *WorkspaceConfig) error {
 func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *ResolvedConfig {
 	resolved := &ResolvedConfig{
 		// Base: defaults globais
-		Provider:                  global.DefaultProvider,
-		Model:                     global.DefaultModel,
-		MaxIterations:             global.MaxIterationsDefault,
-		MaxConsecutiveFail:        global.MaxConsecutiveFailDefault,
-		MaxTokensPerTask:          global.MaxTokensPerTaskDefault,
-		ToolTimeoutSeconds:        global.ToolTimeoutSecondsDefault,
-		MaxMessageHistory:         global.MaxMessageHistoryDefault,
-		LogLevel:                  global.LogLevel,
-		PermissionMode:            "scoped",
-		WorkspaceJail:             true,
-		AutoVerify:                true,
-		AutoSelfCheck:             true,
-		BrowserHeadless:           true, // por padrão roda de fundo
-		DisablePromptOptimization: global.DisablePromptOptimizationDefault,
+		Provider:                     global.DefaultProvider,
+		Model:                        global.DefaultModel,
+		MaxIterations:                global.MaxIterationsDefault,
+		MaxConsecutiveFail:           global.MaxConsecutiveFailDefault,
+		MaxTokensPerTask:             global.MaxTokensPerTaskDefault,
+		ToolTimeoutSeconds:           global.ToolTimeoutSecondsDefault,
+		MaxMessageHistory:            global.MaxMessageHistoryDefault,
+		LogLevel:                     global.LogLevel,
+		PermissionMode:               "scoped",
+		WorkspaceJail:                true,
+		AutoVerify:                   true,
+		AutoSelfCheck:                true,
+		BrowserHeadless:              true, // por padrão roda de fundo
+		DisablePromptOptimization:    global.DisablePromptOptimizationDefault,
 		ConsecutiveFailureRetry:      global.ConsecutiveFailureRetryDefault,
 		ConsecutiveFailureRetryLimit: global.ConsecutiveFailureRetryLimitDefault,
 		ConsecutiveFailureRetryDelay: global.ConsecutiveFailureRetryDelayDefault,
@@ -412,6 +441,7 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 		DisableTerminalAwareness:     false,
 		DisableInteraction:           false,
 		EnableCostLimit:              false,
+		CognitiveArchitecture:        global.CognitiveArchitectureDefault,
 	}
 
 	// Camada 2: Workspace overrides
@@ -475,6 +505,16 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 		if workspace.EnableCostLimit != nil {
 			resolved.EnableCostLimit = *workspace.EnableCostLimit
 		}
+		if workspace.CognitiveArchitecture != nil {
+			if workspace.CognitiveArchitecture.MemoryStyle != "" {
+				resolved.CognitiveArchitecture.MemoryStyle = workspace.CognitiveArchitecture.MemoryStyle
+			}
+			if workspace.CognitiveArchitecture.MaxCoreMemoryBytes != 0 {
+				resolved.CognitiveArchitecture.MaxCoreMemoryBytes = workspace.CognitiveArchitecture.MaxCoreMemoryBytes
+			}
+			resolved.CognitiveArchitecture.StructuralDecomposition = workspace.CognitiveArchitecture.StructuralDecomposition
+			resolved.CognitiveArchitecture.KnowledgeGraph = workspace.CognitiveArchitecture.KnowledgeGraph
+		}
 	}
 
 	// Camada 3: CLI Flags (prioridade máxima)
@@ -526,6 +566,37 @@ func Resolve(global *GlobalConfig, workspace *WorkspaceConfig, flags CLIFlags) *
 	if flags.EnableCostLimit != nil {
 		resolved.EnableCostLimit = *flags.EnableCostLimit
 	}
+	if flags.CognitiveArchitecture != nil {
+		if flags.CognitiveArchitecture.MemoryStyle != "" {
+			resolved.CognitiveArchitecture.MemoryStyle = flags.CognitiveArchitecture.MemoryStyle
+		}
+		if flags.CognitiveArchitecture.MaxCoreMemoryBytes != 0 {
+			resolved.CognitiveArchitecture.MaxCoreMemoryBytes = flags.CognitiveArchitecture.MaxCoreMemoryBytes
+		}
+		resolved.CognitiveArchitecture.StructuralDecomposition = flags.CognitiveArchitecture.StructuralDecomposition
+		resolved.CognitiveArchitecture.KnowledgeGraph = flags.CognitiveArchitecture.KnowledgeGraph
+	}
+
+	// Auto-ajuste para modelos pequenos (menos de 10B parâmetros)
+	// Se a CLI não forçou explicitamente uma arquitetura cognitiva,
+	// desativamos o StructuralDecomposition para modelos pequenos, pois eles falham com checklists complexos.
+	if flags.CognitiveArchitecture == nil {
+		if IsSmallModel(resolved.Model) {
+			resolved.CognitiveArchitecture.StructuralDecomposition = false
+		}
+	}
 
 	return resolved
+}
+
+// IsSmallModel verifica o nome do modelo para inferir se ele tem menos de 10B parâmetros.
+func IsSmallModel(modelID string) bool {
+	lower := strings.ToLower(modelID)
+	smallPatterns := []string{"-8b", "-7b", "-3b", "-4b", "-1.5b", "-2b", "-1b", "-9b"}
+	for _, p := range smallPatterns {
+		if strings.Contains(lower, p) {
+			return true
+		}
+	}
+	return false
 }

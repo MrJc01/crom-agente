@@ -119,7 +119,14 @@ func isCompletionResponse(content string) bool {
 		strings.Contains(lower, "concluí a tarefa") ||
 		strings.Contains(lower, "i have completed the task") ||
 		strings.Contains(lower, "tudo pronto") ||
-		strings.Contains(lower, "finalizei as alterações")
+		strings.Contains(lower, "finalizei as alterações") ||
+		strings.Contains(lower, "com sucesso") ||
+		strings.Contains(lower, "foi concluída") ||
+		strings.Contains(lower, "foi adicionada") ||
+		strings.Contains(lower, "estão completos") ||
+		strings.Contains(lower, "foi executad") ||
+		strings.Contains(lower, "já concluí") ||
+		strings.Contains(lower, "concluído")
 }
 
 // GetLastIterationExecutionStatus analisa as últimas mensagens para ver o status da última execução de ferramenta

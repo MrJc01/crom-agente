@@ -438,6 +438,12 @@ func (m *MultiAgentManager) StartAgent(ctx context.Context, workspaceName, sessi
 		al.RegisterTool(t)
 	}
 
+	if resolved.CognitiveArchitecture.MemoryStyle == "os_style" {
+		al.RegisterTool(tools.NewCoreMemoryAppendTool(sm))
+		al.RegisterTool(tools.NewCoreMemoryReplaceTool(sm))
+		al.RegisterTool(tools.NewCoreMemorySearchTool(sm))
+	}
+
 	// Carrega a topologia de agentes dinâmicos
 	topoPath := filepath.Join(target.Path, ".crom", config.AgentsTopologyFile)
 	topo, err := topology.LoadTopology(topoPath)
