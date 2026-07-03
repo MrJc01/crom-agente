@@ -411,7 +411,7 @@ func VerifyExpectedFiles(expectedFiles []string, workspaceDir string) []string {
 	for _, f := range expectedFiles {
 		// Se o caminho já for absoluto, verifica diretamente
 		checkPath := f
-		if !filepath.IsAbs(f) {
+		if !filepath.IsAbs(f) || !strings.HasPrefix(f, workspaceDir) {
 			checkPath = filepath.Join(workspaceDir, f)
 		}
 		if _, err := os.Stat(checkPath); os.IsNotExist(err) {

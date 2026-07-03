@@ -264,10 +264,34 @@ func TestVerifyExpectedFiles(t *testing.T) {
 	existFile := filepath.Join(ws, "exists.go")
 	_ = os.WriteFile(existFile, []byte("package main"), 0644)
 
-	expected := []string{"exists.go", "missing.go"}
+	// Cria outro arquivo existente referenciado por caminho absoluto
+	absExistFile := filepath.Join(ws, "abs_exists.go")
+	_ = os.WriteFile(absExistFile, []byte("package main"), 0644)
+
+	expected := []string{
+		"exists.go", 
+		"missing.go", 
+		"/exists.go", // should be treated as relative since it doesn't start with ws path and checked under ws
+		absExistFile, // absolute path starting with ws path
+		"/missing_abs.go", // should be treated as relative and checked under ws, so it will be missing
+	}
 	missing := VerifyExpectedFiles(expected, ws)
 
-	if len(missing) != 1 || missing[0] != "missing.go" {
-		t.Errorf("VerifyExpectedFiles deveria retornar missing.go como ausente, obteve %v", missing)
+	// should return missing.go and /missing_abs.go
+	if len(missing) != 2 {
+		t.Errorf("VerifyExpectedFiles deveria retornar 2 arquivos ausentes, obteve %v", missing)
+	}
+
+	hasMissing := func(name string) bool {
+		for _, m := range missing {
+			if m == name {
+				return true
+			}
+		}
+		return false
+	}
+
+	if !hasMissing("missing.go") || !hasMissing("/missing_abs.go") {
+		t.Errorf("VerifyExpectedFiles não retornou os arquivos esperados como ausentes (missing.go, /missing_abs.go), obteve: %v", missing)
 	}
 }
