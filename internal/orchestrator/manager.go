@@ -738,6 +738,26 @@ type AgentTelemetry struct {
 
 // GetAgentTelemetry consolida a telemetria do agente de um determinado workspace e sessão
 func (m *MultiAgentManager) GetAgentTelemetry(workspaceName string, sessionName string) (*AgentTelemetry, error) {
+	// Auto-registrar o workspace se ele existir fisicamente no disco mas não estiver no workspaces.json
+	if list, err := LoadWorkspaces(); err == nil {
+		found := false
+		for _, ws := range list {
+			if ws.Name == workspaceName || ws.Path == workspaceName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			if info, errStat := os.Stat(workspaceName); errStat == nil && info.IsDir() {
+				name := filepath.Base(workspaceName)
+				if name == "" || name == "." || name == "/" {
+					name = "workspace-" + filepath.Base(filepath.Clean(workspaceName))
+				}
+				_ = m.AddWorkspace(name, workspaceName)
+			}
+		}
+	}
+
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
