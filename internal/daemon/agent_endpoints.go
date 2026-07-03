@@ -749,6 +749,22 @@ func (s *APIServer) handleTranscribe(w http.ResponseWriter, r *http.Request) {
 		"/home/j/Área de trabalho/GitHub/crom-agente5/crom-agente/scripts/transcribe.py",
 		"./scripts/transcribe.py",
 	}
+	if execPath, err := os.Executable(); err == nil {
+		execDir := filepath.Dir(execPath)
+		possiblePaths = append(possiblePaths,
+			filepath.Join(execDir, "transcribe.py"),
+			filepath.Join(execDir, "scripts", "transcribe.py"),
+			filepath.Join(execDir, "../scripts/transcribe.py"),
+		)
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		possiblePaths = append(possiblePaths,
+			filepath.Join(home, ".crom", "transcribe.py"),
+			filepath.Join(home, ".crom", "bin", "transcribe.py"),
+			filepath.Join(home, ".crom", "scripts", "transcribe.py"),
+		)
+	}
+
 	var pythonScript string
 	for _, p := range possiblePaths {
 		if _, err := os.Stat(p); err == nil {
@@ -757,7 +773,7 @@ func (s *APIServer) handleTranscribe(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if pythonScript == "" {
-		pythonScript = "/home/j/Documentos/GitHub/crom-agente/scripts/transcribe.py"
+		pythonScript = "transcribe.py"
 	}
 	cmd := exec.Command("python3", pythonScript, tempFile)
 	var stdout, stderr bytes.Buffer

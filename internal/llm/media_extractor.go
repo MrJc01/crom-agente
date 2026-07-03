@@ -215,6 +215,21 @@ func (me *MediaExtractor) transcribeAudioLocal(b64Data string) (string, error) {
 		"/home/j/Área de trabalho/GitHub/crom-agente5/crom-agente/scripts/transcribe.py",
 		"./scripts/transcribe.py",
 	}
+	if execPath, err := os.Executable(); err == nil {
+		execDir := filepath.Dir(execPath)
+		possiblePaths = append(possiblePaths,
+			filepath.Join(execDir, "transcribe.py"),
+			filepath.Join(execDir, "scripts", "transcribe.py"),
+			filepath.Join(execDir, "../scripts/transcribe.py"),
+		)
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		possiblePaths = append(possiblePaths,
+			filepath.Join(home, ".crom", "transcribe.py"),
+			filepath.Join(home, ".crom", "bin", "transcribe.py"),
+			filepath.Join(home, ".crom", "scripts", "transcribe.py"),
+		)
+	}
 
 	var scriptPath string
 	for _, p := range possiblePaths {
@@ -225,7 +240,7 @@ func (me *MediaExtractor) transcribeAudioLocal(b64Data string) (string, error) {
 	}
 
 	if scriptPath == "" {
-		return "", fmt.Errorf("script transcribe.py não encontrado")
+		scriptPath = "transcribe.py"
 	}
 
 	cmd := exec.Command("python3", scriptPath, tempWav)
