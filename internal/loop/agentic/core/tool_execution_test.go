@@ -160,6 +160,13 @@ func TestAgenticLoop_AgenticIdentityInjection(t *testing.T) {
 	handler := &testEventHandler{}
 
 	al := New(provider, sm, handler)
+	al.RegisterTool(&mockTool{
+		id:          "edit_file",
+		description: "Edita partes de um arquivo",
+		executeFunc: func(ctx context.Context, args json.RawMessage) (tools.Result, error) {
+			return tools.Result{Success: true}, nil
+		},
+	})
 
 	err := al.Execute(context.Background(), "Olá, crie um arquivo para mim")
 	if err != nil {
@@ -172,8 +179,8 @@ func TestAgenticLoop_AgenticIdentityInjection(t *testing.T) {
 		if strings.Contains(msg.Content, "[SYSTEM AGENTIC IDENTITY]") {
 			foundIdentity = true
 			// Verificar que contém as palavras-chave essenciais
-			if !strings.Contains(msg.Content, "AI Sênior") {
-				t.Fatal("mensagem AGENTIC IDENTITY não contém 'AI Sênior'")
+			if !strings.Contains(msg.Content, "autônomo") {
+				t.Fatal("mensagem AGENTIC IDENTITY não contém 'autônomo'")
 			}
 			if !strings.Contains(msg.Content, "edit_file") {
 				t.Fatal("mensagem AGENTIC IDENTITY não menciona 'edit_file'")

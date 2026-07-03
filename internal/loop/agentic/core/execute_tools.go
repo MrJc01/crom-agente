@@ -128,7 +128,7 @@ func (al *AgenticLoop) parseAndInterceptToolCalls(msg *llm.Message, consecutiveN
 		}
 	}
 
-	if len(msg.ToolCalls) == 0 && (al.textOnlyMode || consecutiveNoToolCallTurns >= 2) {
+	if len(msg.ToolCalls) == 0 {
 		validToolsMap := make(map[string]bool)
 		for name := range al.tools {
 			validToolsMap[name] = true
@@ -141,7 +141,7 @@ func (al *AgenticLoop) parseAndInterceptToolCalls(msg *llm.Message, consecutiveN
 		}
 	}
 
-	if len(msg.ToolCalls) == 0 && (al.textOnlyMode || consecutiveNoToolCallTurns >= 2) {
+	if len(msg.ToolCalls) == 0 {
 		validToolsMap := make(map[string]bool)
 		for name := range al.tools {
 			validToolsMap[name] = true
@@ -154,7 +154,7 @@ func (al *AgenticLoop) parseAndInterceptToolCalls(msg *llm.Message, consecutiveN
 		}
 	}
 
-	if al.textOnlyMode || (len(msg.ToolCalls) == 0 && consecutiveNoToolCallTurns >= 2) {
+	if len(msg.ToolCalls) == 0 {
 		if markdownToolCalls := loop.TryParseMarkdownToolCalls(msg.Content); len(markdownToolCalls) > 0 {
 			msg.ToolCalls = append(msg.ToolCalls, markdownToolCalls...)
 			if al.stateManager != nil {
