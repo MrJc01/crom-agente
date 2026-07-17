@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -102,6 +103,13 @@ func (t *EditFileTool) Execute(ctx context.Context, args json.RawMessage) (tools
 	targetFile, err := tools.ValidatePath(t.workspaceRoot, input.Path, t.jail)
 	if err != nil {
 		return tools.Result{Success: false, Error: err.Error()}, nil
+	}
+
+	// Em projeto Godot, editar .tscn como texto corrompe a cena viva (ver write_file).
+	if strings.HasSuffix(strings.ToLower(targetFile), ".tscn") {
+		if _, e := os.Stat(filepath.Join(t.workspaceRoot, "project.godot")); e == nil {
+			return tools.Result{Success: false, Error: "Não edite .tscn com edit_file num projeto Godot — use as ferramentas godot_* do editor (godot_add_node, godot_set_node_property, godot_connect_signal, godot_save_scene)."}, nil
+		}
 	}
 
 	data, err := os.ReadFile(targetFile)

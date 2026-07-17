@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/crom/crom-agente/internal/tools"
 )
@@ -84,6 +85,15 @@ func (t *WriteFileTool) Execute(ctx context.Context, args json.RawMessage) (tool
 	targetFile, err := tools.ValidatePath(t.workspaceRoot, input.Path, t.jail)
 	if err != nil {
 		return tools.Result{Success: false, Error: err.Error()}, nil
+	}
+
+	// Em projeto Godot, editar .tscn como texto conflita com a edição da cena
+	// viva pelas ferramentas godot_* (gera nós órfãos, unique_id inválido, script
+	// errado na raiz). Bloqueia e orienta a usar as ferramentas do editor.
+	if strings.HasSuffix(strings.ToLower(targetFile), ".tscn") {
+		if _, e := os.Stat(filepath.Join(t.workspaceRoot, "project.godot")); e == nil {
+			return tools.Result{Success: false, Error: "Não edite arquivos .tscn com write_file num projeto Godot — isso corrompe a cena. Use as ferramentas do editor: godot_create_scene, godot_add_node, godot_set_node_property, godot_connect_signal, godot_save_scene."}, nil
+		}
 	}
 
 	if err := tools.EnsureDir(filepath.Dir(targetFile)); err != nil {

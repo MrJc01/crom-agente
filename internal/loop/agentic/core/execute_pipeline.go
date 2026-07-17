@@ -13,6 +13,7 @@ import (
 	"github.com/crom/crom-agente/internal/loop/agentic/tooling"
 	"github.com/crom/crom-agente/internal/loop/agentic/workspace"
 	"github.com/crom/crom-agente/internal/security"
+	"github.com/crom/crom-agente/internal/skills"
 	"github.com/crom/crom-agente/internal/state"
 	"github.com/crom/crom-agente/internal/tools"
 	"log"
@@ -143,6 +144,23 @@ func (al *AgenticLoop) executeCoreLoop(ctx context.Context, intent string) error
 				}
 			}
 
+			// 2.2.5 Injetar Skills do projeto (.crom/skills/*.crom). Permite regras
+			// específicas por framework — ex.: godot4.crom evita drift de sintaxe
+			// Godot 3→4 (queue_redraw, Color.GRAY, await, CharacterBody2D).
+			if loadedSkills, errSk := skills.LoadSkillsForWorkspace(workspaceDir); errSk == nil && len(loadedSkills) > 0 {
+				if addon := skills.BuildPromptAddon(loadedSkills); addon != "" {
+					names := make([]string, 0, len(loadedSkills))
+					for _, s := range loadedSkills {
+						names = append(names, s.Name)
+					}
+					al.handler.OnMessage("system", fmt.Sprintf("🧩 Skills carregadas: %s", strings.Join(names, ", ")))
+					messages = append(messages, llm.Message{
+						Role:    "system",
+						Content: addon,
+					})
+				}
+			}
+
 			// 2.3. Diretório de Sessão para Artefatos, Tasks e Scripts (Dinâmico)
 			if sessionDir != "" && strings.Contains(al.stateManager.FilePath(), "sessions") {
 				relSessionDir, errRel := filepath.Rel(workspaceDir, sessionDir)
@@ -256,6 +274,22 @@ func (al *AgenticLoop) executeCoreLoop(ctx context.Context, intent string) error
 				maxIterations = i + 3
 			} else if cost > 0.15 && maxIterations > 30 {
 				maxIterations = 30
+			}
+		}
+
+		// Teto de custo DURO por tarefa: aborta a QUALQUER momento (não exige muitas
+		// iterações). Rede de segurança contra loops caros como o do connect_signal.
+		if al.stateManager != nil {
+			if c := al.stateManager.GetState().CustoTotalUSD; c > 1.00 {
+				al.handler.OnMessage("system", fmt.Sprintf("⚠️ [TETO DE CUSTO] A tarefa atingiu $%.2f (limite $1.00). Interrompendo para evitar gasto.", c))
+				al.handler.OnEvent(loop.AgentEvent{
+					Timestamp: time.Now(),
+					Event:     "finished",
+					Iteration: i,
+					Data:      map[string]interface{}{"reason": "cost_hard_cap", "cost_usd": c},
+				})
+				al.handler.OnStatusChange("idle")
+				return fmt.Errorf("teto de custo por tarefa ($1.00) excedido: $%.2f", c)
 			}
 		}
 
