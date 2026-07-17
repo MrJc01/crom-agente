@@ -366,7 +366,10 @@ func ParseExpectedFiles(messages []llm.Message) []string {
 	var files []string
 
 	for _, msg := range messages {
-		if msg.Role != "assistant" {
+		// Varre assistant (planos e resumos) e user (o prompt otimizado costuma
+		// declarar os deliverables em "NEW:/MODIFY:"). Ignora system/tool para não
+		// re-capturar caminhos de avisos internos.
+		if msg.Role != "assistant" && msg.Role != "user" {
 			continue
 		}
 

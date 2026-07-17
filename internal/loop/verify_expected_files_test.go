@@ -48,14 +48,18 @@ func TestParseExpectedFiles_MarkdownVariants(t *testing.T) {
 	msgs := []llm.Message{
 		{Role: "assistant", Content: "Plano:\n- **NEW**: `res://snake_game.gd` (logica)\n- [NEW] res://scenes/main.tscn\n- **MODIFY:** scripts/player.gd"},
 		{Role: "assistant", Content: "Criado [x](file:///home/j/proj/hud.gd)."},
+		// deliverables no prompt otimizado (role=user) tambem contam
+		{Role: "user", Content: "Proposed Changes:\nNEW: `res://config_menu.gd`\nNEW: `res://levels/level1.tscn`"},
 		{Role: "assistant", Content: "Tudo pronto com sucesso, sem novos arquivos aqui."},
 	}
 	got := ParseExpectedFiles(msgs)
 	want := map[string]bool{
-		"res://snake_game.gd":    true,
-		"res://scenes/main.tscn": true,
-		"scripts/player.gd":      true,
-		"/home/j/proj/hud.gd":    true,
+		"res://snake_game.gd":      true,
+		"res://scenes/main.tscn":   true,
+		"scripts/player.gd":        true,
+		"/home/j/proj/hud.gd":      true,
+		"res://config_menu.gd":     true,
+		"res://levels/level1.tscn": true,
 	}
 	for _, g := range got {
 		delete(want, g)
