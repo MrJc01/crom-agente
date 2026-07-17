@@ -348,7 +348,7 @@ func GetCurrentPhase(sm *state.StateManager) ExecutionPhase {
 // --- Fase 14: ParseExpectedFiles ---
 
 // filePathRegex captura caminhos de arquivos mencionados em seções de Proposed Changes
-var filePathRegex = regexp.MustCompile(`(?:(?:\[(?:NEW|MODIFY|DELETE)\])|(?:file:///))\s*(?:\[.*?\]\()?([\w/._-]+(?:\.\w+)+)\)?`)
+var filePathRegex = regexp.MustCompile(`(?:(?:\[(?:NEW|MODIFY|DELETE)\])|(?:file://))\s*(?:\[.*?\]\()?([\w/._-]+(?:\.\w+)+)\)?`)
 
 // ParseExpectedFiles examina o histórico de mensagens do assistente e extrai
 // caminhos de arquivos que foram mencionados em seções [Proposed Changes], [NEW], [MODIFY]
