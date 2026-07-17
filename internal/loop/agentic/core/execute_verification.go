@@ -19,6 +19,13 @@ func runAutoTests(workspaceDir string) (bool, string) {
 		return true, ""
 	}
 
+	// 0. Projeto Godot: não há suíte Go/Python local para rodar. A validação real
+	//    acontece no editor (import de GDScript via MCP) e ao executar a cena
+	//    (play_scene). Rodar go/python test aqui só produz falso [TEST_FAILURE].
+	if _, err := os.Stat(filepath.Join(workspaceDir, "project.godot")); err == nil {
+		return true, ""
+	}
+
 	// 1. Detectar se é projeto Go (existe go.mod)
 	goMod := filepath.Join(workspaceDir, "go.mod")
 	if _, err := os.Stat(goMod); err == nil {

@@ -409,20 +409,49 @@ func ParseExpectedFiles(messages []llm.Message) []string {
 func VerifyExpectedFiles(expectedFiles []string, workspaceDir string) []string {
 	var missing []string
 	for _, f := range expectedFiles {
-		cleanF := f
-		if strings.HasPrefix(cleanF, "/res://") {
-			cleanF = strings.TrimPrefix(cleanF, "/res://")
-		} else if strings.HasPrefix(cleanF, "res://") {
-			cleanF = strings.TrimPrefix(cleanF, "res://")
-		}
-		
-		checkPath := cleanF
-		if !filepath.IsAbs(cleanF) || !strings.HasPrefix(cleanF, workspaceDir) {
-			checkPath = filepath.Join(workspaceDir, cleanF)
-		}
-		if _, err := os.Stat(checkPath); os.IsNotExist(err) {
+		if !fileResolvesInWorkspace(f, workspaceDir) {
 			missing = append(missing, f)
 		}
 	}
 	return missing
+}
+
+// fileResolvesInWorkspace decide se um arquivo planejado existe dentro do workspace.
+//
+// O modelo frequentemente planeja caminhos que não batem literalmente com o disco:
+// prefixos de container alucinados ("/app/scripts/x.gd"), esquemas do Godot
+// ("res://scenes/y.tscn") ou caminhos absolutos de outra raiz. Antes, um plano com
+// "/app/project.godot" virava "<workspace>/app/project.godot" e era reportado como
+// faltando para sempre — mesmo com o arquivo criado em "<workspace>/project.godot"
+// (inclusive quando criado no editor via MCP). Aqui casamos qualquer sufixo do
+// caminho planejado contra o workspace, o que resolve esses casos com segurança.
+func fileResolvesInWorkspace(f, workspaceDir string) bool {
+	cleanF := f
+	cleanF = strings.TrimPrefix(cleanF, "/res://")
+	cleanF = strings.TrimPrefix(cleanF, "res://")
+
+	// 1. Caminho direto: relativo ao workspace, ou absoluto já dentro dele.
+	direct := cleanF
+	if !filepath.IsAbs(cleanF) || !strings.HasPrefix(cleanF, workspaceDir) {
+		direct = filepath.Join(workspaceDir, cleanF)
+	}
+	if _, err := os.Stat(direct); err == nil {
+		return true
+	}
+
+	// 2. Caminho absoluto/alucinado fora do workspace: tenta casar qualquer sufixo
+	//    (ex.: "/app/scripts/game_manager.gd" -> "scripts/game_manager.gd") dentro do
+	//    workspace. Evita falso "arquivo faltando" que trava a finalização da tarefa.
+	trimmed := strings.TrimPrefix(cleanF, "/")
+	parts := strings.Split(trimmed, "/")
+	for i := 0; i < len(parts); i++ {
+		suffix := filepath.Join(parts[i:]...)
+		if suffix == "" {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(workspaceDir, suffix)); err == nil {
+			return true
+		}
+	}
+	return false
 }
