@@ -67,6 +67,8 @@ type AgenticLoop struct {
 	fastPathCache       map[string]fastPathCacheEntry
 	fastPathCacheMu     sync.Mutex
 	linterFailures      map[string]int
+	toolRepeatSig       string // guarda anti-loop: assinatura do último resultado de ferramenta
+	toolRepeatCount     int    // quantas vezes o mesmo (tool+resultado) repetiu seguido
 	mistakeMemory       *MistakeMemory
 	timelineMemory      *TimelineMemory
 	GraphStore          graph.Store

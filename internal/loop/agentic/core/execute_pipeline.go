@@ -1478,6 +1478,35 @@ func (al *AgenticLoop) executeCoreLoop(ctx context.Context, intent string) error
 				}
 				al.handler.OnMessage("system", fmt.Sprintf(i18n.Get("system.tool_executed_success"), toolID))
 
+				// Guarda anti-loop: mesma ferramenta devolvendo EXATAMENTE o mesmo
+				// resultado repetidamente — inclui {"status":"error"} dentro do JSON,
+				// que não conta como falha de ferramenta. Evita loops caros.
+				repeatSig := toolID + "\x00" + redactedData
+				if repeatSig == al.toolRepeatSig {
+					al.toolRepeatCount++
+				} else {
+					al.toolRepeatSig = repeatSig
+					al.toolRepeatCount = 1
+				}
+				if al.toolRepeatCount == 3 {
+					warn := "⚠️ [LOOP DETECTADO] Você chamou '" + toolID + "' 3 vezes seguidas com EXATAMENTE o mesmo resultado. Pare de repetir: leia o resultado com atenção e mude de abordagem (outra ferramenta, outros parâmetros, ou revise o passo anterior)."
+					al.handler.OnMessage("system", warn)
+					messages = append(messages, llm.Message{Role: "system", Content: warn})
+					saveMsgs(messages)
+				} else if al.toolRepeatCount >= 5 {
+					al.handler.OnMessage("system", "⚠️ [LOOP ABORTADO] '"+toolID+"' retornou o mesmo resultado 5 vezes seguidas. Interrompendo para evitar custo desnecessário.")
+					al.handler.OnEvent(loop.AgentEvent{
+						Timestamp: time.Now(),
+						Event:     "finished",
+						Iteration: i + 1,
+						Data:      map[string]interface{}{"reason": "tool_repeat_loop", "tool": toolID, "total_iterations": i + 1},
+					})
+					if al.stateManager != nil {
+						_ = al.stateManager.SaveIterationLog(i+1, iterLog)
+					}
+					return fmt.Errorf("loop de ferramenta abortado: '%s' repetiu o mesmo resultado 5 vezes seguidas", toolID)
+				}
+
 				// Evento estruturado de tool_result com sucesso
 				al.handler.OnEvent(loop.AgentEvent{
 					Timestamp: time.Now(),

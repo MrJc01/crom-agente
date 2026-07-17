@@ -603,6 +603,23 @@ func (al *AgenticLoop) recordCostForResponse(resp *llm.Response) {
 	case strings.Contains(model, "gemini-2.5-flash") || strings.Contains(model, "flash"):
 		promptPriceUSD = 0.075
 		completionPriceUSD = 0.30
+	// Modelos open-source baratos (via OpenRouter/Ollama) — antes caíam no default
+	// caro (gpt-4o) e inflavam o custo (ex.: DeepSeek cobrado como gpt-4o).
+	case strings.Contains(model, "deepseek"):
+		promptPriceUSD = 0.14
+		completionPriceUSD = 0.28
+	case strings.Contains(model, "qwen"):
+		promptPriceUSD = 0.20
+		completionPriceUSD = 0.20
+	case strings.Contains(model, "llama"):
+		promptPriceUSD = 0.10
+		completionPriceUSD = 0.30
+	case strings.Contains(model, "mistral") || strings.Contains(model, "mixtral"):
+		promptPriceUSD = 0.20
+		completionPriceUSD = 0.60
+	case strings.Contains(model, "ollama") || strings.Contains(model, "localhost"):
+		promptPriceUSD = 0.0
+		completionPriceUSD = 0.0
 	default:
 		promptPriceUSD = 5.00
 		completionPriceUSD = 15.00
