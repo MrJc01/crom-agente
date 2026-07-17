@@ -347,8 +347,16 @@ func GetCurrentPhase(sm *state.StateManager) ExecutionPhase {
 
 // --- Fase 14: ParseExpectedFiles ---
 
-// filePathRegex captura caminhos de arquivos mencionados em seções de Proposed Changes
-var filePathRegex = regexp.MustCompile(`(?:(?:\[(?:NEW|MODIFY|DELETE)\])|(?:file://))\s*(?:\[.*?\]\()?([\w/._-]+(?:\.\w+)+)\)?`)
+// filePathRegex captura caminhos de arquivos planejados. Reconhece os rótulos
+// NEW/MODIFY/DELETE em suas variações markdown reais ([NEW], **NEW**, **NEW:**,
+// MODIFY:), links file:// e caminhos res:// (com ou sem crase/link markdown).
+// Antes exigia "[NEW]" literal; o modelo costuma escrever "**NEW**: `res://x.gd`",
+// então a lista de esperados ficava vazia e a conclusão não era barrada mesmo com
+// arquivos prometidos ausentes. A verificação (VerifyExpectedFiles) é leniente por
+// sufixo, então capturar a mais aqui não reintroduz falso PHYSICAL_FILE_MISSING.
+var filePathRegex = regexp.MustCompile(
+	`(?:(?:[*\[]*(?:NEW|MODIFY|DELETE)[*\]:]+)|file://|res://)\s*` + "`" +
+		`?(?:\[[^\]]*\]\()?\s*` + "`" + `?((?:res://|file://)?[\w./-]+\.[A-Za-z][\w]*)`)
 
 // ParseExpectedFiles examina o histórico de mensagens do assistente e extrai
 // caminhos de arquivos que foram mencionados em seções [Proposed Changes], [NEW], [MODIFY]
