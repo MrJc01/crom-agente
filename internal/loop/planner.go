@@ -409,10 +409,16 @@ func ParseExpectedFiles(messages []llm.Message) []string {
 func VerifyExpectedFiles(expectedFiles []string, workspaceDir string) []string {
 	var missing []string
 	for _, f := range expectedFiles {
-		// Se o caminho já for absoluto, verifica diretamente
-		checkPath := f
-		if !filepath.IsAbs(f) || !strings.HasPrefix(f, workspaceDir) {
-			checkPath = filepath.Join(workspaceDir, f)
+		cleanF := f
+		if strings.HasPrefix(cleanF, "/res://") {
+			cleanF = strings.TrimPrefix(cleanF, "/res://")
+		} else if strings.HasPrefix(cleanF, "res://") {
+			cleanF = strings.TrimPrefix(cleanF, "res://")
+		}
+		
+		checkPath := cleanF
+		if !filepath.IsAbs(cleanF) || !strings.HasPrefix(cleanF, workspaceDir) {
+			checkPath = filepath.Join(workspaceDir, cleanF)
 		}
 		if _, err := os.Stat(checkPath); os.IsNotExist(err) {
 			missing = append(missing, f)
