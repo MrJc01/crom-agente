@@ -766,6 +766,19 @@ func (al *AgenticLoop) executeCoreLoop(ctx context.Context, intent string) error
 				hasWriteOrExec = true
 				break
 			}
+			// Ferramentas MCP do Godot que modificam o projeto também contam como escrita.
+			// Sem isso, o agente recebe warnings de inatividade enquanto ativamente
+			// cria cenas, adiciona nós e configura propriedades no editor.
+			if strings.HasPrefix(name, "godot_") {
+				if strings.Contains(name, "create") || strings.Contains(name, "set") ||
+					strings.Contains(name, "add") || strings.Contains(name, "save") ||
+					strings.Contains(name, "attach") || strings.Contains(name, "delete") ||
+					strings.Contains(name, "play") || strings.Contains(name, "stop") ||
+					strings.Contains(name, "modify") {
+					hasWriteOrExec = true
+					break
+				}
+			}
 		}
 		if hasWriteOrExec {
 			consecutiveReadOnlyTurns = 0
@@ -1543,7 +1556,9 @@ func (al *AgenticLoop) executeCoreLoop(ctx context.Context, intent string) error
 		}
 
 		// Circuit Breaker de Arquivos Inalterados (Intervenção Soft)
-		if consecutiveReadOnlyTurns >= 3 && al.taskRequiresFiles(intent) {
+		// Threshold aumentado para 5 para permitir que o agente inspecione
+		// o estado do projeto (ler cenas, árvores, arquivos) antes de modificar.
+		if consecutiveReadOnlyTurns >= 5 && al.taskRequiresFiles(intent) {
 			if al.stateManager != nil {
 				_ = al.stateManager.SetCircuitBreakerTriggered(true)
 			}

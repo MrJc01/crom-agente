@@ -13,6 +13,16 @@ func ValidatePath(workspaceRoot, targetPath string, jail bool) (string, error) {
 	// Normaliza caminhos do Windows para barras normais para compatibilidade cruzada
 	targetPath = strings.ReplaceAll(targetPath, "\\", "/")
 
+	// Remove prefixos de caminho específicos do Godot Engine (res://, user://)
+	// que o LLM pode usar ao referenciar arquivos do projeto.
+	// Esses prefixos são válidos dentro do editor, mas no filesystem real
+	// devem ser tratados como caminhos relativos ao workspace.
+	if strings.HasPrefix(targetPath, "res://") {
+		targetPath = strings.TrimPrefix(targetPath, "res://")
+	} else if strings.HasPrefix(targetPath, "user://") {
+		targetPath = strings.TrimPrefix(targetPath, "user://")
+	}
+
 	absWorkspace, err := filepath.Abs(workspaceRoot)
 	if err != nil {
 		return "", fmt.Errorf("caminho de workspace inválido: %w", err)

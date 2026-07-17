@@ -26,10 +26,11 @@ func truncateStr(s string, max int) string {
 
 // Regex patterns para extração determinística
 var (
-	funcSigRegex   = regexp.MustCompile(`(?m)^(?:func |def |class |function |export (?:default )?(?:function |class ))([^\n{(]+)`)
-	stackRegex     = regexp.MustCompile(`(?m)^\s+at .+:\d+|^\s*File ".+", line \d+|^\s+[a-zA-Z0-9_/.-]+\.(?:go|py|js|ts):\d+`)
-	errorLineRegex = regexp.MustCompile(`(?im)(?:error|panic|exception|traceback|fatal|fail(?:ed|ure)?)[:\s].{5,120}`)
-	filePathRegex  = regexp.MustCompile(`(?:[\w./\\-]+\.(?:go|py|js|ts|jsx|tsx|java|rs))(?::\d+)?`)
+	funcSigRegex      = regexp.MustCompile(`(?m)^(?:func |def |class |function |export (?:default )?(?:function |class ))([^\n{(]+)`)
+	stackRegex        = regexp.MustCompile(`(?m)^\s+at .+:\d+|^\s*File ".+", line \d+|^\s+[a-zA-Z0-9_/.-]+\.(?:go|py|js|ts):\d+`)
+	errorLineRegex    = regexp.MustCompile(`(?im)(?:error|panic|exception|traceback|fatal|fail(?:ed|ure)?)[:\s].{5,120}`)
+	filePathRegex     = regexp.MustCompile(`(?:[\w./\\-]+\.(?:go|py|js|ts|jsx|tsx|java|rs))(?::\d+)?`)
+	godotResPathRegex = regexp.MustCompile(`res://[\w./\\-]+\.(?:tscn|gd|tres|cfg)`)
 )
 
 // CompactMessages aplica compactação inteligente usando heurísticas determinísticas (sem custo LLM)
@@ -40,13 +41,15 @@ func CompactMessages(ctx context.Context, provider llm.Provider, maxMsgs int, ha
 	}
 
 	currentTokens := llm.CountTokens(messages, "", provider.Name(), "default")
-	if len(messages) <= maxMsgs && currentTokens <= 50000 {
+	// Threshold aumentado para 80k tokens para preservar mais contexto sobre
+	// o estado do projeto (cenas criadas, nós adicionados, scripts anexados).
+	if len(messages) <= maxMsgs && currentTokens <= 80000 {
 		return messages
 	}
 
-	keepRecent := 10 // equivale a 5 turnos completos de iteração
+	keepRecent := 16 // equivale a 8 turnos completos de iteração
 	if maxMsgs < 20 {
-		keepRecent = 5
+		keepRecent = 8
 	}
 
 	middleStart := 0
@@ -87,7 +90,7 @@ func CompactMessages(ctx context.Context, provider llm.Provider, maxMsgs int, ha
 		}
 
 		compactedTokens := llm.CountTokens(compacted, "", provider.Name(), "default")
-		if compactedTokens <= 50000 || keepRecent <= 2 {
+		if compactedTokens <= 80000 || keepRecent <= 2 {
 			break
 		}
 		
@@ -99,7 +102,7 @@ func CompactMessages(ctx context.Context, provider llm.Provider, maxMsgs int, ha
 		handler.OnMessage("system", i18n.Get("system.compactor_optimization_log"))
 	}
 
-	log.Printf("[AgenticLoop] Compactou histórico de %d para %d mensagens (determinístico, limit=50k tokens)", len(messages), len(compacted))
+	log.Printf("[AgenticLoop] Compactou histórico de %d para %d mensagens (determinístico, limit=80k tokens)", len(messages), len(compacted))
 	return compacted
 }
 
@@ -122,10 +125,22 @@ func extractDeterministicSummary(messages []llm.Message) string {
 			for _, tc := range msg.ToolCalls {
 				toolCallCount[tc.Function.Name]++
 
-				// Extrair arquivos de argumentos de escrita
-				if tc.Function.Name == "write_file" || tc.Function.Name == "edit_file" {
+				// Extrair arquivos de argumentos de escrita (inclui ferramentas do filesystem e do Godot)
+				if tc.Function.Name == "write_file" || tc.Function.Name == "edit_file" ||
+					strings.HasPrefix(tc.Function.Name, "godot_create") ||
+					strings.HasPrefix(tc.Function.Name, "godot_add") ||
+					tc.Function.Name == "godot_save_scene" ||
+					tc.Function.Name == "godot_create_and_attach_script" ||
+					tc.Function.Name == "godot_set_node_property" ||
+					tc.Function.Name == "godot_set_project_setting" {
 					if paths := filePathRegex.FindAllString(tc.Function.Arguments, 3); len(paths) > 0 {
 						for _, p := range paths {
+							filesModified[p] = true
+						}
+					}
+					// Também extrair caminhos res:// do Godot para o resumo
+					if resMatches := godotResPathRegex.FindAllString(tc.Function.Arguments, 5); len(resMatches) > 0 {
+						for _, p := range resMatches {
 							filesModified[p] = true
 						}
 					}
