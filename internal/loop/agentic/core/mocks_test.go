@@ -33,6 +33,15 @@ func (m *mockTool) Execute(ctx context.Context, args json.RawMessage) (tools.Res
 	return tools.Result{Success: true, Data: "ok"}, nil
 }
 
+// echoArgsTool devolve um mockTool cujo resultado reflete os argumentos, de modo
+// que chamadas com args diferentes produzem Data diferente. Isso evita disparar
+// o anti-loop de "resultado repetido" em testes que querem esgotar iterações.
+func echoArgsTool() *mockTool {
+	return &mockTool{id: "echo", description: "Ecoa", executeFunc: func(ctx context.Context, args json.RawMessage) (tools.Result, error) {
+		return tools.Result{Success: true, Data: string(args)}, nil
+	}}
+}
+
 // --- Mock EventHandler para capturar eventos ---
 
 type testEventHandler struct {

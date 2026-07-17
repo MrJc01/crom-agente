@@ -239,7 +239,7 @@ func TestAgentEvent_MaxIterationsEmitsFinished(t *testing.T) {
 		MaxIterations:     15,
 		MaxMessageHistory: 100,
 	})
-	al.RegisterTool(&mockTool{id: "echo", description: "Ecoa"})
+	al.RegisterTool(echoArgsTool())
 
 	_ = al.Execute(context.Background(), "Loop")
 

@@ -31,9 +31,10 @@ func TestCompactMessages(t *testing.T) {
 
 	compacted := prompting.CompactMessages(context.Background(), al.provider, al.config.MaxMessageHistory, al.handler, msgs)
 
-	// A nova compactação cria 1 (intent) + 1 (resumo) + 15 (recentes) = 17
-	if len(compacted) != 12 {
-		t.Fatalf("esperado 12 mensagens após compactação inteligente, obteve %d", len(compacted))
+	// Compactação determinística: 1 (msg-0 preservada) + 1 (resumo) + 16 (recentes,
+	// keepRecent=16) = 18.
+	if len(compacted) != 18 {
+		t.Fatalf("esperado 18 mensagens após compactação inteligente, obteve %d", len(compacted))
 	}
 
 	// A primeira mensagem deve ser preservada

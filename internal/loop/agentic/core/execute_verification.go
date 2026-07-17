@@ -196,7 +196,66 @@ func (al *AgenticLoop) GetLastIterationExecutionStatus(messages []llm.Message) s
 	return "📋 [STATUS DA ÚLTIMA EXECUÇÃO DE FERRAMENTAS]: Nenhuma ferramenta foi solicitada ou executada na última iteração."
 }
 
+// Marcador único da cutucada de verificação Godot (evita loop de re-cutucar).
+const godotVerifyNudgeMarker = "[GODOT_VERIFY_REQUIRED]"
+
+// gateGodotVerification: num projeto Godot, se o agente construiu a cena/scripts
+// (usou ferramentas godot_* mutadoras) mas nunca verificou que RODA
+// (godot_verify_playable / godot_play_scene / godot_get_console_errors), força
+// uma iteração a mais pedindo a verificação. Fecha o feedback loop antes do
+// "terminei". Cutuca só uma vez para não travar.
+func (al *AgenticLoop) gateGodotVerification(messages *[]llm.Message, workspaceDir string) bool {
+	if workspaceDir == "" {
+		return false
+	}
+	if _, err := os.Stat(filepath.Join(workspaceDir, "project.godot")); err != nil {
+		return false // não é projeto Godot
+	}
+	built := false
+	verified := false
+	nudged := false
+	mutators := map[string]bool{
+		"godot_add_node": true, "godot_create_and_attach_script": true,
+		"godot_set_node_property": true, "godot_create_scene": true,
+		"godot_connect_signal": true, "godot_move_node": true,
+		"godot_instantiate_scene": true,
+	}
+	verifiers := map[string]bool{
+		"godot_verify_playable": true, "godot_play_scene": true,
+		"godot_get_console_errors": true,
+	}
+	for _, m := range *messages {
+		if m.Role == "tool" {
+			if mutators[m.Name] {
+				built = true
+			}
+			if verifiers[m.Name] {
+				verified = true
+			}
+		}
+		if m.Role == "system" && strings.Contains(m.Content, godotVerifyNudgeMarker) {
+			nudged = true
+		}
+	}
+	if built && !verified && !nudged {
+		warning := "⚠️ " + godotVerifyNudgeMarker + " Você montou a cena/scripts mas ainda NÃO verificou que o jogo roda. Antes de finalizar, chame godot_verify_playable (ele roda a cena, checa erros de console e detecta movimento num passo só). Só finalize quando ele retornar playable=true."
+		al.handler.OnMessage("system", warning)
+		*messages = append(*messages, llm.Message{Role: "system", Content: warning})
+		if al.stateManager != nil {
+			_ = al.stateManager.SetMessages(*messages)
+		}
+		return true
+	}
+	return false
+}
+
 func (al *AgenticLoop) verifyWorkspaceState(messages *[]llm.Message, workspaceDir string, i int, iterLog state.IterationLog, lastIterFailed *bool, lastToolWasValidation *bool) bool {
+	if al.gateGodotVerification(messages, workspaceDir) {
+		*lastIterFailed = false
+		*lastToolWasValidation = false
+		return true
+	}
+
 	expectedFiles := loop.ParseExpectedFiles(*messages)
 	if len(expectedFiles) > 0 && workspaceDir != "" {
 		missingFiles := loop.VerifyExpectedFiles(expectedFiles, workspaceDir)

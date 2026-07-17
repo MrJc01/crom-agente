@@ -61,7 +61,7 @@ func TestAgenticLoop_MaxIterationsExceeded(t *testing.T) {
 		MaxIterations:     15,
 		MaxMessageHistory: 100,
 	})
-	al.RegisterTool(&mockTool{id: "echo", description: "Ecoa texto"})
+	al.RegisterTool(echoArgsTool())
 
 	err := al.Execute(context.Background(), "Loop infinito")
 	if err == nil {
