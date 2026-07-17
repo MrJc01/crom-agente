@@ -474,6 +474,7 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 			bgCancel() // Limpa o timer de 1 hora e encerra o watchdog
 
 			backgroundProcsMu.Lock()
+			_, exists := backgroundProcs[bgID]
 			delete(backgroundProcs, bgID)
 			backgroundProcsMu.Unlock()
 			t.updateStateManagerProcesses()
@@ -482,7 +483,7 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 			if c.ProcessState != nil {
 				success = c.ProcessState.Success()
 			}
-			if t.onBackgroundExit != nil {
+			if exists && t.onBackgroundExit != nil {
 				t.onBackgroundExit(bgID, command, logsBuf.String(), success)
 			}
 		}()
@@ -619,6 +620,7 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 		if wasBg {
 			// Comportamento de finalização em background
 			backgroundProcsMu.Lock()
+			_, exists := backgroundProcs[bgID]
 			delete(backgroundProcs, bgID)
 			backgroundProcsMu.Unlock()
 			t.updateStateManagerProcesses()
@@ -629,7 +631,7 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 			if c.ProcessState != nil {
 				success = c.ProcessState.Success()
 			}
-			if t.onBackgroundExit != nil {
+			if exists && t.onBackgroundExit != nil {
 				t.onBackgroundExit(bgID, command, logsBuf.String(), success)
 			}
 		} else {
@@ -771,3 +773,23 @@ func buildSandboxedCommand(ctx context.Context, cmdName string, cmdArgs []string
     c.Dir = workspace
     return c
 }
+
+func KillAllBackgroundProcesses(workspaceRoot string) {
+	backgroundProcsMu.Lock()
+	defer backgroundProcsMu.Unlock()
+	for id, p := range backgroundProcs {
+		if p.Cmd != nil && p.Cmd.Dir == workspaceRoot {
+			// Envia SIGKILL para toda a árvore do processo
+			if p.Cmd.Process != nil {
+				pid := p.Cmd.Process.Pid
+				_ = syscall.Kill(-pid, syscall.SIGKILL)
+				_ = p.Cmd.Process.Kill()
+			}
+			if p.PTY != nil {
+				_ = p.PTY.Close()
+			}
+			delete(backgroundProcs, id)
+		}
+	}
+}
+

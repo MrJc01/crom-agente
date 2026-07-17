@@ -48,7 +48,7 @@ func main() {
 		score := 0
 		
 		for i, intent := range intents {
-			fmt.Printf("\n[Teste %d/10] Intent: %s\n", i+1, 10, intent)
+			fmt.Printf("\n[Teste %d/10] Intent: %s\n", i+1, intent)
 			
 			// Setup
 			cfg := &config.ResolvedConfig{

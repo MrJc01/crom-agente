@@ -29,6 +29,7 @@ import (
 	"github.com/crom/crom-agente/internal/tools"
 	"github.com/crom/crom-agente/internal/tools/browser"
 	"github.com/crom/crom-agente/internal/tools/registry"
+	"github.com/crom/crom-agente/internal/tools/terminal_command"
 )
 
 // Workspace representa um projeto registrado no orquestrador
@@ -574,6 +575,25 @@ func (m *MultiAgentManager) StopAgent(workspaceName string) error {
 	defer m.mu.Unlock()
 
 	wsName := m.ResolveWorkspaceName(workspaceName)
+
+	var wsPath string
+	workspaces, err := LoadWorkspaces()
+	if err == nil {
+		for _, w := range workspaces {
+			if w.Name == wsName || w.Path == wsName {
+				wsPath = w.Path
+				break
+			}
+		}
+	}
+	if wsPath == "" {
+		if info, err := os.Stat(wsName); err == nil && info.IsDir() {
+			wsPath = wsName
+		}
+	}
+	if wsPath != "" {
+		terminal_command.KillAllBackgroundProcesses(wsPath)
+	}
 
 	agent, running := m.runningAgents[wsName]
 	if running {
