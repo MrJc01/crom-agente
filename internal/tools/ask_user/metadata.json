@@ -1,5 +1,5 @@
 {
   "id": "ask_user",
   "name": "Ask User",
-  "description": "Faz uma pergunta ao usuário, opcionalmente fornecendo opções de escolha recomendadas, e suspende a execução do agente até que o usuário responda no chat."
+  "description": "USE COM PARCIMÔNIA. Suspende a execução e pergunta ao usuário, só quando a decisão for realmente do usuário (escopo ambíguo, credenciais, ação destrutiva/irreversível) e você NÃO conseguir decidir com um padrão razoável. Para escolhas triviais ou técnicas (nome de nó, cor, layout, qual API usar), NÃO pergunte: decida com o melhor padrão, siga em frente e apenas registre a suposição no texto. Perguntar demais trava o fluxo e irrita o usuário."
 }
