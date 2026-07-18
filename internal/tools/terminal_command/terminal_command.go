@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/creack/pty"
@@ -354,13 +353,8 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 		cmdName, cmdArgs := tools.WrapCommandWithCgroup(cmdMerged, 1024, 50)
 		c := exec.CommandContext(bgCtx, cmdName, cmdArgs...)
 		c.Dir = t.workspaceRoot
-		c.SysProcAttr = &syscall.SysProcAttr{
-			Setpgid: true, // Executa em um grupo de processos separado para isolar sinais do processo pai
-		}
-
-		if t.jailDir != "" {
-			c.SysProcAttr.Chroot = t.jailDir // Isolar execução com chroot
-		}
+		// Grupo de processos separado (Unix) para isolar sinais + chroot no jail.
+		configureSysProcAttr(c, true, t.jailDir)
 
 		stdout, err := c.StdoutPipe()
 		if err != nil {
@@ -521,9 +515,7 @@ func (t *TerminalCommandTool) Execute(ctx context.Context, args json.RawMessage)
 	c.Dir = t.workspaceRoot
 
 	if t.jailDir != "" {
-		c.SysProcAttr = &syscall.SysProcAttr{
-			Chroot: t.jailDir,
-		}
+		configureSysProcAttr(c, false, t.jailDir)
 	}
 
 	f, err := pty.Start(c)
@@ -718,7 +710,7 @@ func (t *TerminalCommandTool) interruptActiveProcess() (tools.Result, error) {
 		return tools.Result{Success: false, Error: "nenhum processo ativo no terminal para interromper"}, nil
 	}
 
-	_ = p.Cmd.Process.Signal(syscall.SIGINT)
+	_ = interruptProc(p.Cmd)
 	p.Cancel()
 
 	return tools.Result{
@@ -729,11 +721,7 @@ func (t *TerminalCommandTool) interruptActiveProcess() (tools.Result, error) {
 
 // killProcessGroup envia SIGKILL para toda a árvore do processo
 func (t *TerminalCommandTool) killProcessGroup(cmd *exec.Cmd) {
-	if cmd.Process != nil {
-		pid := cmd.Process.Pid
-		_ = syscall.Kill(-pid, syscall.SIGKILL)
-		_ = cmd.Process.Kill()
-	}
+	killProcessTree(cmd)
 }
 
 
@@ -780,11 +768,7 @@ func KillAllBackgroundProcesses(workspaceRoot string) {
 	for id, p := range backgroundProcs {
 		if p.Cmd != nil && p.Cmd.Dir == workspaceRoot {
 			// Envia SIGKILL para toda a árvore do processo
-			if p.Cmd.Process != nil {
-				pid := p.Cmd.Process.Pid
-				_ = syscall.Kill(-pid, syscall.SIGKILL)
-				_ = p.Cmd.Process.Kill()
-			}
+			killProcessTree(p.Cmd)
 			if p.PTY != nil {
 				_ = p.PTY.Close()
 			}
