@@ -77,9 +77,21 @@ func CheckWorkspaceQuota(workspaceDir string, maxBytes int64) (bool, int64, erro
 		if err != nil {
 			return nil
 		}
-		// Ignorar a pasta .crom para não estourar a quota com logs e snapshots do próprio agente
-		if info.IsDir() && info.Name() == ".crom" {
-			return filepath.SkipDir
+		if info.IsDir() {
+			name := info.Name()
+			// Ignorar pastas que NÃO são conteúdo do usuário: estado do próprio
+			// agente (.crom), cache/import do Godot (.godot/.import), controle de
+			// versão (.git) e dependências (node_modules). Sem isso um projeto
+			// Godot com o plugin CromAI (que traz ~200MB de binários em
+			// addons/crom_ai/bin) estoura a quota e o loop é abortado sem motivo.
+			if name == ".crom" || name == ".godot" || name == ".import" || name == ".git" || name == "node_modules" {
+				return filepath.SkipDir
+			}
+			// A pasta de binários do próprio plugin CromAI (crom-agente + godot-mcp
+			// para todos os alvos) não conta como conteúdo do projeto.
+			if strings.HasSuffix(path, filepath.Join("addons", "crom_ai", "bin")) {
+				return filepath.SkipDir
+			}
 		}
 		if !info.IsDir() {
 			size += info.Size()
