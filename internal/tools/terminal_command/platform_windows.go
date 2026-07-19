@@ -2,7 +2,11 @@
 
 package terminal_command
 
-import "os/exec"
+import (
+	"os/exec"
+	"strconv"
+	"syscall"
+)
 
 // No Windows não há Setpgid nem chroot. O agrupamento de processos e o jail via
 // chroot não são suportados; o processo roda normalmente e é encerrado com Kill.
@@ -21,11 +25,16 @@ func interruptProc(cmd *exec.Cmd) error {
 	return cmd.Process.Kill()
 }
 
-// killProcessTree encerra o processo. (Sem grupo de processos no Windows; para
-// árvores completas seria necessário taskkill /T, fora do escopo atual.)
+// killProcessTree encerra a árvore inteira via `taskkill /T /F` (o Windows não
+// tem grupos de processos como o Unix). Se o taskkill falhar, mata ao menos o
+// processo principal.
 func killProcessTree(cmd *exec.Cmd) {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
-	_ = cmd.Process.Kill()
+	kill := exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid))
+	kill.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	if err := kill.Run(); err != nil {
+		_ = cmd.Process.Kill()
+	}
 }
