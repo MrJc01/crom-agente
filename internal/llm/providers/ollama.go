@@ -75,17 +75,9 @@ func sanitizeMessagesForDeepSeek(messages []llm.Message) []llm.Message {
 }
 
 func (o *OllamaProvider) SendMessages(ctx context.Context, messages []llm.Message, opts llm.RequestOptions) (*llm.Response, error) {
-	if strings.Contains(strings.ToLower(o.model), "deepseek") {
-		messages = sanitizeMessagesForDeepSeek(messages)
-		opts.Tools = nil
-	}
 	return o.OpenAIProvider.SendMessages(ctx, messages, opts)
 }
 
 func (o *OllamaProvider) StreamMessages(ctx context.Context, messages []llm.Message, opts llm.RequestOptions, chunkChan chan<- string) (*llm.Response, error) {
-	if strings.Contains(strings.ToLower(o.model), "deepseek") {
-		messages = sanitizeMessagesForDeepSeek(messages)
-		opts.Tools = nil
-	}
 	return o.OpenAIProvider.StreamMessages(ctx, messages, opts, chunkChan)
 }

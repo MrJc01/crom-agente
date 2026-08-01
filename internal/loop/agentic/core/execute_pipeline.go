@@ -277,9 +277,8 @@ func (al *AgenticLoop) executeCoreLoop(ctx context.Context, intent string) error
 			}
 		}
 
-		// Teto de custo DURO por tarefa: aborta a QUALQUER momento (não exige muitas
-		// iterações). Rede de segurança contra loops caros como o do connect_signal.
-		if al.stateManager != nil {
+		// Teto de custo DURO por tarefa: aborta a QUALQUER momento se EnableCostLimit estiver ativo.
+		if al.config != nil && al.config.EnableCostLimit && al.stateManager != nil {
 			if c := al.stateManager.GetState().CustoTotalUSD; c > 1.00 {
 				al.handler.OnMessage("system", fmt.Sprintf("⚠️ [TETO DE CUSTO] A tarefa atingiu $%.2f (limite $1.00). Interrompendo para evitar gasto.", c))
 				al.handler.OnEvent(loop.AgentEvent{
@@ -294,7 +293,7 @@ func (al *AgenticLoop) executeCoreLoop(ctx context.Context, intent string) error
 		}
 
 		// Circuit Breaker Financeiro (Trava de Segurança de Custo e Turnos)
-		if al.stateManager != nil {
+		if al.config != nil && al.config.EnableCostLimit && al.stateManager != nil {
 			cost := al.stateManager.GetState().CustoTotalUSD
 			if cost > 1.50 && i > 30 {
 				al.handler.OnMessage("system", fmt.Sprintf(i18n.Get("system.financial_circuit_breaker"), cost))
