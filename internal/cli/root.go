@@ -46,6 +46,7 @@ var cliRetry bool
 var cliRetryLimit int
 var cliRetryDelay int
 var cliReadOnly bool
+var cliEphemeral bool
 var cliDisableInteraction bool
 
 // rootCmd é o comando raiz do crom-agente
@@ -210,6 +211,18 @@ var runCmd = &cobra.Command{
 	Args:  cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		task := args[0]
+
+		if cliEphemeral {
+			tempWorkspace, err := os.MkdirTemp("", "crom-ephemeral-*")
+			if err != nil {
+				return fmt.Errorf("falha ao criar workspace efêmero: %w", err)
+			}
+			defer os.RemoveAll(tempWorkspace)
+			workspacePath = tempWorkspace
+			if cliPermissionMode == "" {
+				cliPermissionMode = "function"
+			}
+		}
 
 		// Tenta conectar ao daemon via socket Unix
 		sockPath, err := daemon.SocketPath()
@@ -514,6 +527,7 @@ func init() {
 	rootCmd.PersistentFlags().IntVar(&cliRetryLimit, "retry-limit", 0, "Override: Limite de retries automáticos (0 = infinito)")
 	rootCmd.PersistentFlags().IntVar(&cliRetryDelay, "retry-delay", 5, "Override: Tempo de espera entre retries (segundos)")
 	rootCmd.PersistentFlags().BoolVar(&cliReadOnly, "readonly", false, "Executa o agente em modo Read-Only (impede modificações e comandos bash)")
+	rootCmd.PersistentFlags().BoolVarP(&cliEphemeral, "ephemeral", "e", false, "Executa a tarefa em um workspace efêmero em /tmp que é removido ao finalizar")
 	rootCmd.PersistentFlags().BoolVar(&cliDisableInteraction, "disable-interaction", false, "Desabilita a interação com o usuário (omite a ferramenta ask_user)")
 
 	rootCmd.AddCommand(versionCmd)

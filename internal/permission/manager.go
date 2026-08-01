@@ -22,6 +22,9 @@ const (
 
 	// ModeScoped indica fluxo interativo que pode salvar grants whitelisted
 	ModeScoped PermissionMode = "scoped"
+
+	// ModeFunction indica execução isolada em modo função (rejeita escrita e comandos de terminal automaticamente)
+	ModeFunction PermissionMode = "function"
 )
 
 // Grant define uma permissão concedida pelo usuário
@@ -48,6 +51,8 @@ func NewPermissionManager(workspacePath string, mode string, askFunc func(ctx co
 		pmMode = ModeTotalAccess
 	case "ask_every_time":
 		pmMode = ModeAskEveryTime
+	case "function":
+		pmMode = ModeFunction
 	}
 
 	return &PermissionManager{
@@ -94,6 +99,15 @@ func (pm *PermissionManager) saveGrantsLocked() error {
 // Authorize verifica se a ação solicitada é permitida, consultando o usuário ou arquivo de grants se necessário
 func (pm *PermissionManager) Authorize(ctx context.Context, action, target string) (bool, error) {
 	if pm.mode == ModeTotalAccess {
+		return true, nil
+	}
+
+	if pm.mode == ModeFunction {
+		// Bloqueia comandos de terminal e escritas/edições/deleções de arquivos no disco
+		if action == "command" || action == "write_file" || action == "edit_file" || action == "delete_file" {
+			return false, fmt.Errorf("ação [%s] bloqueada automaticamente em modo função (read-only)", action)
+		}
+		// Ações de leitura de dados e MCPs são liberadas
 		return true, nil
 	}
 
